@@ -143,6 +143,8 @@ node cli.js pipeline status .
 
 `json -` reads stdin. `compare - -` reads a JSON object with `left` and `right` strings from stdin, supporting two long pastes without command-line length limits. File comparison supports `--json`, `--ignore-case`, `--trim-whitespace`, and `--line-endings`. `git-compare` accepts `INDEX` or `WORKTREE` on the right and `-` for a missing file. Compare outputs include both snapshots and `identical`; exit 0 means equal, exit 1 means different, and exit 2 means execution failed. Other tools and pipeline commands use exit 0 for success and nonzero for failure. Clipboard buttons, undo, and native diff navigation are UI interactions around these same core functions.
 
+For mixed input, `compare - file.txt` and `compare file.txt -` read raw text/bytes from stdin for the `-` side. Git comparison fails if neither selected path exists, so a path typo cannot appear as a successful equality result.
+
 ## Codex and Claude Code
 
 `plugins/pipeline-configurator` contains both host manifests and a self-contained `configure-pipeline` skill. `python scripts/build.py` synchronizes the Python runtime and shared skill and writes `dist/pipeline-configurator-0.2.0.zip`.

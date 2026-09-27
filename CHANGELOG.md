@@ -17,6 +17,7 @@ Extension: **0.3.0**. Pipeline plugin: **0.2.0**.
 - Added JSON formatting/minification/validation and file, pasted-text, and Git comparison CLI commands using the same logic as the UI.
 - Added single-request CLI debugging, response downloads, cURL templates, Git history/file listing, and the UI option to push the test branch.
 - Added Save request for CLI and Export Postman buttons backed by the shared data and export logic.
+- Comparison accepts raw stdin on either side of a file comparison and rejects Git comparisons where neither selected path exists.
 - Verify worktree HEAD and tracked source before and after every gate. Verify retained artifact hashes before recording UAT and before publication; regression tests cover clean checkout changes and missing/modified packages.
 - Updated both agent manifests and the self-configuration skill for Python commands, real test evidence, and user-owned UAT. Plugin builds and ZIP packaging now use Python.
 

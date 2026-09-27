@@ -35,7 +35,7 @@ async function main(args) {
       const input = JSON.parse(readBuffer(0).toString('utf8'));
       if (typeof input.left !== 'string' || typeof input.right !== 'string') throw new Error('stdin requires left and right strings');
       left = Buffer.from(input.left); right = Buffer.from(input.right);
-    } else { left = await readLocal(a); right = await readLocal(b); }
+    } else { left = a === '-' ? readBuffer(0) : await readLocal(a); right = b === '-' ? readBuffer(0) : await readLocal(b); }
   } else if (command === 'git-history' || command === 'git-files') {
     if (values.length !== (command === 'git-history' ? 1 : 2)) throw new Error(command + ' requires root' + (command === 'git-files' ? ' and revision' : ''));
     const result = await (command === 'git-history' ? git.history : git.listFiles)(...values);
@@ -46,8 +46,10 @@ async function main(args) {
   } else if (command === 'git-compare') {
     if (values.length < 4 || values.length > 5) throw new Error('git-compare requires root, base, target, left-path and optional right-path');
     const [root, base, target, a, b = a] = values;
-    left = (await git.readFile(root, base, a === '-' ? null : a)).buffer;
-    right = (await git.readFile(root, target, b === '-' ? null : b)).buffer;
+    const leftFile = await git.readFile(root, base, a === '-' ? null : a);
+    const rightFile = await git.readFile(root, target, b === '-' ? null : b);
+    if (!leftFile.exists && !rightFile.exists) throw new Error('Neither Git file exists at the selected revisions. Check the paths.');
+    left = leftFile.buffer; right = rightFile.buffer;
   } else throw new Error('Unknown text command');
   const comparison = git.compareBuffers(left, right);
   if (!comparison.binary) {
