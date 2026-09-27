@@ -1,32 +1,9 @@
-# Delivery roadmap — updated for 0.2.0
+# Delivery roadmap — 0.3.0
 
-Version 0.2.0 adds precision-preserving JSON formatting/minification/validation, large-text and file comparisons through native VS Code diff snapshots, binary identity summaries, and Git commit/index/working-tree comparison with rename handling and independent path selection.
+Implemented: API debugger and CLI, precision-preserving JSON tools, large text/file/Git comparisons, and Python CI/CD with Codex/Claude review adapters, unit/function/integration gates, human interface UAT, and controlled developement/test/deployment/main promotion. Product and pipeline now use explicit data/logic/interface layers. The Actions backend has been removed.
 
-Implemented: shared API engine, VS Code editor, CLI reports, GitHub Actions configurator, and a dual-host Codex / Claude Code plugin with self-contained project-local skill installation. Automated API, CLI, pipeline and browser tests cover the implemented paths. The original milestones below remain a record of the intended broader scope; the root README is the current capability reference.
+The database and SFTP repositories remain upstream references and optional independent checkouts. They are not bundled into the extension. Review their dependencies and licenses before integrating code.
 
-## 1. Workspace setup — complete
+Remaining product work includes complete Thunder Client compatibility (see the root README's explicit gaps), native plugin/extension host acceptance by the user, and target-specific external deployment once a hosting destination is chosen. The local pipeline is invoked through terminal or VS Code tasks; it is not a hosted runner or background scheduler.
 
-- Create the separate development-tools-kit folder and multi-root VS Code workspace.
-- Clone both requested repositories and record their revisions.
-- Define API debugger parity criteria and the CI/CD product architecture.
-
-## 2. Technical evaluation — pending
-
-- Build each upstream extension using its repository instructions and review dependencies/licenses before reuse.
-- Compare Bruno and other candidate API clients against the full baseline checklist.
-- Decide integration versus custom implementation using measured gaps, especially the VS Code UI and GUI assertions.
-- Confirm target deployment environments and CI providers.
-
-## 3. Implementation — working first release
-
-- API debugger: shared execution core, extension editor, collection storage, environment handling, then CLI and advanced parity features.
-- Pipeline configurator: discovery and GitHub Actions adapter, then VS Code UI and the two host-specific plugin packages with a shared skill.
-
-## 4. Verification and release — local verification implemented; host and remote verification pending
-
-- Run request/auth/import/export/CLI compatibility fixtures before claiming API feature parity.
-- Verify pipeline output on representative repositories and verify idempotence.
-- Package and test each extension/plugin in its actual host.
-- Document installation, compatibility, limitations, upgrades, and recovery.
-
-The implementation is locally testable and packaged as a VSIX. Complete Thunder Client parity, live agent-host loading, hosted CI execution, and production deployment are not claimed.
+Required release flow: commit on `developement`, run `test`, present the exact retained package for user UAT, record explicit acceptance, then run `publish` when requested. A successful fixture simulation or local check does not substitute for live AI review or human UAT.

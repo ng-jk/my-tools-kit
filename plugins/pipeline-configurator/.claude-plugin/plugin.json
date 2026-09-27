@@ -1,7 +1,7 @@
 {
   "name": "pipeline-configurator",
-  "version": "0.1.0",
-  "description": "Inspect projects and configure GitHub Actions and project-local agent integrations.",
+  "version": "0.2.0",
+  "description": "Configure Python terminal CI/CD with AI review, automated tests, human UAT and branch promotion.",
   "author": { "name": "Ng Jun Kai" },
   "skills": "./skills/"
 }

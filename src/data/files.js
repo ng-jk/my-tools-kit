@@ -23,3 +23,5 @@ function writeAtomic(file, content) {
   finally { if (fs.existsSync(tmp)) fs.unlinkSync(tmp); }
 }
 module.exports = { inside, readJson, hash, writeAtomic };
+
+module.exports.readBuffer = file => fs.readFileSync(file);

@@ -1,6 +1,6 @@
 # Development Tools Kit
 
-A local API debugger, JSON formatter, text/file/Git comparer, CLI runner, and GitHub Actions configurator, packaged as a VS Code extension with a shared Codex / Claude Code pipeline plugin. Extension version 0.2.0; the pipeline plugin remains version 0.1.0.
+A local API debugger, JSON formatter, text/file/Git comparer, and Python terminal CI/CD pipeline, packaged as a VS Code extension with a shared Codex / Claude Code plugin. Extension version 0.3.0; pipeline plugin version 0.2.0. No GitHub Actions are used.
 
 [Release notes](CHANGELOG.md) · [Source repository](https://github.com/ng-jk/my-tools-kit) · [Issue tracker](https://github.com/ng-jk/my-tools-kit/issues)
 
@@ -11,13 +11,13 @@ A local API debugger, JSON formatter, text/file/Git comparer, CLI runner, and Gi
 | API debugger | VS Code editor and shared CLI runner |
 | JSON formatter | Format, minify, validate, and undo without rounding large numbers |
 | Comparer | Pasted text, two files, Git revisions, staged changes, and working-tree changes |
-| CI/CD configurator | GitHub Actions inspection, preview, apply, validation, and rollback |
+| CI/CD pipeline | Python CLI and VS Code tasks: AI review, unit/function/integration tests, human UAT, branch promotion |
 | Agent integration | Codex and Claude Code plugin with a self-contained project configuration skill |
 | Database and SFTP tools | Separate upstream repository references and optional local checkouts |
 
 ## Install the VS Code extension
 
-Build with Node.js 20 or newer:
+Build with Node.js 20+, Python 3.11+, and Git:
 
 ```sh
 git clone https://github.com/ng-jk/my-tools-kit.git
@@ -25,8 +25,9 @@ cd my-tools-kit
 npm ci
 npm test
 npm run check
+python scripts/build.py
 npm run package
-code --install-extension dist/development-tools-kit-0.2.0.vsix
+code --install-extension dist/development-tools-kit.vsix
 ```
 
 Or use **Extensions → Install from VSIX…** and select the file in `dist/`.
@@ -92,49 +93,57 @@ Trusted scripts require the editor checkbox or CLI `--allow-scripts`. They run i
 
 ## CI/CD configurator
 
-Run **Development Tools Kit: Configure CI/CD** in VS Code, or use the CLI:
+Run **Development Tools Kit: Configure CI/CD** in VS Code. Each menu action launches the same Python entry point as the terminal and exposes its output and exit status in a VS Code task. On Windows use `py -3` if `python` is unavailable; alternatively set `DEVKIT_PYTHON` or the VS Code `devkit.pythonPath` setting to your interpreter.
 
 ```sh
-node cli.js pipeline inspect /path/to/project
-node cli.js pipeline plan /path/to/project --agents codex,claude --out plan.json
-node cli.js pipeline apply /path/to/project --plan plan.json
-node cli.js pipeline check /path/to/project
+python pipeline.py init
+python pipeline.py status
+python pipeline.py check
+# After committing changes to developement:
+python pipeline.py test --push
+# Only after personally completing interface acceptance for that exact commit:
+python pipeline.py accept-uat --commit <sha> --reviewer "Your name" --note "Actual UAT checks completed"
+# When ready to publish:
+python pipeline.py publish
 ```
 
-The plan contains exact before/after file contents and findings. Apply rejects changed inputs and modified plans. It creates a dedicated workflow, preserves other workflows, and refuses to overwrite an existing unmanaged or edited file. Repeating the same configuration produces no changes.
+Branch flow is **developement → test → deployment → main**. `init` creates missing local branches from `main`; it never overwrites existing branches. `check` runs architecture, unit, function, integration, and package checks on current changes without producing release evidence. `test` pins the committed development SHA in a temporary detached worktree, installs locked dependencies, runs those gates plus AI review, and retains the report and build artifacts. `--push` also updates the remote test branch.
 
-Supported roots: npm `package.json`, Python `requirements.txt` or `pyproject.toml`, and PHP `composer.json`. CI uses actual declared Node/PHP scripts. Set a verified Python test command in `.devkit-pipeline.json`:
+Configuration is checked in as `.devkit-pipeline.json`. Commands are argument arrays, executed without a shell; `{python}` selects the interpreter running the pipeline. Required command groups are `prepare`, `architecture`, `unit`, `function`, `integration`, and `build`. Keep actual test commands in every group. The default AI reviewer is the authenticated Codex CLI; set `reviewer` to `claude` to use Claude Code. Both run from a normal terminal. AI review is real and required: missing authentication, missing executables, malformed results, rejection, and high/critical findings fail the gate.
 
-```json
-{
-  "nodeVersion": "22",
-  "pythonTest": "python3 -m pytest"
-}
+`publish` requires a clean checkout, matching local/remote main, a passing test report, and your UAT acceptance bound to that report and exact SHA. It pushes the candidate to `deployment`, reruns all gates, and only then fast-forwards `main`. Failure leaves main unchanged. No force pushes or gate-skipping options are provided. Development/test/deployment branches are retained; your current checkout remains on development. Git authentication retries use existing credentials for at most three attempts and verify the remote after an uncertain push.
+
+Reports, retained VSIX/ZIP artifacts with SHA-256 hashes, UAT records, and an operation lock live under the Git common directory's `devkit/` folder. `status` prints its location. Rerunning test invalidates prior UAT. Evidence is local and authenticated to detect edits; it is not a security boundary against the same OS user or direct Git pushes. Another machine must retest and record acceptance. If a process crashes, verify no pipeline is running before removing its stale `pipeline.lock`.
+
+Publication currently means package creation and Git branch promotion. No external hosting target, marketplace upload, or GitHub Release is configured. The old generated Actions workflow has been removed. Existing repositories must migrate their configuration to this Python format; old inspect/plan/apply/rollback commands are no longer available.
+
+## Shared layers and terminal tools
+
+| Layer | JavaScript product | Python pipeline |
+| --- | --- | --- |
+| Data | `src/data`: files, HTTP, Git subprocesses, script workers | `cicd/data`: Git, processes, configuration, evidence, AI CLI adapters |
+| Logic | `src/logic`: API execution, assertions, JSON and comparison behavior | `cicd/logic`: test, UAT, promotion policies and orchestration |
+| Interface | `src/interface`: VS Code and terminal adapters | `cicd/interface`: terminal parsing and JSON output |
+
+Logic never imports VS Code or the interface layer. Data never imports logic or interface. `python scripts/architecture.py` checks these boundaries. Root entry points and `lib/` modules are compatibility adapters. The core suites run without opening VS Code or a browser; interface UAT is performed by you.
+
+```sh
+node cli.js json input.json --indent 4 --out formatted.json
+node cli.js json input.json --minify
+node cli.js json input.json --validate
+node cli.js compare original.txt modified.txt --line-endings
+node cli.js git-changes . HEAD~1 HEAD
+node cli.js git-compare . HEAD~1 HEAD old/path.txt new/path.txt
+node cli.js pipeline status .
 ```
 
-Python and PHP use Ubuntu 24.04 runner tooling. Other package managers and specialized runtime versions need custom workflows. Generated `.yml` files use JSON syntax, which is valid YAML and keeps the dependency-free renderer deterministic.
-
-Optional deployment configuration:
-
-```json
-{
-  "deploy": {
-    "environment": "staging",
-    "command": "./scripts/deploy.sh",
-    "secrets": { "DEPLOY_TOKEN": "STAGING_DEPLOY_TOKEN" }
-  }
-}
-```
-
-Deployment runs only on manual dispatch from the repository's default branch after CI succeeds. The deployment command runs on a fresh checked-out runner and must handle its own build/artifact retrieval. Provision the referenced GitHub secrets and environment protection rules separately. No cloud account or deployment is created by this toolkit.
-
-Keep `.devkit/pipeline-state.json` locally and ignore `.devkit/` in Git. To restore original managed files, run `node cli.js pipeline rollback /path/to/project`; it refuses rollback if files have subsequently changed. Commit the workflow and any generated project-local skills.
+`json -` reads stdin. `compare - -` reads a JSON object with `left` and `right` strings from stdin, supporting two long pastes without command-line length limits. File comparison supports `--json`, `--ignore-case`, `--trim-whitespace`, and `--line-endings`. `git-compare` accepts `INDEX` or `WORKTREE` on the right and `-` for a missing file. Compare outputs include both snapshots and `identical`; exit 0 means equal and exit 1 means different. Invalid commands fail with an error. Other tools and pipeline commands use exit 0 for success and nonzero for failure. Clipboard buttons, undo, and native diff navigation are UI interactions around these same core functions.
 
 ## Codex and Claude Code
 
-`plugins/pipeline-configurator` contains both supported host manifests and a self-contained `configure-pipeline` skill. `npm run build` synchronizes the shared source and runtime into that package.
+`plugins/pipeline-configurator` contains both host manifests and a self-contained `configure-pipeline` skill. `python scripts/build.py` synchronizes the Python runtime and shared skill and writes `dist/pipeline-configurator-0.2.0.zip`.
 
-To produce the distributable plugin ZIP after building, run `python scripts/package-plugin.py` with Python 3. It writes `dist/pipeline-configurator-0.1.0.zip`, including both hidden host manifest directories. Python is only required for this ZIP helper, not for using the plugin runtime.
+Python is required to run the pipeline. The plugin includes no third-party Python dependencies. Its skill configures actual project CLI checks and project-local agent integration, preserves existing customizations, and never grants itself global permissions or fabricates UAT approval.
 
 For Claude Code local testing:
 
@@ -142,7 +151,7 @@ For Claude Code local testing:
 claude --plugin-dir ./plugins/pipeline-configurator
 ```
 
-The `--agents codex,claude` pipeline option installs the same skill and runtime under the target project's `.agents/skills/` and `.claude/skills/` directories, making it usable without a global marketplace install. Restart or open a new agent session after installing project skills. The skill inspects, plans, applies, checks, and can configure another project's local integration; it does not alter global agent permissions.
+For project-local discovery, copy `plugins/pipeline-configurator/skills/configure-pipeline` to `.agents/skills/configure-pipeline` for Codex or `.claude/skills/configure-pipeline` for Claude Code. Open a new agent session to discover it. The skill describes configuration migration and setup for another repository; the UI expects its `.devkit-pipeline.json` to exist.
 
 The plugin has been statically validated; live Claude Code/Codex host loading has not been exercised. See the [Codex plugin packaging documentation](https://developers.openai.com/plugins/build/plugins) and [Claude Code plugin reference](https://code.claude.com/docs/en/plugins-reference) for host installation options.
 
@@ -150,20 +159,22 @@ The plugin has been statically validated; live Claude Code/Codex host loading ha
 
 ```sh
 npm test
-npm run test:ui
+python -m unittest discover -s tests/pipeline -v
+python scripts/architecture.py
 npm run check
+python scripts/build.py
 npm run package
 ```
 
-`test:ui` uses Playwright with installed Microsoft Edge. Set `DEVKIT_BROWSER=chrome` to use installed Chrome. It tests the webview in a browser with the VS Code message bridge simulated; it is not a native VS Code extension-host test.
+`npm run test:interface` and `npm run test:ui` are optional developer diagnostics, excluded from release gates. `test:ui` uses Playwright with installed Microsoft Edge (or `DEVKIT_BROWSER=chrome`) and a simulated VS Code bridge; neither substitutes for your acceptance testing.
 
-The v0.2.0 verification suite contains 27 core/integration tests and two browser tests. The checked-in GitHub Actions workflow runs syntax checks, core/integration tests, and the plugin build on Node.js 22. Browser tests require a locally installed supported browser and are run separately. Native host loading and remote deployments are not covered by these checks.
+The automated suites cover API wire behavior, JSON precision, long pastes, Git snapshots, CLI exit codes, failed release gates, evidence tampering, stale UAT, and a complete branch-promotion simulation using an isolated local bare remote and a fixture reviewer. Fixture reviewers are only for isolated tests; production test/publish commands always invoke the configured real AI CLI.
 
 ## Compatibility and limits
 
 This release is usable, but **does not yet provide complete Thunder Client parity**. Digest/NTLM/AWS authentication, interactive OAuth flows, proxy configuration, WebSockets/gRPC, full migration of scripts and assertions, cookie domain sharing, rich code generators, and MCP API tools are not implemented. Folder defaults execute in the CLI; the editor flattens imported folders and warns before saving. cURL and Postman export are partial and identify their limitations.
 
-The pipeline backend currently supports GitHub Actions and root-level projects. It validates generated structure and repository consistency locally; actual hosted CI runs and deployments require a real remote repository and configured credentials.
+The pipeline is an explicitly invoked local CLI, not a continuously running server. Keep the terminal open until it completes. Live AI review needs installed/authenticated Codex or Claude Code; remote publication needs origin push access. Python orchestrates native project test/build CLIs; the VS Code product itself remains JavaScript.
 
 ## Repository references
 

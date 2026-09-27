@@ -2,7 +2,7 @@
 
 ## Product objective
 
-Build a local-first VS Code API debugging extension with a shared CLI runner, targeting all applicable Thunder Client functions, including paid functionality. Version 0.1.0 is implemented in `../lib/api.js`, `../lib/formats.js`, `../cli.js`, `../extension.js`, and `../media/`. It is not a claim of completed parity; the root README documents supported functionality and limits.
+Build a local-first VS Code API debugging extension with a shared CLI runner, targeting all applicable Thunder Client functions, including paid functionality. Version 0.3.0 separates I/O in `../src/data/`, reusable API/JSON/comparison behavior in `../src/logic/`, and terminal/VS Code adapters in `../src/interface/`. Root entry points and `lib/` modules preserve compatibility. Unit/function/integration checks run through the Python pipeline without the graphical interface; the user performs interface acceptance. This is not a claim of completed parity; the root README documents supported functionality and limits.
 
 ## Existing alternative to evaluate
 

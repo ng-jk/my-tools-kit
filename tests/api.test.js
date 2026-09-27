@@ -7,7 +7,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { execute, runCollection, substitute } = require('../lib/api');
 const { importCollection } = require('../lib/formats');
-const { report, junit } = require('../cli');
+const { report, junit } = require('../src/logic/reports');
 let server, base;
 before(async () => {
   server = http.createServer(async (req, res) => {

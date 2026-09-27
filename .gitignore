@@ -5,3 +5,5 @@ dist/
 *.local.json
 *.vsix
 repositories/
+__pycache__/
+*.pyc

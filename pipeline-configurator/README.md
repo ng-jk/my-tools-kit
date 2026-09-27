@@ -1,54 +1,32 @@
-# Pipeline Configurator
+# Python pipeline configurator
 
-## Product objective
+Version 0.2.0 replaces the Actions generator with a Python standard-library runtime. The VS Code extension, terminal wrapper, and Codex/Claude Code skill all invoke `pipeline.py`; no release policy is duplicated in JavaScript.
 
-A CI/CD configuration product exposed through a VS Code extension, a Claude Code plugin, and a Codex plugin. Both agent integrations ship a reusable skill that inspects a repository and configures the project's pipeline and project-local agent integration.
+## Branches and commands
 
-Status: version 0.1.0 implemented. The shared backend is `../lib/pipeline.js`; `../pipeline-cli.js` exposes it to automation; the root VS Code extension presents plans; `../plugins/pipeline-configurator` contains both host manifests and a bundled skill/runtime. No deployment or global plugin installation has been performed.
-
-## Shared workflow
-
-1. Inspect the repository: instructions, languages, manifests, lockfiles, test/build commands, existing workflows, containers, and deployment configuration.
-2. Produce an evidence-backed configuration plan. Distinguish observed commands from guesses and request only essential missing deployment details.
-3. Render a preview of proposed files and a diff against existing configuration.
-4. Apply authorized project-local edits, preserving custom workflow jobs and user changes.
-5. Validate workflow syntax and run the project's relevant checks. Report checks that cannot run locally.
-6. Record configured files, prerequisites, and results. Re-running with the same inputs must produce no changes.
-
-## Components
-
-| Component | Responsibility |
+| Command | Behavior |
 | --- | --- |
-| Core library | Repository discovery, normalized pipeline model, provider adapters, diff generation, validation |
-| CLI | Stable inspect/plan/apply/check interface with structured output for agents |
-| VS Code extension | Setup flow, repository findings, editable pipeline options, preview, diagnostics |
-| Claude Code plugin | Host-specific manifest and packaged skill calling the shared workflow |
-| Codex plugin | Host-specific manifest and packaged skill calling the same workflow |
-| Shared skill source | Repeatable discovery, configuration, verification, and recovery instructions |
+| `init` | Create missing local `developement`, `test`, and `deployment` branches from `main` |
+| `status` | Print branch SHAs, reviewer, and evidence location |
+| `check` | Run current architecture, unit, function, integration, and build checks; not release evidence |
+| `test [--push]` | Pin committed development to test; run all gates and AI review in an isolated worktree |
+| `accept-uat --commit SHA --reviewer NAME --note NOTES` | Record the user's actual interface acceptance against that test report |
+| `publish` | Push deployment, rerun gates, then fast-forward main only if successful |
 
-Implemented provider: GitHub Actions. npm, Python and PHP root manifests are supported. The generated workflow is a JSON-form YAML document in a dedicated managed file; unrelated workflows are preserved. Existing managed edits cause a conflict rather than a destructive merge. GitLab CI, Azure Pipelines, Jenkins, monorepo discovery, and specialized runtime adapters remain future work.
+Use `python pipeline.py --root /path/to/project COMMAND`. `node cli.js pipeline COMMAND /path/to/project` is a thin terminal adapter; set `DEVKIT_PYTHON` when Python is not discoverable. The VS Code command palette exposes the same operations as tasks with terminal output and exit status.
 
-## Agent self-configuration requirements
+## Configuration and architecture
 
-The skill should configure the target project's integration, not rewrite global agent policy or grant itself permissions. It should discover supported host capabilities, create project-local configuration from validated templates, reference secret names instead of values, and verify that the host can discover the integration.
+`.devkit-pipeline.json` contains version 1, remote `origin`, reviewer `codex` or `claude`, timeout seconds, retained artifact paths, and nonempty argv-array groups for prepare/architecture/unit/function/integration/build. Runtime values are never shell-interpolated. Commands must be real project checks; the skill discovers or implements missing checks before declaring a project ready. Copy `pipeline.py` and `cicd/` plus a verified project-specific config when adopting this runtime elsewhere.
 
-Use the currently documented packaging format for each host at implementation time. Maintain a shared skill source and generate host packages so fixes stay consistent. Do not assume Claude Code and Codex plugin manifests are interchangeable.
+`cicd/data` owns Git, subprocesses, configuration and evidence I/O, and terminal reviewer adapters. `cicd/logic` owns policies and shared workflows. `cicd/interface` owns argument parsing and output. The JavaScript product mirrors the same layout in `src`. Core tests need no VS Code or browser. Architecture checks reject dependencies pointing from data into logic/interface or from logic into interface.
 
-## Pipeline requirements
+The default Codex review runs in a read-only sandbox with structured output and existing user authentication. Claude uses read-only tools and a supplied diff (maximum 1 MB). Neither automatically installs or authenticates an agent. Missing or malformed review, rejection, or high/critical findings fails the candidate.
 
-- Infer package manager from lockfiles; flag conflicting lockfiles.
-- Separate lint, test, build, package, and deploy stages; preserve required ordering and artifacts.
-- Use minimal job permissions and no production secrets in untrusted pull-request jobs.
-- Pin tool versions and reviewed action revisions; document upgrade procedures.
-- Support caches, matrices, concurrency, environments, secret references, and rollback instructions where relevant.
-- Make deployment conditional on an explicitly configured target and the user's existing authorization.
-- Avoid overwriting existing workflows; merge supported structures or return a precise conflict.
-- Keep an edit manifest and restore only files changed by the configurator when rolling back.
+## Evidence and recovery
 
-## Acceptance criteria
+Reports and artifact hashes are stored in `<git-common-dir>/devkit/`. Successful test artifacts are retained for human UAT. Evidence includes the exact candidate, main base, configuration digest, and each gate. UAT binds the report digest; changing source/configuration or rerunning test requires new UAT. Local HMAC detects edited evidence but is not protection against the same OS account. Direct Git pushes remain outside this local tool; use remote branch protections if organizational enforcement is required.
 
-1. Node.js, Python, and PHP fixture projects yield runnable CI with their actual test/build commands.
-2. Existing custom jobs survive configuration and a second run yields no diff.
-3. Missing commands, credentials, or deployment targets produce actionable findings.
-4. VS Code, Claude Code, and Codex produce equivalent configuration from the same inputs.
-5. Host discovery, plugin packaging, skill invocation, workflow validation, and failure recovery are tested before release.
+No force pushes occur. Conflicting branches require reconciliation on development and new testing. Missing UAT stops before deployment. Failed deployment gates leave deployment available for diagnosis and main unchanged. A failed main push leaves local main unchanged. If remote main advanced but a subsequent local update failed, inspect both refs and reconcile locally before continuing. Crashed locks require checking the recorded process before removing the lock. Never fabricate approval to recover from a failure.
+
+Automated integration tests publish only into a temporary local bare repository using a fixture reviewer. They do not publish the real project. Live AI CLI operation, user's UI acceptance, and remote authentication are separate prerequisites. This release produces packages and promotes repository branches; it does not deploy to an external hosting service.

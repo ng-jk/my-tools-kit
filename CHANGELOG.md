@@ -2,6 +2,28 @@
 
 This file records implemented functionality and its verification limits. Extension and pipeline-plugin versions are independent.
 
+## 0.3.0 — 2026-09-27
+
+Extension: **0.3.0**. Pipeline plugin: **0.2.0**.
+
+### Changed
+
+- Replaced the GitHub Actions generator and workflow with Python standard-library CI/CD. No Actions service or workflow is required.
+- Implemented `developement -> test -> deployment -> main` with fast-forward-only updates, exact-commit isolated worktrees, required AI review, architecture checks, unit/function/integration tests, and package builds.
+- Added human interface UAT evidence tied to the test report and exact commit. Missing, stale, rejected, or failed gates block promotion. Publication reruns gates after pushing deployment and only then advances main.
+- Retain signed local reports, SHA-256 artifact hashes, tested VSIX/ZIP packages, and serialized operation locks in the Git common directory. Authentication retries are bounded to three attempts and uncertain pushes verify remote state.
+- Split product and pipeline into explicit data/logic/interface layers. Core tests do not load VS Code or a browser; compatibility entry points remain.
+- VS Code pipeline actions invoke the same Python CLI as terminal users, with task output and exit status. Codex and Claude Code adapters support terminal AI review; production review never falls back to a fixture.
+- Added JSON formatting/minification/validation and file, pasted-text, and Git comparison CLI commands using the same logic as the UI.
+- Updated both agent manifests and the self-configuration skill for Python commands, real test evidence, and user-owned UAT. Plugin builds and ZIP packaging now use Python.
+
+### Verification and release boundaries
+
+- Data/logic and terminal suites include an isolated bare-Git-remote promotion simulation, failed deployment/main-push protection, stale UAT rejection, evidence tampering, exact API wire assertions, JSON precision, long pastes, and Git snapshot comparisons.
+- Interface diagnostics remain optional; user acceptance and native host installation are not claimed by automated CLI success.
+- Repository publication creates packages and advances Git branches. No marketplace upload, external hosting deployment, or complete Thunder Client parity is claimed.
+- Breaking pipeline migration: legacy `inspect/plan/apply/rollback` and Actions configuration are replaced by `init/status/check/test/accept-uat/publish` and `.devkit-pipeline.json` argv groups. Python 3.11+ is now required.
+
 ## 0.2.0 — 2026-09-27
 
 Extension: **0.2.0**. Pipeline plugin: **0.1.0**.

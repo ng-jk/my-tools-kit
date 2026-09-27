@@ -1,7 +1,7 @@
 {
   "name": "pipeline-configurator",
-  "version": "0.1.0",
-  "description": "Inspect projects and configure GitHub Actions and project-local agent integrations.",
+  "version": "0.2.0",
+  "description": "Configure Python terminal CI/CD with AI review, automated tests, human UAT and branch promotion.",
   "author": {
     "name": "Ng Jun Kai"
   },
@@ -9,7 +9,7 @@
   "interface": {
     "displayName": "Pipeline Configurator",
     "shortDescription": "Use Pipeline Configurator in Codex.",
-    "longDescription": "Generate reviewable CI/CD plans for npm, Python and PHP projects, apply changes with conflict checks, and install project-local agent skills.",
+    "longDescription": "Configure the shared Python pipeline, run architecture and test gates, request human interface acceptance, and promote deployment to main only after successful checks.",
     "developerName": "Ng Jun Kai",
     "category": "Productivity",
     "capabilities": ["Write"],
