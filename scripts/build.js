@@ -1,0 +1,12 @@
+'use strict';
+const fs = require('node:fs');
+const path = require('node:path');
+const { writeAtomic } = require('../lib/files');
+const root = path.resolve(__dirname, '..');
+const plugin = path.join(root, 'plugins/pipeline-configurator');
+const skill = 'skills/configure-pipeline/SKILL.md';
+const files = ['pipeline-cli.js', 'lib/files.js', 'lib/pipeline.js', skill];
+for (const item of files) writeAtomic(path.join(plugin, 'skills/configure-pipeline/scripts/runtime', item), fs.readFileSync(path.join(root, item)));
+writeAtomic(path.join(plugin, skill), fs.readFileSync(path.join(root, skill)));
+fs.mkdirSync(path.join(root, 'dist'), { recursive: true });
+console.log('Built self-contained Codex and Claude Code plugin in plugins/pipeline-configurator');

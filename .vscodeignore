@@ -1,0 +1,10 @@
+repositories/**
+node_modules/**
+.npm-cache/**
+tests/**
+dist/**
+.git/**
+.devkit/**
+plugins/**
+docs/**
+package-lock.json

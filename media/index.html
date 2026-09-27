@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src {{CSP}}; script-src 'nonce-{{NONCE}}';">
+  <link rel="stylesheet" href="{{STYLE}}"><title>Development Tools Kit</title>
+</head>
+<body>
+  <header><div><span class="eyebrow">DEVELOPMENT TOOLS KIT</span><h1>API workspace</h1></div><div class="actions"><button id="textTools" class="secondary">Text & JSON tools ↗</button><button id="pipeline" class="secondary">Configure CI/CD ↗</button></div></header>
+  <main>
+    <aside>
+      <div class="section-heading"><h2>Collection</h2><button id="new" title="New request">＋</button></div>
+      <input id="collectionName" aria-label="Collection name" value="My collection">
+      <input id="search" type="search" placeholder="Find requests…" aria-label="Find requests">
+      <div id="requests"></div>
+      <div class="actions"><button id="open" class="secondary">Import / Open</button><button id="save" class="secondary">Save</button></div>
+      <button id="run" class="wide secondary">Run collection</button>
+      <h2>Variables</h2><p class="hint">Environment values override collection variables. Use {{name}}, {{secret.NAME}}, or {{env.NAME}}.</p>
+      <textarea id="environment" rows="7" aria-label="Environment variables JSON">{}</textarea>
+      <div class="actions"><button id="openEnvironment" class="secondary">Load env</button><button id="saveEnvironment" class="secondary">Save env</button></div>
+      <button id="secret" class="secondary wide">Store secret securely</button>
+      <p class="hint">Responses and history stay in this panel. Save collections without credentials.</p>
+      <h2>Session history</h2><div id="history"></div>
+    </aside>
+    <section class="editor">
+      <input id="name" class="request-name" aria-label="Request name" value="New request">
+      <div class="request-bar"><select id="method" aria-label="HTTP method"><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option><option>HEAD</option><option>OPTIONS</option></select><input id="url" aria-label="Request URL" placeholder="https://api.example.com/resource"><button id="send">Send →</button><button id="cancel" class="secondary" disabled>Cancel</button></div>
+      <nav aria-label="Request settings">
+        <button class="tab active" data-tab="headers">Headers & query</button><button class="tab" data-tab="body">Body</button><button class="tab" data-tab="auth">Auth</button><button class="tab" data-tab="tests">Tests</button><button class="tab" data-tab="scripts">Scripts</button><button class="tab" data-tab="advanced">Advanced</button>
+      </nav>
+      <div class="tab-content" id="tab-headers"><div class="columns"><label>Headers · JSON object<textarea id="headers" rows="8">{}</textarea></label><label>Query parameters · JSON object<textarea id="query" rows="8">{}</textarea></label></div></div>
+      <div class="tab-content hidden" id="tab-body"><label>Body type<select id="bodyType"><option value="none">None</option><option value="json">JSON</option><option value="text">Text / XML / GraphQL</option><option value="form">URL encoded form</option><option value="multipart">Multipart fields</option><option value="binary">Binary file path</option></select></label><textarea id="body" rows="9" aria-label="Request body" placeholder="JSON/text, a form object, multipart fields array, or a project-relative file path"></textarea></div>
+      <div class="tab-content hidden" id="tab-auth"><label>Authentication<select id="authType"><option value="none">None</option><option value="bearer">Bearer token</option><option value="basic">Basic</option><option value="apiKey">API key</option><option value="oauth2">OAuth 2 client credentials</option></select></label><p class="hint" id="authHint">No authentication</p><textarea id="auth" rows="6" aria-label="Authentication fields JSON">{}</textarea></div>
+      <div class="tab-content hidden" id="tab-tests"><div class="assertion-row"><select id="testSource" aria-label="Assertion source"><option value="status">Status</option><option value="json">JSON path</option><option value="header">Header</option><option value="body">Body</option><option value="time">Time (ms)</option></select><input id="testPath" placeholder="Path / header name" aria-label="Assertion path"><select id="testOperator" aria-label="Assertion operator"><option value="equals">Equals</option><option value="contains">Contains</option><option value="exists">Exists</option><option value="lessThan">Less than</option><option value="notEquals">Not equal</option></select><input id="testValue" placeholder="Expected value" value="200" aria-label="Expected value"><button id="addTest">Add</button></div><textarea id="tests" rows="7" aria-label="Assertions JSON">[]</textarea></div>
+      <div class="tab-content hidden" id="tab-scripts"><label class="check"><input id="allowScripts" type="checkbox">Run trusted scripts for this session</label><p class="hint">Scripts execute code with local process privileges. Each script has a 2-second limit. API: env.get/set, test(name, fn), assert(condition), request, response, console.log.</p><div class="columns"><label>Before request<textarea id="preScript" rows="7"></textarea></label><label>After response<textarea id="postScript" rows="7"></textarea></label></div></div>
+      <div class="tab-content hidden" id="tab-advanced"><label>Timeout (ms)<input id="timeout" type="number" min="1" value="30000"></label><label class="check"><input id="redirects" type="checkbox" checked>Follow same-origin redirects</label><label>Response extraction · [{"variable":"id","path":"data.id"}]<textarea id="extract" rows="3">[]</textarea></label><label>TLS files · project-relative ca, cert, key, passphrase<textarea id="tls" rows="3">{}</textarea></label></div>
+      <div class="actions"><button id="duplicate" class="secondary">Duplicate</button><button id="delete" class="secondary">Delete request</button><button id="curl" class="secondary">Copy cURL template</button><button id="download" class="secondary">Save response</button></div>
+      <div id="notice" role="status">Ready. Create a request or import a collection.</div>
+      <section class="response"><div class="section-heading"><h2>Response</h2><span id="metrics">—</span></div><div class="actions"><button data-view="body" class="secondary">Body</button><button data-view="headers" class="secondary">Headers</button><button data-view="tests" class="secondary">Tests</button><button data-view="logs" class="secondary">Logs</button></div><pre id="response">Send a request to inspect the response.</pre></section>
+    </section>
+  </main>
+  <script nonce="{{NONCE}}" src="{{SCRIPT}}"></script>
+</body></html>

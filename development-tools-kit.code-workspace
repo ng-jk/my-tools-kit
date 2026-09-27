@@ -1,0 +1,9 @@
+{
+  "folders": [
+    { "name": "Toolkit", "path": "." },
+    { "name": "Database Client", "path": "repositories/vscode-database-client" },
+    { "name": "SFTP plus", "path": "repositories/vscode-sftp" },
+    { "name": "API Debugger", "path": "api-debugger" },
+    { "name": "Pipeline Configurator", "path": "pipeline-configurator" }
+  ]
+}

@@ -1,0 +1,67 @@
+# Release notes
+
+This file records implemented functionality and its verification limits. Extension and pipeline-plugin versions are independent.
+
+## 0.2.0 — 2026-09-27
+
+Extension: **0.2.0**. Pipeline plugin: **0.1.0**.
+
+### Added
+
+- Text & JSON Tools workspace, accessible from the command palette and API workspace.
+- Two large-text inputs with clipboard paste, file loading, character/line counts, swap, wrapping, and Ctrl/Cmd+Enter comparison.
+- Read-only comparison snapshots in VS Code's native diff viewer, with its search, change navigation, and inline/side-by-side views.
+- Optional JSON formatting, line-ending normalization, surrounding-whitespace trimming, and case normalization before comparison.
+- Two-file comparison from a file picker or Explorer context menu, plus editor/selection comparison with the clipboard.
+- UTF-8 and BOM-tagged UTF-16 text decoding; binary/non-UTF file summaries with byte identity, sizes, SHA-256 hashes, first differing byte, and a hex excerpt.
+- Git comparison of commits, tags, branches, staged changes, and working-tree changes, including untracked files.
+- Changed-file filtering, rename-aware paths, empty sides for additions/deletions, recent-commit suggestions, repository browsing, and independent file selection at either revision.
+- JSON format, minify, validate, indentation selection, undo, copy, save, and open-in-editor operations.
+- Precision-preserving formatting that retains original numeric tokens, exponent notation, string escapes, duplicate keys, and key order.
+- Undoable formatting of the active editor's JSON selection or full document.
+
+### Verification
+
+- 27 core/integration tests and two browser tests pass locally on Windows with Node.js 24 and Microsoft Edge.
+- Coverage includes 100,000-line core comparison inputs, 20,000-line clipboard inputs through the browser, large JSON integers, invalid JSON retention, Git rename/add/delete behavior, staged versus unstaged contents, and unchanged Git checkout/index state.
+- JavaScript syntax and JSON files checked; the toolkit's generated CI configuration passes its consistency check.
+- Installable artifact: `dist/development-tools-kit-0.2.0.vsix` from `npm run package`.
+
+### Limits
+
+- Text/file comparisons accept up to 20 MiB per side. Binary output is a diagnostic summary, not a full binary diff or structural comparison of images, PDFs, or Office documents.
+- JSON is strict: comments and trailing commas are rejected. Pretty-printing allows 256 nesting levels and at most 40 MiB characters of output.
+- Working-tree symlinks and submodule directories are not followed. Git must be available on PATH; remote refs must already exist locally.
+- Snapshots and pasted inputs are session-local. VS Code's own diff display settings also apply.
+- Browser tests exercise the real handlers with simulated VS Code APIs. Native VS Code host installation has not been separately exercised.
+
+## 0.1.0 — 2026-09-27
+
+Initial API debugger and CI/CD configurator implementation. Pipeline-plugin version: **0.1.0**.
+
+### Added
+
+- Shared HTTP/HTTPS request engine and VS Code request/response editor.
+- Query parameters, headers, JSON/text/form bodies, multipart uploads, and binary request bodies.
+- Basic, bearer, API-key, and OAuth 2 client-credentials authentication.
+- Environment files, nested variables, UUID/timestamp values, VS Code SecretStorage references, and CLI process-environment references.
+- GUI assertions, trusted time-limited pre/post scripts, asynchronous script assertions, response extraction, and sequential collection runs.
+- Response inspection, binary downloads, host-only cookies, same-origin redirects, TLS CA/client certificates, cancellation, timeouts, and response-size limits.
+- Native collection storage; partial Postman/Thunder Client imports, OpenAPI endpoint skeleton import, partial Postman export, and cURL templates with stated limitations.
+- CLI collection execution with failure exit codes and JSON/JUnit reports that omit credential-bearing payloads and raw errors.
+- GitHub Actions configuration for root-level npm, Python, and PHP projects: inspect, plan, apply, check, and rollback.
+- Input-bound plans, conflict detection, preservation of unrelated workflows, repeatable configuration, and rollback protection for subsequent user edits.
+- Explicit manual deployment configuration using environment names, commands, and secret references.
+- Shared Codex / Claude Code plugin with a bundled `configure-pipeline` skill and dependency-free runtime; optional project-local skill installation for either host.
+- Local demo API, sample collection, plugin packaging scripts, VSIX packaging, and a generated workflow for this toolkit.
+- Upstream database-client and SFTP repository references with recorded revisions.
+
+### Verification and limits
+
+- Initial delivery passed 20 core/integration tests and one browser test; plugin and skill validators passed.
+- Pipeline package: `dist/pipeline-configurator-0.1.0.zip`; it remains the current plugin package alongside extension 0.2.0.
+- Full Thunder Client parity is not claimed. Remaining gaps include Digest/NTLM/AWS auth, interactive OAuth, proxies, WebSockets/gRPC, lossless migration of all scripts/tests/auth, domain-shared cookies, richer code generation, and API MCP tools.
+- The API editor flattens imported folder hierarchies with a warning; the CLI supports inherited folder defaults.
+- CI generation supports GitHub Actions and root-level projects, not general monorepo discovery or other providers. The built-in check does not execute hosted Actions jobs.
+- Live Codex/Claude Code plugin loading, hosted CI runs, Marketplace publication, and production deployments were not part of local verification.
+- Upstream database/SFTP extensions are separate projects and have not been modified or built here.

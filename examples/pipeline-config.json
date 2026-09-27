@@ -1,0 +1,4 @@
+{
+  "nodeVersion": "22",
+  "pythonTest": "python3 -m pytest"
+}

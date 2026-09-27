@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "name": "Local API demo",
+  "variables": { "baseUrl": "http://127.0.0.1:4318" },
+  "requests": [
+    {
+      "id": "health",
+      "name": "Health check",
+      "method": "GET",
+      "url": "{{baseUrl}}/health",
+      "tests": [
+        { "source": "status", "operator": "equals", "value": 200 },
+        { "source": "json", "path": "status", "operator": "equals", "value": "ok" }
+      ]
+    },
+    {
+      "id": "echo",
+      "name": "Create a message",
+      "method": "POST",
+      "url": "{{baseUrl}}/echo",
+      "body": { "type": "json", "value": { "message": "Hello from Development Tools Kit" } },
+      "tests": [{ "source": "status", "value": 200 }]
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en"><head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src {{CSP}}; script-src 'nonce-{{NONCE}}';">
+  <link rel="stylesheet" href="{{STYLE}}"><title>Text & JSON tools</title>
+</head><body>
+  <header><div><span class="eyebrow">DEVELOPMENT TOOLS KIT</span><h1>Text & JSON tools</h1></div><span class="local-note">Local processing · Original files stay untouched</span></header>
+  <nav aria-label="Tools"><button data-tab="compare" class="tab active">Compare text</button><button data-tab="json" class="tab">JSON formatter</button><button data-tab="git" class="tab">Git changes</button></nav>
+  <main>
+    <section id="compare" class="tool">
+      <div class="intro"><div><h2>Two texts. Every difference.</h2><p>Paste long texts or load files, then open a searchable diff with change navigation.</p></div><button id="files" class="secondary">Compare two files…</button></div>
+      <div class="split">
+        <div class="pane"><div class="pane-heading"><label for="left">Original <span id="left-name">Left text</span></label><div><button data-paste="left" class="small secondary">Paste</button><button data-load="left" class="small secondary">Load file</button></div></div><textarea id="left" spellcheck="false" placeholder="Paste the original text here…" aria-label="Original text"></textarea><div class="counter" id="left-count">0 characters · 0 lines</div></div>
+        <div class="pane"><div class="pane-heading"><label for="right">Modified <span id="right-name">Right text</span></label><div><button data-paste="right" class="small secondary">Paste</button><button data-load="right" class="small secondary">Load file</button></div></div><textarea id="right" spellcheck="false" placeholder="Paste the updated text here…" aria-label="Modified text"></textarea><div class="counter" id="right-count">0 characters · 0 lines</div></div>
+      </div>
+      <div class="options"><label><input id="normalize-json" type="checkbox">Format both as JSON</label><label><input id="line-endings" type="checkbox">Ignore line-ending style</label><label><input id="trim" type="checkbox">Ignore surrounding spaces</label><label><input id="ignore-case" type="checkbox">Ignore case</label><label><input id="wrap" type="checkbox" checked>Wrap long lines</label></div>
+      <div class="actions"><button id="compare-button" class="primary">Compare texts →</button><button id="swap" class="secondary">Swap sides</button><button id="clear" class="quiet">Clear both</button><span class="hint">Ctrl / ⌘ + Enter to compare</span></div>
+    </section>
+    <section id="json" class="tool hidden">
+      <div class="intro"><div><h2>Readable JSON, without changing its values.</h2><p>Format, minify or validate. Large integers, number notation and string escapes are preserved.</p></div><div class="actions"><button data-paste="json" class="secondary">Paste</button><button data-load="json" class="secondary">Load file</button></div></div>
+      <label for="json-input" class="sr-only">JSON input</label><textarea id="json-input" spellcheck="false" placeholder='{"paste":"your JSON here"}'></textarea>
+      <div class="formatter-toolbar"><label>Indent <select id="indent"><option value="2">2 spaces</option><option value="4">4 spaces</option><option value="tab">Tabs</option></select></label><button data-format="format" class="primary">Format JSON</button><button data-format="minify" class="secondary">Minify</button><button data-format="validate" class="secondary">Validate</button><button id="json-undo" class="quiet" disabled>Undo tool edit</button><span id="json-count" class="counter">0 characters · 0 lines</span></div>
+      <div class="actions"><button id="json-copy" class="secondary">Copy</button><button id="json-editor" class="secondary">Open in editor</button><button id="json-save" class="secondary">Save as…</button><button id="json-to-left" class="quiet">Use as original</button><button id="json-to-right" class="quiet">Use as modified</button></div>
+    </section>
+    <section id="git" class="tool hidden">
+      <div class="intro"><div><h2>Compare any two Git revisions.</h2><p>Browse changed files, follow renames, or select different file paths on each side. No checkout needed.</p></div><button id="repository" class="secondary">Select repository…</button></div>
+      <div id="repo-name" class="repo-name">No repository selected</div>
+      <div class="split revisions"><label>Original revision<input id="git-left" list="commits" value="HEAD" placeholder="Commit SHA, tag, or branch"><span class="hint">Example: HEAD~1, main, or a commit hash</span></label><label>Modified revision<input id="git-right" list="targets" value="WORKTREE" placeholder="Commit, INDEX or WORKTREE"><span class="hint">WORKTREE includes local edits; INDEX compares staged changes</span></label></div>
+      <datalist id="commits"></datalist><datalist id="targets"><option value="HEAD">Latest commit</option><option value="INDEX">Staged changes</option><option value="WORKTREE">Working tree</option></datalist>
+      <div class="actions"><button id="changes" class="primary">Show changed files</button><input id="file-filter" type="search" placeholder="Filter changed files…" aria-label="Filter changed files"><span id="change-count" class="counter"></span></div>
+      <div id="change-list" class="change-list"><p class="empty">Choose revisions, then show their changed files.</p></div>
+      <details><summary>Compare specific files, including different paths</summary><div class="split paths"><label>Original file path<div class="path-row"><input id="left-path" placeholder="src/example.json"><button data-path="left" class="secondary">Browse…</button></div></label><label>Modified file path<div class="path-row"><input id="right-path" placeholder="Same path as original if blank"><button data-path="right" class="secondary">Browse…</button></div></label></div><button id="git-paths" class="secondary">Compare these files</button></details>
+    </section>
+    <div id="status" role="status" aria-live="polite">Ready. Your pasted text stays in this panel until you close it.</div>
+  </main>
+  <script nonce="{{NONCE}}" src="{{SCRIPT}}"></script>
+</body></html>

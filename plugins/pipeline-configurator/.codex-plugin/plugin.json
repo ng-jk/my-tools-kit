@@ -1,0 +1,18 @@
+{
+  "name": "pipeline-configurator",
+  "version": "0.1.0",
+  "description": "Inspect projects and configure GitHub Actions and project-local agent integrations.",
+  "author": {
+    "name": "Ng Jun Kai"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Pipeline Configurator",
+    "shortDescription": "Use Pipeline Configurator in Codex.",
+    "longDescription": "Generate reviewable CI/CD plans for npm, Python and PHP projects, apply changes with conflict checks, and install project-local agent skills.",
+    "developerName": "Ng Jun Kai",
+    "category": "Productivity",
+    "capabilities": ["Write"],
+    "defaultPrompt": "Configure this project's CI/CD pipeline and agent integration."
+  }
+}

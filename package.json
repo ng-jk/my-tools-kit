@@ -1,0 +1,95 @@
+{
+  "name": "development-tools-kit",
+  "displayName": "Development Tools Kit",
+  "description": "API debugging, JSON formatting, text/file/Git comparison, and project-aware CI/CD configuration.",
+  "version": "0.2.0",
+  "publisher": "ng-jk",
+  "repository": { "type": "git", "url": "https://github.com/ng-jk/my-tools-kit.git" },
+  "homepage": "https://github.com/ng-jk/my-tools-kit#readme",
+  "bugs": { "url": "https://github.com/ng-jk/my-tools-kit/issues" },
+  "private": true,
+  "license": "UNLICENSED",
+  "engines": {
+    "vscode": "^1.96.0",
+    "node": ">=20"
+  },
+  "categories": [
+    "Other",
+    "Testing"
+  ],
+  "main": "./extension.js",
+  "bin": {
+    "devkit": "./cli.js"
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "test:ui": "node --test tests/browser/*.test.js",
+    "check": "node scripts/check.js",
+    "build": "node scripts/build.js",
+    "package": "npm run build && vsce package --no-dependencies --allow-missing-repository --skip-license --out dist/development-tools-kit-0.2.0.vsix"
+  },
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false
+    }
+  },
+  "activationEvents": [
+    "onCommand:devkit.open",
+    "onCommand:devkit.pipeline",
+    "onCommand:devkit.textTools",
+    "onCommand:devkit.jsonFormatter",
+    "onCommand:devkit.compareFiles",
+    "onCommand:devkit.compareGit"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "devkit.open",
+        "title": "Development Tools Kit: Open API Debugger"
+      },
+      {
+        "command": "devkit.pipeline",
+        "title": "Development Tools Kit: Configure CI/CD"
+      },
+      {
+        "command": "devkit.secret",
+        "title": "Development Tools Kit: Store API Secret"
+      },
+      {
+        "command": "devkit.textTools",
+        "title": "Development Tools Kit: Compare Text / Open Text Tools"
+      },
+      {
+        "command": "devkit.jsonFormatter",
+        "title": "Development Tools Kit: Open JSON Formatter"
+      },
+      {
+        "command": "devkit.formatJson",
+        "title": "Development Tools Kit: Format JSON Document or Selection"
+      },
+      {
+        "command": "devkit.compareFiles",
+        "title": "Development Tools Kit: Compare Two Files"
+      },
+      {
+        "command": "devkit.compareClipboard",
+        "title": "Development Tools Kit: Compare Editor or Selection with Clipboard"
+      },
+      {
+        "command": "devkit.compareGit",
+        "title": "Development Tools Kit: Compare Git Revisions"
+      }
+    ],
+    "menus": {
+      "explorer/context": [{ "command": "devkit.compareFiles", "when": "resourceScheme == file", "group": "7_modification@20" }],
+      "editor/context": [
+        { "command": "devkit.compareClipboard", "group": "9_cutcopypaste@20" },
+        { "command": "devkit.formatJson", "when": "editorLangId == json || editorHasSelection", "group": "1_modification@20" }
+      ]
+    }
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@vscode/vsce": "^3.6.0"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "checkedOn": "2026-09-27",
+  "repositories": [
+    {
+      "path": "repositories/vscode-database-client",
+      "url": "https://github.com/cweijan/vscode-database-client.git",
+      "commit": "0451793fb0eab0e10d0781787270e68fc9f73732"
+    },
+    {
+      "path": "repositories/vscode-sftp",
+      "url": "https://github.com/ng-jk/vscode-sftp.git",
+      "commit": "ef4d3ca3e6fd2c0c24e05079d3dcf6093d633ce8"
+    }
+  ]
+}
