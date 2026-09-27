@@ -52,7 +52,9 @@ class Pipeline:
             for name in ("prepare", *GATES):
                 self.progress(f"{stage}: running {name} for {sha}")
                 for command in self.config["commands"][name]:
+                    self.git.verify_candidate(root, sha)
                     self.runner(command, root, timeout=self.config.get("timeout", 900))
+                    self.git.verify_candidate(root, sha)
                 report["gates"][name] = True
             output = self.store.root / f"review-{stage}-{sha}.json"
             self.progress(f"{stage}: running AI review with {self.config['reviewer']}")
@@ -62,8 +64,7 @@ class Pipeline:
             if not report["gates"]["ai_review"]:
                 raise ValueError("AI review rejected the candidate or returned invalid evidence")
             # Build/tests must not rewrite tracked source in the pinned checkout.
-            if self.runner(["git", "status", "--porcelain", "--untracked-files=no"], root)["stdout"].strip():
-                raise ValueError("A gate modified tracked source; commit generated changes and retest")
+            self.git.verify_candidate(root, sha)
             report["artifacts"] = self.store.artifacts(root, self.config.get("artifacts", []), stage, sha)
             report["passed"] = True
         except Exception as exc:
@@ -90,6 +91,7 @@ class Pipeline:
             sha = self.git.sha(candidate)
             report = self.store.load(f"test-{sha}.json")
             require_tested(report, sha, self.git.sha("main"), digest(self.config))
+            self.store.verify_artifacts(report, self.config.get("artifacts", []))
             if not reviewer.strip() or not note.strip():
                 raise ValueError("Human reviewer and interface UAT notes are required")
             evidence = {"approved": True, "candidate": sha, "test_report": digest(report),
@@ -109,6 +111,7 @@ class Pipeline:
                 raise ValueError("Local and remote main differ; reconcile and test again")
             report = self.store.load(f"test-{sha}.json")
             require_tested(report, sha, base, digest(self.config))
+            self.store.verify_artifacts(report, self.config.get("artifacts", []))
             require_uat(self.store.load(f"uat-{sha}.json"), sha, digest(report))
             if not self.git.ancestor(base, sha):
                 raise ValueError("Candidate does not contain main")
@@ -125,6 +128,7 @@ class Pipeline:
                 raise ValueError("Branch changed during deployment checks; inspect and retest")
             # Push first; a rejected push must never advance local main.
             self.git.ensure_update("main", sha)
+            self.store.verify_artifacts(report, self.config.get("artifacts", []))
             self.git.push(self.config["remote"], "main", sha)
             self.git.update("main", sha)
             return {"passed": True, "candidate": sha, "promoted": ["deployment", "main"],

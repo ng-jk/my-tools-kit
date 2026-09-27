@@ -28,6 +28,10 @@ class Store:
         parent.mkdir(parents=True, exist_ok=True)
         return parent / secrets.token_hex(16)
 
+    def record_network_attempts(self, attempts):
+        if attempts:
+            self.save("network-" + secrets.token_hex(16) + ".json", {"attempts": attempts})
+
     def artifacts(self, worktree, names, stage, sha):
         result = []
         for name in names:
@@ -39,8 +43,20 @@ class Store:
                 raise ValueError("Artifact path escapes pipeline state")
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, target)
-            result.append({"path": str(target), "sha256": hashlib.sha256(target.read_bytes()).hexdigest()})
+            result.append({"name": name, "path": str(target), "sha256": hashlib.sha256(target.read_bytes()).hexdigest()})
         return result
+
+    def verify_artifacts(self, report, names):
+        artifacts = report.get("artifacts", [])
+        if sorted(item.get("name", "") for item in artifacts) != sorted(names):
+            raise ValueError("Test report does not contain the configured artifacts; retest")
+        for item in artifacts:
+            expected = self.root / "artifacts" / "test" / report["candidate"] / item["name"]
+            target = Path(item["path"]).resolve()
+            if target != expected.resolve() or not target.is_relative_to(self.root.resolve()) or not target.is_file():
+                raise ValueError("Retained test artifact is missing or moved; retest and repeat UAT")
+            if hashlib.sha256(target.read_bytes()).hexdigest() != item["sha256"]:
+                raise ValueError("Retained test artifact changed; retest and repeat UAT")
 
     def key(self):
         try:

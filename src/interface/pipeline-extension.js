@@ -6,11 +6,12 @@ async function configurePipeline(vscode, context, root) {
     { label: 'Initialize branches', command: 'init', description: 'Create missing developement, test, deployment branches from main' },
     { label: 'Check current changes', command: 'check', description: 'Architecture, unit, function, integration tests and package build' },
     { label: 'Test committed development', command: 'test', description: 'Advance test and run isolated checks plus AI review' },
+    { label: 'Test and push test branch', command: 'test', flags: ['--push'], description: 'Also fast-forward the remote test branch' },
     { label: 'Record my interface UAT approval', command: 'accept-uat', description: 'Your approval of the exact tested commit' },
     { label: 'Publish', command: 'publish', description: 'Push deployment; advance main only after checks pass' }
   ], { title: 'Development Tools Kit — Python CI/CD' });
   if (!action) return;
-  const args = [path.join(context.extensionPath, 'pipeline.py'), '--root', root, action.command];
+  const args = [path.join(context.extensionPath, 'pipeline.py'), '--root', root, action.command, ...(action.flags || [])];
   if (action.command === 'accept-uat') {
     for (const [flag, prompt] of [['--commit', 'Exact commit you tested'], ['--reviewer', 'Your name'], ['--note', 'Interface acceptance checks you completed']]) {
       const value = await vscode.window.showInputBox({ prompt, validateInput: v => v.trim() ? undefined : 'Required' });

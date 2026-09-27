@@ -74,3 +74,17 @@ class PromotionTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             self.pipeline.publish()
         self.assertEqual(self.refs["main"], "base")
+
+    def test_changed_package_blocks_uat_and_publication(self):
+        self.pipeline.config["artifacts"] = ["package.zip"]
+        (self.root / "package.zip").write_bytes(b"tested")
+        artifacts = self.store.artifacts(self.root, ["package.zip"], "test", "candidate")
+        self.report.update(configuration=digest(self.pipeline.config), artifacts=artifacts)
+        self.store.save("test-candidate.json", self.report)
+        self.uat()
+        Path(artifacts[0]["path"]).write_bytes(b"changed")
+        with self.assertRaisesRegex(ValueError, "changed"):
+            self.uat()
+        with self.assertRaisesRegex(ValueError, "changed"):
+            self.pipeline.publish()
+        self.git.push.assert_not_called()

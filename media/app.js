@@ -61,6 +61,8 @@ for (const type of ['send', 'run']) $(type).onclick = action(() => {
   vscode.postMessage({ type, request, collection, environment, allowScripts: $('allowScripts').checked });
 });
 $('save').onclick = action(() => { capture(); vscode.postMessage({ type: 'save', collection }); });
+$('exportPostman').onclick = action(() => { capture(); vscode.postMessage({ type: 'exportPostman', collection }); });
+$('saveRequest').onclick = action(() => vscode.postMessage({ type: 'saveRequest', request: capture() }));
 $('curl').onclick = action(() => vscode.postMessage({ type: 'curl', request: capture() }));
 $('saveEnvironment').onclick = action(() => vscode.postMessage({ type: 'saveEnvironment', environment: json('environment', {}) }));
 for (const type of ['open', 'cancel', 'download', 'pipeline', 'secret', 'openEnvironment', 'textTools']) $(type).onclick = () => vscode.postMessage({ type });

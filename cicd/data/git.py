@@ -31,6 +31,13 @@ class Git:
         if self.call("status", "--porcelain", "--untracked-files=normal").strip():
             raise ValueError("Commit or stash working changes before a release-gated operation.")
 
+    def verify_candidate(self, worktree, candidate):
+        checkout = Git(worktree)
+        if checkout.sha("HEAD") != candidate:
+            raise ValueError("A gate changed worktree HEAD; results do not belong to the candidate")
+        if checkout.call("status", "--porcelain", "--untracked-files=no").strip():
+            raise ValueError("A gate modified tracked source; commit generated changes and retest")
+
     def ancestor(self, older, newer):
         result = self.call("merge-base", "--is-ancestor", older, newer, check=False)
         if result["code"] not in (0, 1):

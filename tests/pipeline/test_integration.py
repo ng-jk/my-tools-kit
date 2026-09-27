@@ -50,6 +50,31 @@ class LocalRepositoryTests(unittest.TestCase):
             self.assertEqual(pipeline.git.call("status", "--porcelain").strip(), "")
             self.assertEqual(list((pipeline.store.root / "worktrees").iterdir()), [])
 
+    def test_clean_checkout_of_wrong_commit_fails_candidate_guard(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            run(["git", "init", "-b", "main"], root)
+            run(["git", "config", "user.name", "Test"], root)
+            run(["git", "config", "user.email", "test@example.invalid"], root)
+            config = {"version": 1, "remote": "origin", "reviewer": "codex", "commands": {
+                group: [["{python}", "-c", "print('fixture')"]]
+                for group in ("prepare", "architecture", "unit", "function", "integration", "build")}}
+            # This gate changes HEAD but leaves a perfectly clean working tree.
+            config["commands"]["unit"] = [["git", "checkout", "--detach", "HEAD~1"]]
+            (root / ".devkit-pipeline.json").write_text(json.dumps(config))
+            (root / "sample").write_text("old")
+            run(["git", "add", "."], root)
+            run(["git", "commit", "-m", "base"], root)
+            run(["git", "switch", "-c", "developement"], root)
+            (root / "sample").write_text("new")
+            run(["git", "commit", "-am", "candidate"], root)
+            pipeline = Pipeline(root)
+            pipeline.init()
+            result = pipeline.test()
+            self.assertFalse(result["passed"])
+            self.assertIn("changed worktree HEAD", result["error"])
+            self.assertNotIn("ai_review", result["gates"])
+
     def test_cli_failure_has_nonzero_and_json(self):
         root = Path(__file__).resolve().parents[2]
         with tempfile.TemporaryDirectory() as directory:

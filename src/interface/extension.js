@@ -3,7 +3,7 @@ const vscode = require('vscode');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { execute, runCollection, flatten } = require('../logic/api');
-const { importCollection, curl } = require('../logic/formats');
+const { importCollection, exportPostman, curl } = require('../logic/formats');
 const { readBuffer, readJson, writeAtomic } = require('../data/files');
 const { configurePipeline } = require('./pipeline-extension');
 
@@ -67,6 +67,10 @@ function activate(context) {
         else if (message.type === 'save') {
           const target = await vscode.window.showSaveDialog({ defaultUri: vscode.Uri.file(path.join(root, 'api-collection.json')), filters: { JSON: ['json'] } });
           if (target) { writeAtomic(target.fsPath, JSON.stringify(message.collection, null, 2) + '\n'); await post({ type: 'notice', text: 'Saved ' + target.fsPath }); }
+        } else if (message.type === 'saveRequest' || message.type === 'exportPostman') {
+          const result = message.type === 'saveRequest' ? { data: message.request, warnings: [] } : exportPostman(message.collection);
+          const target = await vscode.window.showSaveDialog({ defaultUri: vscode.Uri.file(path.join(root, message.type === 'saveRequest' ? 'request.json' : 'postman-collection.json')), filters: { JSON: ['json'] } });
+          if (target) { writeAtomic(target.fsPath, JSON.stringify(result.data, null, 2) + '\n'); await post({ type: 'notice', text: ['Saved ' + target.fsPath, ...result.warnings].join('\n') }); }
         } else if (message.type === 'open') {
           const selected = await vscode.window.showOpenDialog({ canSelectMany: false, filters: { JSON: ['json'] } });
           if (selected?.[0]) {

@@ -89,6 +89,8 @@ node cli.js run examples/collection.json --json dist/results.json --junit dist/r
 
 Import `examples/collection.json` in the editor to use the same requests.
 
+Use **Save request for CLI** in the editor to create a single request JSON object. `node cli.js send request.json --env environment.local.json --out response.json --download body.bin` exposes response headers, body, assertions, and timing from the same executor as the UI. Ctrl+C cancels execution. Single-request output intentionally includes the response and can contain secrets; keep saved debug output private. `node cli.js curl request.json` produces the same partial cURL template as the editor. **Export Postman** and `node cli.js export collection.json --out postman.json` use the same exporter and compatibility warnings.
+
 Trusted scripts require the editor checkbox or CLI `--allow-scripts`. They run in a time-limited worker with local process privileges, not a security sandbox. Only run scripts you trust. Reports omit response bodies, headers, variable values, raw errors and script logs to avoid copying credentials into CI artifacts.
 
 ## CI/CD configurator
@@ -133,11 +135,13 @@ node cli.js json input.json --minify
 node cli.js json input.json --validate
 node cli.js compare original.txt modified.txt --line-endings
 node cli.js git-changes . HEAD~1 HEAD
+node cli.js git-history .
+node cli.js git-files . HEAD
 node cli.js git-compare . HEAD~1 HEAD old/path.txt new/path.txt
 node cli.js pipeline status .
 ```
 
-`json -` reads stdin. `compare - -` reads a JSON object with `left` and `right` strings from stdin, supporting two long pastes without command-line length limits. File comparison supports `--json`, `--ignore-case`, `--trim-whitespace`, and `--line-endings`. `git-compare` accepts `INDEX` or `WORKTREE` on the right and `-` for a missing file. Compare outputs include both snapshots and `identical`; exit 0 means equal and exit 1 means different. Invalid commands fail with an error. Other tools and pipeline commands use exit 0 for success and nonzero for failure. Clipboard buttons, undo, and native diff navigation are UI interactions around these same core functions.
+`json -` reads stdin. `compare - -` reads a JSON object with `left` and `right` strings from stdin, supporting two long pastes without command-line length limits. File comparison supports `--json`, `--ignore-case`, `--trim-whitespace`, and `--line-endings`. `git-compare` accepts `INDEX` or `WORKTREE` on the right and `-` for a missing file. Compare outputs include both snapshots and `identical`; exit 0 means equal, exit 1 means different, and exit 2 means execution failed. Other tools and pipeline commands use exit 0 for success and nonzero for failure. Clipboard buttons, undo, and native diff navigation are UI interactions around these same core functions.
 
 ## Codex and Claude Code
 

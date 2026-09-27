@@ -22,5 +22,12 @@ test('CLI writes reports, returns failure status, and accepts environment files'
     const result = await run(['run', file, '--env', env, '--json', json, '--junit', xml]); assert.equal(result.code, 0, result.stderr); assert.equal(JSON.parse(fs.readFileSync(json)).passed, true); assert.match(fs.readFileSync(xml, 'utf8'), /failures="0"/);
     collection.requests[0].tests[0].value = 404; fs.writeFileSync(file, JSON.stringify(collection));
     const failure = await run(['run', file, '--env', env]); assert.equal(failure.code, 1); assert.equal(JSON.parse(failure.stdout).passed, false);
+    const request = path.join(root, 'request.json'), download = path.join(root, 'response.bin');
+    fs.writeFileSync(request, JSON.stringify({ url: '{{base}}', tests: [{ source: 'status', value: 200 }] }));
+    const sent = await run(['send', request, '--env', env, '--out', json, '--download', download]);
+    assert.equal(sent.code, 0, sent.stderr); assert.deepEqual(JSON.parse(sent.stdout).json, { ok: true });
+    assert.equal(fs.readFileSync(download, 'utf8'), '{"ok":true}');
+    assert.equal(JSON.parse(fs.readFileSync(json)).variables, undefined);
+    const template = await run(['curl', request]); assert.equal(template.code, 0, template.stderr); assert.match(template.stdout, /curl/);
   } finally { await new Promise(resolve => server.close(resolve)); fs.rmSync(root, { recursive: true }); }
 });

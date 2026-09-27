@@ -36,6 +36,10 @@ async function main(args) {
       if (typeof input.left !== 'string' || typeof input.right !== 'string') throw new Error('stdin requires left and right strings');
       left = Buffer.from(input.left); right = Buffer.from(input.right);
     } else { left = await readLocal(a); right = await readLocal(b); }
+  } else if (command === 'git-history' || command === 'git-files') {
+    if (values.length !== (command === 'git-history' ? 1 : 2)) throw new Error(command + ' requires root' + (command === 'git-files' ? ' and revision' : ''));
+    const result = await (command === 'git-history' ? git.history : git.listFiles)(...values);
+    console.log(JSON.stringify(result, null, 2)); return result;
   } else if (command === 'git-changes') {
     if (values.length !== 3) throw new Error('git-changes requires root, base, target');
     const result = await git.changes(...values); console.log(JSON.stringify(result, null, 2)); return result;

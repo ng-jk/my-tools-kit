@@ -64,6 +64,23 @@ class PolicyTests(unittest.TestCase):
                     with store.lock():
                         pass
 
+    def test_retained_artifact_hashes_and_missing_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = Store(directory)
+            worktree = Path(directory) / "worktree"
+            worktree.mkdir()
+            (worktree / "package.zip").write_bytes(b"tested package")
+            artifacts = store.artifacts(worktree, ["package.zip"], "test", "candidate")
+            report = {"candidate": "candidate", "artifacts": artifacts}
+            store.verify_artifacts(report, ["package.zip"])
+            target = Path(artifacts[0]["path"])
+            target.write_bytes(b"changed package")
+            with self.assertRaisesRegex(ValueError, "changed"):
+                store.verify_artifacts(report, ["package.zip"])
+            target.unlink()
+            with self.assertRaisesRegex(ValueError, "missing"):
+                store.verify_artifacts(report, ["package.zip"])
+
     def test_architecture_catches_ui_dependencies(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

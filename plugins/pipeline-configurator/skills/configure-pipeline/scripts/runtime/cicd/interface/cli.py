@@ -18,6 +18,7 @@ def main(argv=None):
     uat.add_argument("--reviewer", required=True)
     uat.add_argument("--note", required=True)
     args = parser.parse_args(argv)
+    pipeline = None
     try:
         pipeline = Pipeline(args.root, progress=lambda message: print(message, file=sys.stderr, flush=True))
         if args.command == "test":
@@ -31,3 +32,6 @@ def main(argv=None):
     except Exception as exc:
         print(json.dumps({"passed": False, "error": str(exc)}), file=sys.stderr)
         return 1
+    finally:
+        if pipeline:
+            pipeline.store.record_network_attempts(pipeline.git.attempts)
