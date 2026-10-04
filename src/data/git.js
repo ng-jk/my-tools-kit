@@ -1,11 +1,12 @@
 'use strict';
 const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
+const path = require('node:path');
 const exec = promisify(execFile);
 const MAX_TEXT = 20 * 1024 * 1024;
 async function git(root, args) {
   try {
-    const { stdout } = await exec('git', ['--no-pager', '-c', 'core.quotepath=false', ...args], {
+    const { stdout } = await exec('git', ['--no-pager', '-c', 'safe.directory=' + path.resolve(root).replaceAll('\\', '/'), '-c', 'core.quotepath=false', ...args], {
       cwd: root, encoding: 'buffer', windowsHide: true, timeout: 30000, maxBuffer: MAX_TEXT + 1024 * 1024,
       env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0', GIT_LITERAL_PATHSPECS: '1' }
     });

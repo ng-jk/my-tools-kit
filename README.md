@@ -1,6 +1,6 @@
 # Development Tools Kit
 
-A local API debugger, JSON formatter, text/file/Git comparer, and Python terminal CI/CD pipeline, packaged as a VS Code extension with a shared Codex / Claude Code plugin. Extension version 0.4.0; pipeline plugin version 0.3.0. No GitHub Actions are used.
+An integrated SFTP/FTP client, API debugger, JSON formatter, text/file/Git comparer, and Python terminal CI/CD pipeline, packaged as a VS Code extension with a shared Codex / Claude Code plugin. Extension version 0.5.0; pipeline plugin version 0.3.1. No GitHub Actions are used.
 
 [Release notes](CHANGELOG.md) · [Source repository](https://github.com/ng-jk/my-tools-kit) · [Issue tracker](https://github.com/ng-jk/my-tools-kit/issues)
 
@@ -15,7 +15,8 @@ Licensed under [MIT](LICENSE). Marketplace publisher ID: `NGJUNKAI`. The Python 
 | Comparer | Pasted text, two files, Git revisions, staged changes, and working-tree changes |
 | CI/CD pipeline | Python CLI and VS Code tasks: AI review, unit/function/integration tests, human UAT, branch promotion |
 | Agent integration | Codex and Claude Code plugin with a self-contained project configuration skill |
-| Database and SFTP tools | Separate upstream repository references and optional local checkouts |
+| SFTP / FTP | Integrated upstream implementation, remote explorer, profiles, transfers, sync, watchers, Git uploads and shared terminal engine |
+| Database tools | Upstream reference and optional local checkout |
 
 ## Install the VS Code extension
 
@@ -34,9 +35,15 @@ code --install-extension dist/development-tools-kit.vsix
 
 Or use **Extensions → Install from VSIX…** and select the file in `dist/`.
 
-VS Code 1.96 or newer is required. Runtime code has no third-party package dependencies; npm installs the development and packaging tools. Generated VSIX/ZIP files, dependency caches, local configuration state, and upstream checkouts are excluded from source control. Build packages locally; this repository push does not create a Marketplace listing or a GitHub Release.
+VS Code 1.96 or newer is required. SFTP runtime dependencies are bundled into the extension; npm is used during development and packaging. Their license notices are included in the VSIX. Generated VSIX/ZIP files, dependency caches, local configuration state, and upstream checkouts are excluded from source control. Build packages locally; this repository push does not create a Marketplace listing or a GitHub Release.
 
-Open a project folder, then run **Development Tools Kit: Open API Debugger** from the command palette. For development, open this toolkit folder directly and press F5 using the included launch configuration.
+Click the **Development Tools Kit** toolbox icon in the Activity Bar to see the list of tools. Choose a tool there or use its command-palette entry. For development, open this toolkit folder directly and press F5 using the included launch configuration.
+
+## SFTP / FTP
+
+SFTP is now built into this extension from the requested `ng-jk/vscode-sftp` source. Choose **SFTP / FTP** in the toolkit sidebar to see its functions, and use **SFTP Remote Explorer** to browse servers. Existing `.vscode/sftp.json` files remain compatible. Use **Config** to enter your server details; passwords can be prompted and need not be stored in Git.
+
+See the [complete SFTP feature and command inventory](docs/sftp.md), configuration examples, CLI equivalents, and test limits. The original notices and attribution are retained in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
 ## Text, file and Git comparison
 
@@ -56,7 +63,7 @@ For Git, run **Compare Git Revisions** or open the **Git changes** tab:
 4. Show changed files, filter the list, and select a file. Renames compare the old and new paths automatically; additions/deletions use an empty side.
 5. Expand **Compare specific files** to choose different paths independently at either revision, even if they are not in the changed-file list.
 
-Git reads local snapshots only: it does not fetch, checkout, stage, commit, or modify files. Git must be installed. Comparisons support up to 20 MiB per side; UTF-8 and BOM-tagged UTF-16 are decoded as text. Working-tree symlinks and submodule directories are not followed. Close older diff tabs to release snapshot memory. Pasted text and snapshots are session-local, are not logged or sent to a server, and are not restored after restarting VS Code.
+The chosen repository is trusted only for each Git subprocess using a scoped `safe.directory` option, avoiding cross-account ownership errors without changing global Git settings. Git reads local snapshots only: it does not fetch, checkout, stage, commit, or modify files. Git must be installed. Comparisons support up to 20 MiB per side; UTF-8 and BOM-tagged UTF-16 are decoded as text. Working-tree symlinks and submodule directories are not followed. Close older diff tabs to release snapshot memory. Pasted text and snapshots are session-local, are not logged or sent to a server, and are not restored after restarting VS Code.
 
 ## JSON formatter
 
@@ -132,6 +139,8 @@ Before upload, the pipeline checks for the exact Marketplace version. Matching e
 
 An authenticated local receipt is written before upload. If upload times out, or Microsoft scanning/indexing is pending, main stays unchanged. Run publish again to check the existing attempt; it will not blindly reupload. If the version remains absent, inspect **Manage Publishers → Extensions** for validation errors. Keep the receipt; either resolve the pending Marketplace operation or commit a new version and repeat test/UAT. Once Marketplace succeeds, a failed main push can be retried without duplicate publication. If the remote main push succeeded but the local update failed, publish can reconcile local main from its recorded deployment and UAT evidence. Publication cannot be rolled back automatically when Git fails afterward.
 
+Read [what each CI/CD action does and its project prerequisites](docs/pipeline-usage.md).
+
 ## Shared layers and terminal tools
 
 | Layer | JavaScript product | Python pipeline |
@@ -160,7 +169,7 @@ For mixed input, `compare - file.txt` and `compare file.txt -` read raw text/byt
 
 ## Codex and Claude Code
 
-`plugins/pipeline-configurator` contains both host manifests and a self-contained `configure-pipeline` skill. `python scripts/build.py` synchronizes the Python runtime and shared skill and writes `dist/pipeline-configurator-0.3.0.zip`.
+`plugins/pipeline-configurator` contains both host manifests and a self-contained `configure-pipeline` skill. `python scripts/build.py` synchronizes the Python runtime and shared skill and writes `dist/pipeline-configurator-0.3.1.zip`.
 
 Python is required to run the pipeline. The plugin includes no third-party Python dependencies. Its skill configures actual project CLI checks and project-local agent integration, preserves existing customizations, and never grants itself global permissions or fabricates UAT approval.
 
@@ -197,7 +206,7 @@ The pipeline is an explicitly invoked local CLI, not a continuously running serv
 
 ## Repository references
 
-Upstream revision references are recorded in `docs/repositories.json`. Optional local checkouts live in `repositories/vscode-database-client` and `repositories/vscode-sftp`. They keep their own histories and remotes, are ignored by this repository, and are not bundled into the VSIX. No modifications to those projects are part of this release.
+Upstream revision references are recorded in `docs/repositories.json`. Optional original checkouts live in `repositories/vscode-database-client` and `repositories/vscode-sftp`, retain their own histories/remotes, and are ignored by this repository. SFTP source has now been imported into the toolkit layers and is bundled; its revision and mapping are in `vendor/sftp/provenance.json`. Database Client remains an unbundled reference.
 
 To restore the optional folders used by `development-tools-kit.code-workspace` after cloning:
 

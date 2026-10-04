@@ -13,14 +13,15 @@ test('extension host bridge executes requests and persists no response credentia
   const commands = new Map(), messages = []; let receive;
   const uri = file => ({ fsPath: file, toString: () => file });
   const vscode = {
+    ThemeIcon: class { constructor(id) { this.id = id; } },
     commands: { registerCommand: (name, fn) => { commands.set(name, fn); return { dispose() {} }; } },
     workspace: { isTrusted: true, workspaceFolders: [{ uri: uri(root) }], registerTextDocumentContentProvider: () => ({ dispose() {} }), onDidCloseTextDocument: () => ({ dispose() {} }) },
     ViewColumn: { One: 1 }, Uri: { file: uri, joinPath: (base, ...parts) => uri(path.join(base.fsPath, ...parts)) },
-    window: { createWebviewPanel: () => ({ onDidDispose() {}, webview: { cspSource: 'test:', asWebviewUri: x => x, postMessage: data => messages.push(data), onDidReceiveMessage: handler => receive = handler } }), showErrorMessage: message => { throw new Error(message); } }
+    window: { registerTreeDataProvider: () => ({dispose(){}}), createWebviewPanel: () => ({ onDidDispose() {}, webview: { cspSource: 'test:', asWebviewUri: x => x, postMessage: data => messages.push(data), onDidReceiveMessage: handler => receive = handler } }), showErrorMessage: message => { throw new Error(message); } }
   };
   const original = Module._load;
   try {
-    Module._load = function (id, ...args) { return id === 'vscode' ? vscode : original.call(this, id, ...args); };
+    Module._load = function (id, ...args) { return id === 'vscode' ? vscode : id.endsWith('/build/sftp/extension') ? {activate:async()=>{},deactivate(){}} : original.call(this, id, ...args); };
     const { activate } = require('../extension');
     const extensionPath = path.resolve(__dirname, '..');
     activate({ subscriptions: [], extensionPath, extensionUri: uri(extensionPath), secrets: { get: async name => name.endsWith(':TOKEN') ? 'fixture-secret' : undefined } });

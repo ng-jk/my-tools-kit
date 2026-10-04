@@ -1,5 +1,6 @@
 """Local fixtures only. These tests never contact or mutate the Marketplace."""
 import io
+import gzip
 import json
 from pathlib import Path
 import tempfile
@@ -21,6 +22,16 @@ def vsix(body="original"):
 
 
 class MarketplaceTests(unittest.TestCase):
+    def test_gzip_download_is_decoded_before_vsix_inspection(self):
+        from urllib.request import Request
+        response = Mock()
+        response.__enter__ = Mock(return_value=response)
+        response.__exit__ = Mock(return_value=False)
+        response.headers = {"Content-Encoding": "gzip"}
+        response.read.return_value = gzip.compress(vsix())
+        service = Marketplace(self.root, self.settings, opener=Mock(return_value=response))
+        self.assertEqual(inspect_vsix(service.fetch(Request("https://example.test/package")))["payload"], self.local["payload"])
+
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)

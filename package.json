@@ -2,11 +2,16 @@
   "name": "development-tools-kit",
   "displayName": "Development Tools Kit",
   "description": "API debugging, JSON formatting, text/file/Git comparison, and project-aware CI/CD configuration.",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "publisher": "NGJUNKAI",
-  "repository": { "type": "git", "url": "https://github.com/ng-jk/my-tools-kit.git" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ng-jk/my-tools-kit.git"
+  },
   "homepage": "https://github.com/ng-jk/my-tools-kit#readme",
-  "bugs": { "url": "https://github.com/ng-jk/my-tools-kit/issues" },
+  "bugs": {
+    "url": "https://github.com/ng-jk/my-tools-kit/issues"
+  },
   "private": true,
   "license": "MIT",
   "engines": {
@@ -27,7 +32,10 @@
     "test:ui": "node --test tests/browser/*.test.js",
     "check": "node scripts/check.js",
     "build": "node pipeline-cli.js check .",
-    "package": "vsce package --no-dependencies --out dist/development-tools-kit.vsix"
+    "package": "vsce package --no-dependencies --out dist/development-tools-kit.vsix",
+    "build:sftp": "node scripts/build-sftp.js",
+    "vscode:prepublish": "node scripts/build-sftp.js",
+    "test:sftp": "node scripts/build-sftp.js && node --test tests/sftp*.test.js"
   },
   "capabilities": {
     "untrustedWorkspaces": {
@@ -40,7 +48,10 @@
     "onCommand:devkit.textTools",
     "onCommand:devkit.jsonFormatter",
     "onCommand:devkit.compareFiles",
-    "onCommand:devkit.compareGit"
+    "onCommand:devkit.compareGit",
+    "onView:devkit.tools",
+    "onView:devkit.remoteExplorer",
+    "workspaceContains:.vscode/sftp.json"
   ],
   "contributes": {
     "configuration": {
@@ -50,6 +61,21 @@
           "type": "string",
           "default": "",
           "description": "Python 3.11+ executable for the shared CI/CD runtime. Empty uses DEVKIT_PYTHON or py/python3."
+        },
+        "devkit.sftp.printDebugLog": {
+          "type": "boolean",
+          "default": false,
+          "description": "print debug log on sftp output channel.(reload vscode when change this)"
+        },
+        "devkit.sftp.debug": {
+          "type": "boolean",
+          "default": false,
+          "description": "print debug log on sftp output channel.(reload vscode when change this)"
+        },
+        "devkit.sftp.downloadWhenOpenInRemoteExplorer": {
+          "type": "boolean",
+          "default": false,
+          "description": "\"Download\" instead of \"View Content\" when open file in Remote Explorer"
         }
       }
     },
@@ -89,18 +115,701 @@
       {
         "command": "devkit.compareGit",
         "title": "Development Tools Kit: Compare Git Revisions"
+      },
+      {
+        "command": "devkit.sftp.config",
+        "title": "Config",
+        "category": "SFTP"
+      },
+      {
+        "command": "devkit.sftp.setProfile",
+        "title": "Set Profile",
+        "category": "SFTP"
+      },
+      {
+        "command": "devkit.sftp.openConnectInTerminal",
+        "title": "Open SSH in Terminal",
+        "category": "SFTP"
+      },
+      {
+        "command": "devkit.sftp.cancelAllTransfer",
+        "title": "Cancel All Transfers",
+        "category": "SFTP"
+      },
+      {
+        "command": "devkit.sftp.upload.file",
+        "title": "Upload File",
+        "category": "SFTP"
+      },
+      {
+        "command": "devkit.sftp.upload.changedFiles",
+        "title": "Upload Changed Files",
+        "category": "SFTP",
+        "icon": {
+          "light": "vendor/sftp/resources/light/upload.svg",
+          "dark": "vendor/sftp/resources/dark/upload.svg"
+        }
+      },
+      {
+        "command": "devkit.sftp.upload.fileChanged",
+        "title": "Upload File Changed (Pick Commit)",
+        "category": "SFTP"
+      },
+      {
+        "command": "devkit.sftp.upload.activeFile",
+        "title": "Upload Active File",
+        "category": "SFTP"
+      },
+      {
+        "command": "devkit.sftp.upload.folder",
+        "title": "Upload Folder",
+        "category": "SFTP"
+      },
+      {
+        "command": "devkit.sftp.upload.activeFolder",
+        "title": "Upload Active Folder",
+        "category": "SFTP"
+      },
+      {
+        "command": "devkit.sftp.upload.project",
+        "title": "Upload Project",
+        "category": "SFTP"
+      },
+      {
+        "command": "devkit.sftp.forceUpload",
+        "title": "Force Upload",
+        "category": "SFTP"
+      },
+      {
+        "command": "devkit.sftp.upload.file.to.allProfiles",
+        "title": "Upload File To All Profiles",
+        "category": "SFTP"
+      },
+      {
+        "command": "devkit.sftp.upload.activeFile.to.allProfiles",
+        "title": "Upload Active File To All Profiles",
+        "category": "SFTP"
+      },
+      {
+        "command": "devkit.sftp.upload.folder.to.allProfiles",
+        "title": "Upload Folder To All Profiles",
+        "category": "SFTP"
+      },
+      {
+        "command": "devkit.sftp.upload.activeFolder.to.allProfiles",
+        "title": "Upload Active Folder To All Profiles",
+        "category": "SFTP"
+      },
+      {
+        "command": "devkit.sftp.upload.project.to.allProfiles",
+        "title": "Upload Project To All Profiles",
+        "category": "SFTP"
+      },
+      {
+        "command": "devkit.sftp.forceUpload.to.allProfiles",
+        "title": "Force Upload To All Profiles",
+        "category": "SFTP"
+      },
+      {
+        "command": "devkit.sftp.download.file",
+        "title": "Download File",
+        "category": "SFTP",
+        "icon": {
+          "dark": "vendor/sftp/resources/dark/download-file.svg",
+          "light": "vendor/sftp/resources/light/download-file.svg"
+        }
+      },
+      {
+        "command": "devkit.sftp.download.activeFile",
+        "title": "Download Active File",
+        "category": "SFTP"
+      },
+      {
+        "command": "devkit.sftp.download.folder",
+        "title": "Download Folder",
+        "category": "SFTP",
+        "icon": {
+          "dark": "vendor/sftp/resources/dark/download-folder.svg",
+          "light": "vendor/sftp/resources/light/download-folder.svg"
+        }
+      },
+      {
+        "command": "devkit.sftp.download.activeFolder",
+        "title": "Download Active Folder",
+        "category": "SFTP"
+      },
+      {
+        "command": "devkit.sftp.download.project",
+        "title": "Download Project",
+        "category": "SFTP"
+      },
+      {
+        "command": "devkit.sftp.forceDownload",
+        "title": "Force Download",
+        "category": "SFTP"
+      },
+      {
+        "command": "devkit.sftp.sync.localToRemote",
+        "title": "Sync Local -> Remote",
+        "category": "SFTP"
+      },
+      {
+        "command": "devkit.sftp.sync.remoteToLocal",
+        "title": "Sync Remote -> Local",
+        "category": "SFTP"
+      },
+      {
+        "command": "devkit.sftp.sync.bothDirections",
+        "title": "Sync Both Directions",
+        "category": "SFTP"
+      },
+      {
+        "command": "devkit.sftp.diff",
+        "title": "Diff with Remote",
+        "category": "SFTP"
+      },
+      {
+        "command": "devkit.sftp.diff.activeFile",
+        "title": "Diff Active File with Remote",
+        "category": "SFTP"
+      },
+      {
+        "command": "devkit.sftp.list",
+        "title": "List",
+        "category": "SFTP"
+      },
+      {
+        "command": "devkit.sftp.listActiveFolder",
+        "title": "List Active Folder",
+        "category": "SFTP"
+      },
+      {
+        "command": "devkit.sftp.listAll",
+        "title": "List All",
+        "category": "SFTP"
+      },
+      {
+        "command": "devkit.sftp.delete.remote",
+        "title": "Delete",
+        "category": "SFTP"
+      },
+      {
+        "command": "devkit.sftp.create.folder",
+        "title": "Create Folder",
+        "category": "SFTP"
+      },
+      {
+        "command": "devkit.sftp.create.file",
+        "title": "Create File",
+        "category": "SFTP"
+      },
+      {
+        "command": "devkit.sftp.revealInExplorer",
+        "title": "Reveal in Explorer",
+        "category": "SFTP"
+      },
+      {
+        "command": "devkit.sftp.revealInRemoteExplorer",
+        "title": "Reveal in Remote Explorer",
+        "category": "SFTP"
+      },
+      {
+        "command": "devkit.sftp.remoteExplorer.editInLocal",
+        "title": "Edit in Local",
+        "category": "SFTP"
+      },
+      {
+        "command": "devkit.sftp.viewContent",
+        "title": "View Content",
+        "category": "SFTP"
+      },
+      {
+        "command": "devkit.sftp.remoteExplorer.refresh",
+        "title": "Refresh",
+        "icon": {
+          "light": "vendor/sftp/resources/light/refresh.svg",
+          "dark": "vendor/sftp/resources/dark/refresh.svg"
+        }
+      },
+      {
+        "command": "devkit.sftp.remoteExplorer.refreshActiveFile",
+        "title": "Refresh Active Remote File",
+        "category": "SFTP",
+        "icon": {
+          "light": "vendor/sftp/resources/light/refresh.svg",
+          "dark": "vendor/sftp/resources/dark/refresh.svg"
+        }
+      },
+      {
+        "command": "devkit.sftp.menu",
+        "title": "Development Tools Kit: SFTP / FTP Functions"
       }
     ],
     "menus": {
-      "explorer/context": [{ "command": "devkit.compareFiles", "when": "resourceScheme == file", "group": "7_modification@20" }],
+      "explorer/context": [
+        {
+          "command": "devkit.compareFiles",
+          "when": "resourceScheme == file",
+          "group": "7_modification@20"
+        },
+        {
+          "command": "devkit.sftp.revealInRemoteExplorer",
+          "group": "navigation@20",
+          "when": "devkit.sftp.enabled && !explorerResourceIsRoot"
+        },
+        {
+          "command": "devkit.sftp.diff",
+          "group": "3_compare",
+          "when": "devkit.sftp.enabled && !explorerResourceIsRoot && !explorerResourceIsFolder"
+        },
+        {
+          "command": "devkit.sftp.sync.localToRemote",
+          "group": "devkit.sftp.sync@1",
+          "when": "devkit.sftp.enabled && explorerResourceIsFolder"
+        },
+        {
+          "command": "devkit.sftp.sync.remoteToLocal",
+          "group": "devkit.sftp.sync@2",
+          "when": "devkit.sftp.enabled && explorerResourceIsFolder"
+        },
+        {
+          "command": "devkit.sftp.sync.bothDirections",
+          "group": "devkit.sftp.sync@3",
+          "when": "devkit.sftp.enabled && explorerResourceIsFolder"
+        },
+        {
+          "command": "devkit.sftp.upload.file",
+          "group": "devkit.sftp.trans@1",
+          "when": "devkit.sftp.enabled && !explorerResourceIsRoot && !explorerResourceIsFolder"
+        },
+        {
+          "command": "devkit.sftp.upload.folder",
+          "group": "devkit.sftp.trans@1",
+          "alt": "devkit.sftp.forceUpload",
+          "when": "devkit.sftp.enabled && explorerResourceIsFolder"
+        },
+        {
+          "command": "devkit.sftp.upload.file.to.allProfiles",
+          "group": "devkit.sftp.trans@1",
+          "when": "devkit.sftp.enabled && !explorerResourceIsRoot && !explorerResourceIsFolder"
+        },
+        {
+          "command": "devkit.sftp.upload.folder.to.allProfiles",
+          "group": "devkit.sftp.trans@1",
+          "alt": "devkit.sftp.forceUpload.to.allProfiles",
+          "when": "devkit.sftp.enabled && explorerResourceIsFolder"
+        },
+        {
+          "command": "devkit.sftp.download.file",
+          "group": "devkit.sftp.trans@2",
+          "when": "devkit.sftp.enabled && !explorerResourceIsRoot && !explorerResourceIsFolder"
+        },
+        {
+          "command": "devkit.sftp.download.folder",
+          "group": "devkit.sftp.trans@2",
+          "alt": "devkit.sftp.forceDownload",
+          "when": "devkit.sftp.enabled && explorerResourceIsFolder"
+        }
+      ],
       "editor/context": [
-        { "command": "devkit.compareClipboard", "group": "9_cutcopypaste@20" },
-        { "command": "devkit.formatJson", "when": "editorLangId == json || editorHasSelection", "group": "1_modification@20" }
+        {
+          "command": "devkit.compareClipboard",
+          "group": "9_cutcopypaste@20"
+        },
+        {
+          "command": "devkit.formatJson",
+          "when": "editorLangId == json || editorHasSelection",
+          "group": "1_modification@20"
+        },
+        {
+          "command": "devkit.sftp.upload.file",
+          "group": "devkit.sftp.trans@1",
+          "when": "devkit.sftp.enabled && resourceScheme == file"
+        },
+        {
+          "command": "devkit.sftp.upload.file.to.allProfiles",
+          "group": "devkit.sftp.trans@1",
+          "when": "devkit.sftp.enabled && resourceScheme == file"
+        },
+        {
+          "command": "devkit.sftp.download.file",
+          "group": "devkit.sftp.trans@2",
+          "when": "devkit.sftp.enabled && resourceScheme == file"
+        },
+        {
+          "command": "devkit.sftp.diff",
+          "group": "3_compare",
+          "when": "devkit.sftp.enabled && resourceScheme == file"
+        },
+        {
+          "command": "devkit.sftp.remoteExplorer.editInLocal",
+          "group": "2_files",
+          "when": "devkit.sftp.enabled && resourceScheme == devkit-sftp"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "devkit.sftp.setProfile",
+          "when": "devkit.sftp.enabled"
+        },
+        {
+          "command": "devkit.sftp.openConnectInTerminal",
+          "when": "devkit.sftp.enabled"
+        },
+        {
+          "command": "devkit.sftp.cancelAllTransfer",
+          "when": "devkit.sftp.enabled"
+        },
+        {
+          "command": "devkit.sftp.upload.activeFile",
+          "when": "devkit.sftp.enabled"
+        },
+        {
+          "command": "devkit.sftp.upload.activeFolder",
+          "when": "devkit.sftp.enabled"
+        },
+        {
+          "command": "devkit.sftp.upload.project",
+          "when": "devkit.sftp.enabled"
+        },
+        {
+          "command": "devkit.sftp.upload.activeFile.to.allProfiles",
+          "when": "devkit.sftp.enabled"
+        },
+        {
+          "command": "devkit.sftp.upload.activeFolder.to.allProfiles",
+          "when": "devkit.sftp.enabled"
+        },
+        {
+          "command": "devkit.sftp.upload.project.to.allProfiles",
+          "when": "devkit.sftp.enabled"
+        },
+        {
+          "command": "devkit.sftp.download.activeFile",
+          "when": "devkit.sftp.enabled"
+        },
+        {
+          "command": "devkit.sftp.download.activeFolder",
+          "when": "devkit.sftp.enabled"
+        },
+        {
+          "command": "devkit.sftp.download.project",
+          "when": "devkit.sftp.enabled"
+        },
+        {
+          "command": "devkit.sftp.sync.localToRemote",
+          "when": "devkit.sftp.enabled"
+        },
+        {
+          "command": "devkit.sftp.sync.remoteToLocal",
+          "when": "devkit.sftp.enabled"
+        },
+        {
+          "command": "devkit.sftp.sync.bothDirections",
+          "when": "devkit.sftp.enabled"
+        },
+        {
+          "command": "devkit.sftp.diff.activeFile",
+          "when": "devkit.sftp.enabled"
+        },
+        {
+          "command": "devkit.sftp.list",
+          "when": "devkit.sftp.enabled"
+        },
+        {
+          "command": "devkit.sftp.listActiveFolder",
+          "when": "devkit.sftp.enabled"
+        },
+        {
+          "command": "devkit.sftp.listAll",
+          "when": "devkit.sftp.enabled"
+        },
+        {
+          "command": "devkit.sftp.upload.file",
+          "when": "false"
+        },
+        {
+          "command": "devkit.sftp.upload.changedFiles",
+          "when": "devkit.sftp.enabled"
+        },
+        {
+          "command": "devkit.sftp.upload.fileChanged",
+          "when": "devkit.sftp.enabled"
+        },
+        {
+          "command": "devkit.sftp.upload.folder",
+          "when": "false"
+        },
+        {
+          "command": "devkit.sftp.forceUpload",
+          "when": "false"
+        },
+        {
+          "command": "devkit.sftp.upload.file.to.allProfiles",
+          "when": "false"
+        },
+        {
+          "command": "devkit.sftp.upload.folder.to.allProfiles",
+          "when": "false"
+        },
+        {
+          "command": "devkit.sftp.forceUpload.to.allProfiles",
+          "when": "false"
+        },
+        {
+          "command": "devkit.sftp.download.file",
+          "when": "false"
+        },
+        {
+          "command": "devkit.sftp.download.folder",
+          "when": "false"
+        },
+        {
+          "command": "devkit.sftp.forceDownload",
+          "when": "false"
+        },
+        {
+          "command": "devkit.sftp.diff",
+          "when": "false"
+        },
+        {
+          "command": "devkit.sftp.delete.remote",
+          "when": "false"
+        },
+        {
+          "command": "devkit.sftp.create.folder",
+          "when": "false"
+        },
+        {
+          "command": "devkit.sftp.create.file",
+          "when": "false"
+        },
+        {
+          "command": "devkit.sftp.revealInExplorer",
+          "when": "false"
+        },
+        {
+          "command": "devkit.sftp.revealInRemoteExplorer",
+          "when": "false"
+        },
+        {
+          "command": "devkit.sftp.remoteExplorer.editInLocal",
+          "when": "false"
+        },
+        {
+          "command": "devkit.sftp.viewContent",
+          "when": "false"
+        },
+        {
+          "command": "devkit.sftp.remoteExplorer.refresh",
+          "when": "false"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "devkit.sftp.remoteExplorer.refreshActiveFile",
+          "group": "navigation",
+          "when": "devkit.sftp.enabled && resourceScheme == devkit-sftp"
+        }
+      ],
+      "editor/title/context": [
+        {
+          "command": "devkit.sftp.revealInExplorer",
+          "group": "2_files",
+          "when": "devkit.sftp.enabled && resourceScheme == devkit-sftp"
+        },
+        {
+          "command": "devkit.sftp.revealInRemoteExplorer",
+          "when": "devkit.sftp.enabled && resourceScheme == file",
+          "group": "2_files"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "devkit.sftp.remoteExplorer.refresh",
+          "when": "view == devkit.remoteExplorer",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "devkit.sftp.openConnectInTerminal",
+          "group": "navigation",
+          "when": "view == devkit.remoteExplorer && viewItem == root"
+        },
+        {
+          "command": "devkit.sftp.remoteExplorer.editInLocal",
+          "group": "2_files",
+          "when": "view == devkit.remoteExplorer && viewItem == file && !config.devkit.sftp.downloadWhenOpenInRemoteExplorer"
+        },
+        {
+          "command": "devkit.sftp.viewContent",
+          "group": "2_files",
+          "when": "view == devkit.remoteExplorer && viewItem == file && config.devkit.sftp.downloadWhenOpenInRemoteExplorer"
+        },
+        {
+          "command": "devkit.sftp.revealInExplorer",
+          "group": "2_files",
+          "when": "view == devkit.remoteExplorer && viewItem != root"
+        },
+        {
+          "command": "devkit.sftp.upload.folder",
+          "group": "3_trans@1",
+          "alt": "devkit.sftp.forceUpload",
+          "when": "devkit.sftp.enabled && viewItem != file"
+        },
+        {
+          "command": "devkit.sftp.upload.file",
+          "group": "3_trans@1",
+          "when": "view == devkit.remoteExplorer && viewItem != root && viewItem == file"
+        },
+        {
+          "command": "devkit.sftp.upload.folder.to.allProfiles",
+          "group": "3_trans@1",
+          "alt": "devkit.sftp.forceUpload.to.allProfiles",
+          "when": "devkit.sftp.enabled && viewItem != file"
+        },
+        {
+          "command": "devkit.sftp.upload.file.to.allProfiles",
+          "group": "3_trans@1",
+          "when": "view == devkit.remoteExplorer && viewItem != root && viewItem == file"
+        },
+        {
+          "command": "devkit.sftp.download.folder",
+          "group": "3_trans@2",
+          "alt": "devkit.sftp.forceDownload",
+          "when": "devkit.sftp.enabled && viewItem != file"
+        },
+        {
+          "command": "devkit.sftp.download.file",
+          "group": "3_trans@2",
+          "when": "view == devkit.remoteExplorer && viewItem != root && viewItem == file"
+        },
+        {
+          "command": "devkit.sftp.delete.remote",
+          "group": "7_modification",
+          "when": "view == devkit.remoteExplorer && viewItem != root"
+        },
+        {
+          "command": "devkit.sftp.create.folder",
+          "group": "7_modification",
+          "when": "view == devkit.remoteExplorer && viewItem != file"
+        },
+        {
+          "command": "devkit.sftp.create.file",
+          "group": "7_modification",
+          "when": "view == devkit.remoteExplorer && viewItem != file"
+        },
+        {
+          "command": "devkit.sftp.download.file",
+          "group": "inline",
+          "when": "view == devkit.remoteExplorer && viewItem == file"
+        },
+        {
+          "command": "devkit.sftp.download.folder",
+          "group": "inline",
+          "when": "devkit.sftp.enabled && view == devkit.remoteExplorer && viewItem == folder"
+        }
+      ],
+      "scm/title": [
+        {
+          "command": "devkit.sftp.upload.changedFiles",
+          "group": "sftp",
+          "when": "devkit.sftp.enabled && scmProvider == git && !gitFreshRepository"
+        }
+      ],
+      "scm/resourceGroup/context": [
+        {
+          "command": "devkit.sftp.upload.changedFiles",
+          "group": "inline",
+          "when": "devkit.sftp.enabled && scmProvider == git && scmResourceGroup == workingTree && !gitFreshRepository"
+        },
+        {
+          "command": "devkit.sftp.upload.changedFiles",
+          "group": "sftp",
+          "when": "devkit.sftp.enabled && scmProvider == git && scmResourceGroup == workingTree && !gitFreshRepository"
+        },
+        {
+          "command": "devkit.sftp.upload.changedFiles",
+          "group": "inline",
+          "when": "devkit.sftp.enabled && scmProvider == git && scmResourceGroup == index && !gitFreshRepository"
+        },
+        {
+          "command": "devkit.sftp.upload.changedFiles",
+          "group": "sftp",
+          "when": "devkit.sftp.enabled && scmProvider == git && scmResourceGroup == index && !gitFreshRepository"
+        }
       ]
-    }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "devkit",
+          "title": "Development Tools Kit",
+          "icon": "media/toolkit.svg"
+        }
+      ]
+    },
+    "views": {
+      "devkit": [
+        {
+          "id": "devkit.tools",
+          "name": "Tools"
+        },
+        {
+          "id": "devkit.remoteExplorer",
+          "name": "SFTP Remote Explorer"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "devkit.remoteExplorer",
+        "contents": "Configure a server to browse files.\n[Configure SFTP](command:devkit.sftp.config)",
+        "when": "!devkit.sftp.enabled"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "devkit.sftp.upload.changedFiles",
+        "key": "ctrl+alt+u",
+        "when": "devkit.sftp.enabled"
+      }
+    ],
+    "jsonValidation": [
+      {
+        "fileMatch": ".vscode/sftp.json",
+        "url": "./vendor/sftp/schema/config.schema.json"
+      }
+    ],
+    "resourceLabelFormatters": [
+      {
+        "scheme": "devkit-sftp",
+        "formatting": {
+          "label": "${path}",
+          "separator": "/"
+        }
+      }
+    ]
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
-    "@vscode/vsce": "^3.6.0"
+    "@vscode/vsce": "^3.6.0",
+    "async": "^3.2.6",
+    "esbuild": "^0.25.12",
+    "fs-extra": "^10.1.0",
+    "ftp": "^0.3.10",
+    "ignore": "^5.3.2",
+    "isomorphic-git": "^1.38.5",
+    "joi": "^10.6.0",
+    "lodash.debounce": "^4.0.8",
+    "lru-cache": "^4.1.5",
+    "minimatch": "^10.2.4",
+    "p-queue": "^2.4.2",
+    "ssh-config": "^1.1.6",
+    "ssh2": "^1.17.0",
+    "tmp": "^0.2.5",
+    "upath": "^2.0.1",
+    "vscode-uri": "^3.1.0"
   }
 }

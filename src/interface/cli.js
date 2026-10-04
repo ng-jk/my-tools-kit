@@ -6,6 +6,7 @@ const { execute, runCollection } = require('../logic/api');
 const { importCollection, exportPostman, curl } = require('../logic/formats');
 const { report, junit } = require('../logic/reports');
 async function main(args = process.argv.slice(2)) {
+  if (args[0] === 'sftp') return require('./sftp-cli').main(args.slice(1));
   if (['json', 'compare', 'git-compare', 'git-changes', 'git-history', 'git-files'].includes(args[0])) return require('./text-cli').main(args);
   if (args[0] === 'pipeline') return require('./pipeline-cli').main(args.slice(1));
   const [command, file, ...rest] = args;
@@ -15,6 +16,7 @@ devkit curl <request.json> [--out request.sh]
 devkit import <input.json> --out collection.json
 devkit export <collection.json> --out postman.json
 devkit pipeline status|init|check|test|accept-uat|marketplace-check|publish <project> [options]
+devkit sftp --help
 devkit json <file|-> [--minify|--validate] [--indent 2|4|tab] [--out file]
 devkit compare <left-file|-> <right-file|-> [--json] [--ignore-case] [--trim-whitespace] [--line-endings]
 devkit git-history <root>

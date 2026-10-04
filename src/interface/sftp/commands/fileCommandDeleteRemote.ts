@@ -1,0 +1,31 @@
+// Adapted from ng-jk/vscode-sftp (MIT); see THIRD-PARTY-NOTICES.md.
+import { COMMAND_DELETE_REMOTE } from '../../../data/sftp/constants';
+import { upath } from '../../../logic/sftp/core/index';
+import { removeRemote } from '../fileHandlers/index';
+import { showConfirmMessage } from '../host';
+import { checkFileCommand } from './abstract/createCommand';
+import { uriFromExplorerContextOrEditorContext } from './shared';
+
+export default checkFileCommand({
+  id: COMMAND_DELETE_REMOTE,
+  async getFileTarget(item, items) {
+    const targets = await uriFromExplorerContextOrEditorContext(item, items);
+
+    if (!targets) {
+      return;
+    }
+
+    const filename = Array.isArray(targets)
+      ? targets.map(t => upath.basename(t.fsPath)).join(',')
+      : upath.basename(targets.fsPath);
+    const result = await showConfirmMessage(
+      `Are you sure you want to delete '${filename}'?`,
+      'Delete',
+      'Cancel'
+    );
+
+    return result ? targets : undefined;
+  },
+
+  handleFile: removeRemote,
+});

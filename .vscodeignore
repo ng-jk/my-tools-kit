@@ -14,3 +14,8 @@ package-lock.json
 .env
 .env.*
 .vsce
+
+src/**/sftp/**
+vendor/sftp/README.md
+vendor/sftp/package.json
+.vscode/sftp.json

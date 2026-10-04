@@ -1,5 +1,6 @@
 """VSCE/Entra process adapter and read-only public Marketplace verification."""
 import hashlib
+import gzip
 import io
 import json
 import os
@@ -76,8 +77,16 @@ class Marketplace:
     def fetch(self, request):
         with self.opener(request, timeout=30) as response:
             data = response.read(LIMIT + 1)
+            encoding = response.headers.get("Content-Encoding", "").lower()
         if len(data) > LIMIT:
             raise ValueError("Marketplace response exceeds the verification size limit")
+        if encoding == "gzip":
+            with gzip.GzipFile(fileobj=io.BytesIO(data)) as stream:
+                data = stream.read(LIMIT + 1)
+        elif encoding not in ("", "identity"):
+            raise ValueError("Unsupported Marketplace response encoding: " + encoding)
+        if len(data) > LIMIT:
+            raise ValueError("Decoded Marketplace response exceeds the verification size limit")
         return data
 
     def remote(self, identity):

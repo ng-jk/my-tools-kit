@@ -3,18 +3,128 @@
   "remote": "origin",
   "reviewer": "codex",
   "timeout": 1200,
-  "artifacts": ["dist/development-tools-kit.vsix", "dist/pipeline-configurator-0.3.0.zip"],
+  "artifacts": [
+    "dist/development-tools-kit.vsix",
+    "dist/pipeline-configurator-0.3.1.zip"
+  ],
   "marketplace": {
     "publisher": "NGJUNKAI",
     "tenantId": "c223792d-7581-42be-b41a-31524edd9422",
     "artifact": "dist/development-tools-kit.vsix"
   },
   "commands": {
-    "prepare": [["npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund"]],
-    "architecture": [["{python}", "scripts/architecture.py"], ["node", "scripts/check.js"]],
-    "unit": [["node", "--test", "tests/text-tools.test.js"], ["{python}", "-m", "unittest", "discover", "-s", "tests/pipeline", "-p", "test_unit.py"]],
-    "function": [["node", "--test", "tests/api.test.js"], ["{python}", "-m", "unittest", "discover", "-s", "tests/pipeline", "-p", "test_function.py"], ["{python}", "-m", "unittest", "discover", "-s", "tests/pipeline", "-p", "test_marketplace.py"]],
-    "integration": [["node", "--test", "tests/cli.test.js", "tests/git-compare.test.js", "tests/text-cli.test.js"], ["{python}", "-m", "unittest", "discover", "-s", "tests/pipeline", "-p", "test_integration.py"]],
-    "build": [["{python}", "scripts/build.py"], ["npm", "exec", "--", "vsce", "package", "--no-dependencies", "--out", "dist/development-tools-kit.vsix"]]
+    "prepare": [
+      [
+        "npm",
+        "ci",
+        "--ignore-scripts",
+        "--no-audit",
+        "--no-fund"
+      ]
+    ],
+    "architecture": [
+      [
+        "node",
+        "scripts/build-sftp.js"
+      ],
+      [
+        "{python}",
+        "scripts/architecture.py"
+      ],
+      [
+        "node",
+        "scripts/check.js"
+      ]
+    ],
+    "unit": [
+      [
+        "node",
+        "--test",
+        "tests/text-tools.test.js"
+      ],
+      [
+        "{python}",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests/pipeline",
+        "-p",
+        "test_unit.py"
+      ]
+    ],
+    "function": [
+      [
+        "node",
+        "--test",
+        "tests/api.test.js"
+      ],
+      [
+        "{python}",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests/pipeline",
+        "-p",
+        "test_function.py"
+      ],
+      [
+        "{python}",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests/pipeline",
+        "-p",
+        "test_marketplace.py"
+      ],
+      [
+        "node",
+        "--test",
+        "tests/sftp.test.js"
+      ]
+    ],
+    "integration": [
+      [
+        "node",
+        "--test",
+        "tests/cli.test.js",
+        "tests/git-compare.test.js",
+        "tests/text-cli.test.js"
+      ],
+      [
+        "{python}",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests/pipeline",
+        "-p",
+        "test_integration.py"
+      ],
+      [
+        "node",
+        "--test",
+        "tests/sftp-wire.test.js",
+        "tests/ftp-wire.test.js"
+      ]
+    ],
+    "build": [
+      [
+        "{python}",
+        "scripts/build.py"
+      ],
+      [
+        "npm",
+        "exec",
+        "--",
+        "vsce",
+        "package",
+        "--no-dependencies",
+        "--out",
+        "dist/development-tools-kit.vsix"
+      ]
+    ]
   }
 }

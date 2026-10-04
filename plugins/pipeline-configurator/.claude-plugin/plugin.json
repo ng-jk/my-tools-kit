@@ -1,7 +1,9 @@
 {
   "name": "pipeline-configurator",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Configure Python terminal CI/CD with AI review, automated tests, human UAT and branch promotion.",
-  "author": { "name": "Ng Jun Kai" },
+  "author": {
+    "name": "Ng Jun Kai"
+  },
   "skills": "./skills/"
 }

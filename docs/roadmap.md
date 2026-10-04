@@ -1,8 +1,8 @@
-# Delivery roadmap — 0.4.0
+# Delivery roadmap — 0.5.0
 
 Implemented: API debugger and CLI, precision-preserving JSON tools, large text/file/Git comparisons, and Python CI/CD with Codex/Claude review adapters, unit/function/integration gates, human interface UAT, and controlled developement/test/deployment/main promotion. Product and pipeline now use explicit data/logic/interface layers. The Actions backend has been removed.
 
-The database and SFTP repositories remain upstream references and optional independent checkouts. They are not bundled into the extension. Review their dependencies and licenses before integrating code.
+SFTP is integrated from the supplied upstream source, with a toolkit sidebar, remote explorer, CLI and shared layers. See sftp.md for the complete inventory and verification limits. Database Client remains an unbundled reference.
 
 Marketplace publication now uses local vsce with Microsoft Entra ID, uploads the exact UAT-approved VSIX, verifies the public payload, and advances main only after success. Uncertain uploads retain a receipt and are verified without duplicate upload attempts.
 

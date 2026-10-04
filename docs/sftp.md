@@ -1,0 +1,118 @@
+# Integrated SFTP / FTP
+
+Version 0.5.0 integrates the actual source from `ng-jk/vscode-sftp` 1.16.3, revision `ef4d3ca3e6fd2c0c24e05079d3dcf6093d633ce8`. Version 0.4.0 only had a reference checkout; it did not include SFTP.
+
+Click the **Development Tools Kit** toolbox icon in the Activity Bar. **Tools** lists API Debugger, JSON Formatter, text/file comparison, Git comparison, SFTP/FTP, and CI/CD. Choose **SFTP / FTP** for the function list. **SFTP Remote Explorer** appears in the same sidebar. Explorer/editor/SCM context menus and command-palette actions are also retained.
+
+## Setup
+
+Open your local project and choose **SFTP / FTP → Config**. Edit `.vscode/sftp.json` with your server, username, authentication and remote path. No real server is configured automatically. Existing upstream configuration files, profiles and multiple contexts are supported. Keep passwords out of Git; omit a password for the UI prompt or use a private key/SSH agent. The terminal can read `DEVKIT_SFTP_PASSWORD` and `${env:NAME}` configuration values.
+
+```json
+{
+  "name": "My server",
+  "protocol": "sftp",
+  "host": "server.example.com",
+  "port": 22,
+  "username": "deploy",
+  "privateKeyPath": "~/.ssh/id_ed25519",
+  "remotePath": "/srv/my-project",
+  "uploadOnSave": false,
+  "ignore": [".git", ".vscode", "node_modules", ".env"]
+}
+```
+
+## Feature inventory
+
+| Area | Included upstream behavior |
+| --- | --- |
+| Protocols | SFTP over SSH; FTP; explicit/implicit FTPS and TLS options |
+| Authentication | Password prompt, private key/passphrase, agent, keyboard-interactive responses, SSH configuration, algorithms, single/multiple jump hosts |
+| Configuration | `.vscode/sftp.json`, multiple workspace contexts, named profiles, default/switchable profiles, profile context overrides, external remote references |
+| Transfers | File/folder/project and active-editor upload/download, force transfer, upload to all profiles, concurrency, cancellation |
+| Git | Upload working-tree/staged changed files and files selected from a commit |
+| Synchronization | Local-to-remote, remote-to-local, both directions, delete extraneous, skip create, ignore existing, update newer |
+| Automation | Upload on save; download on open (optional confirmation); glob watcher upload/delete |
+| Remote explorer | Browse/list, exclusions/order, refresh, view content, edit locally, create file/folder, delete, reveal local/remote, diff with remote |
+| Transfer details | Temporary upload and rename, OpenSSH rename option, file/directory permissions, timestamps/time offsets, symlinks, open-file limits |
+| Backups | Optional local Git mirror of pre-overwrite remote content, including profile-specific mirror paths |
+| Feedback | Transfer status, output/debug channel and error reporting |
+| Terminal | Shared engine for profile resolution, list/read/diff, upload/download/sync, create/delete/rename, Git uploads and watching; Ctrl+C cancellation; JSON and exit codes |
+
+The complete configuration schema is `vendor/sftp/schema/config.schema.json`. UI commands below retain upstream behavior under the `devkit.sftp.*` namespace. Command names are separated from the standalone extension to avoid registration conflicts. If both extensions use the same config with automatic upload enabled, disable one to prevent duplicate transfers.
+
+## Terminal examples
+
+```sh
+node cli.js sftp config .
+node cli.js sftp profiles .
+node cli.js sftp list . --profile dev
+node cli.js sftp upload . src/app.js --profile dev
+node cli.js sftp upload . --all-profiles
+node cli.js sftp download . assets
+node cli.js sftp sync-up . --profile dev
+node cli.js sftp sync-both .
+node cli.js sftp diff . src/app.js
+node cli.js sftp upload-changed .
+node cli.js sftp upload-commit . --commit HEAD
+node cli.js sftp rename . old.txt --to new.txt
+node cli.js sftp delete . old.txt --yes
+node cli.js sftp watch .
+node cli.js sftp --help
+```
+
+Paths are relative to the selected profile's local context. Use `--context NAME` for a multi-context configuration, `--config FILE` for a different config, and `--force` to bypass ignore rules for transfers. Destructive terminal sync/delete settings require `--yes`. Terminal SSH uses the system SSH client; jump-host terminal sessions can use an SSH config alias. SFTP jump-host file transfers use the upstream SSH transport. UI actions tied to an active editor, clipboard, native diff or reveal have explicit-path/JSON equivalents in the CLI.
+
+## Architecture and verification
+
+`src/data/sftp` owns SSH/FTP/local files, mirror I/O, and injected host callbacks. `src/logic/sftp` owns configuration/profile resolution, transfer scheduling and sync decisions. `src/interface/sftp` contains the imported VS Code adapters; `src/interface/sftp-cli.js` is the terminal adapter. Both use the same transfer and filesystem implementation. `scripts/build-sftp.js` bundles UI and headless entry points, and rejects interface imports in the headless bundle. Architecture checks include nested TypeScript source.
+
+Automated tests cover local file workflows, ignore rules, profile contexts, temporary uploads, sync deletion, permission failures, failed transfers, path rejection, terminal exit codes, real local SSH/SFTP and passive FTP exchanges, and command/sidebar registration through a host adapter. These are not claims of user acceptance or tests against your production server. FTPS, agent authentication, jump hosts, all server variants and the native VS Code host still require environment-specific acceptance.
+
+The fork also corrects upstream SSH event registration, waits for deletion failures, propagates scheduler errors, avoids treating permission errors as empty sync directories, masks nested configuration credentials in logs, and isolates connection-cache identities. It retains the original MIT notices.
+
+## Complete upstream command list
+
+| Function | Toolkit command |
+| --- | --- |
+| Config | `devkit.sftp.config` |
+| Set Profile | `devkit.sftp.setProfile` |
+| Open SSH in Terminal | `devkit.sftp.openConnectInTerminal` |
+| Cancel All Transfers | `devkit.sftp.cancelAllTransfer` |
+| Upload File | `devkit.sftp.upload.file` |
+| Upload Changed Files | `devkit.sftp.upload.changedFiles` |
+| Upload File Changed (Pick Commit) | `devkit.sftp.upload.fileChanged` |
+| Upload Active File | `devkit.sftp.upload.activeFile` |
+| Upload Folder | `devkit.sftp.upload.folder` |
+| Upload Active Folder | `devkit.sftp.upload.activeFolder` |
+| Upload Project | `devkit.sftp.upload.project` |
+| Force Upload | `devkit.sftp.forceUpload` |
+| Upload File To All Profiles | `devkit.sftp.upload.file.to.allProfiles` |
+| Upload Active File To All Profiles | `devkit.sftp.upload.activeFile.to.allProfiles` |
+| Upload Folder To All Profiles | `devkit.sftp.upload.folder.to.allProfiles` |
+| Upload Active Folder To All Profiles | `devkit.sftp.upload.activeFolder.to.allProfiles` |
+| Upload Project To All Profiles | `devkit.sftp.upload.project.to.allProfiles` |
+| Force Upload To All Profiles | `devkit.sftp.forceUpload.to.allProfiles` |
+| Download File | `devkit.sftp.download.file` |
+| Download Active File | `devkit.sftp.download.activeFile` |
+| Download Folder | `devkit.sftp.download.folder` |
+| Download Active Folder | `devkit.sftp.download.activeFolder` |
+| Download Project | `devkit.sftp.download.project` |
+| Force Download | `devkit.sftp.forceDownload` |
+| Sync Local -> Remote | `devkit.sftp.sync.localToRemote` |
+| Sync Remote -> Local | `devkit.sftp.sync.remoteToLocal` |
+| Sync Both Directions | `devkit.sftp.sync.bothDirections` |
+| Diff with Remote | `devkit.sftp.diff` |
+| Diff Active File with Remote | `devkit.sftp.diff.activeFile` |
+| List | `devkit.sftp.list` |
+| List Active Folder | `devkit.sftp.listActiveFolder` |
+| List All | `devkit.sftp.listAll` |
+| Delete | `devkit.sftp.delete.remote` |
+| Create Folder | `devkit.sftp.create.folder` |
+| Create File | `devkit.sftp.create.file` |
+| Reveal in Explorer | `devkit.sftp.revealInExplorer` |
+| Reveal in Remote Explorer | `devkit.sftp.revealInRemoteExplorer` |
+| Edit in Local | `devkit.sftp.remoteExplorer.editInLocal` |
+| View Content | `devkit.sftp.viewContent` |
+| Refresh | `devkit.sftp.remoteExplorer.refresh` |
+| Refresh Active Remote File | `devkit.sftp.remoteExplorer.refreshActiveFile` |

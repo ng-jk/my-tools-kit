@@ -1,6 +1,6 @@
 # Python pipeline configurator
 
-Version 0.3.0 adds optional VS Code Marketplace publication with Microsoft Entra ID to the Python standard-library runtime. The VS Code extension, terminal wrapper, and Codex/Claude Code skill all invoke `pipeline.py`; no release policy is duplicated in JavaScript.
+Version 0.3.1 adds optional VS Code Marketplace publication with Microsoft Entra ID to the Python standard-library runtime. The VS Code extension, terminal wrapper, and Codex/Claude Code skill all invoke `pipeline.py`; no release policy is duplicated in JavaScript.
 
 ## Branches and commands
 
@@ -35,3 +35,5 @@ Automated integration tests publish only into a temporary local bare repository 
 Optional `marketplace` configuration contains only `publisher`, `tenantId`, and a retained `.vsix` artifact path. Install locked dependencies with `npm ci` and sign in using `az login --tenant TENANT_ID --allow-no-subscriptions`; the account needs publisher Contributor or Owner permission. Credentials stay in the local Azure cache, outside Git. The upload uses `vsce publish --packagePath` with `--azure-credential`, removes any inherited `VSCE_PAT`, and never rebuilds or bumps the approved artifact. The public version and complete extension payload must match before main advances.
 
 Signed receipts are saved before upload. An uncertain upload is never repeated automatically: rerunning publication verifies the existing attempt. If it remains absent, inspect the publisher portal and resolve the pending operation or bump the version and repeat testing/UAT. An existing version with conflicting content fails closed. Recovery after a successful remote main push requires passing deployment evidence and the matching public package, then updates local main. Marketplace upload and Git promotion are separate operations, so an upload can succeed while main remains unchanged. See the root README for setup and recovery details.
+
+Marketplace downloads decode gzip with compressed and decoded size limits. The 0.4.0 extension publication workaround is now part of the runtime.

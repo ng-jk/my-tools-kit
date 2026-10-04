@@ -2,6 +2,19 @@
 
 This file records implemented functionality and its verification limits. Extension and pipeline-plugin versions are independent.
 
+## 0.5.0 — 2026-10-04
+
+Extension: **0.5.0**. Pipeline plugin: **0.3.1**.
+
+- Integrate ng-jk/vscode-sftp 1.16.3 source, including all upstream public commands, profiles/contexts, SFTP/FTP/FTPS, remote explorer, Git-change uploads, sync, watchers, temporary uploads, permissions and mirror backups. Preserve upstream licenses and source provenance.
+- Add a Development Tools Kit Activity Bar entry with a tool list and embedded SFTP Remote Explorer; namespace SFTP commands to avoid collisions.
+- Separate protocol/filesystem data, shared transfer/profile logic, and VS Code/terminal interfaces. Add CLI SFTP operations, environment-based authentication, explicit paths, JSON results and nonzero error exits.
+- Correct upstream SSH event registration, sync deletion/error handling, scheduler failure propagation, FTP connection timer cleanup, nested credential logging and connection-cache identities.
+- Fix Git comparison across Windows ownership boundaries using a per-process safe.directory scoped to the selected repository.
+- Permanently decode gzip Marketplace responses with bounded decompression; publication no longer needs the 0.4.0 transport workaround.
+- Add local SFTP/FTP wire tests, shared-engine/CLI tests, and sidebar/command host-adapter diagnostics. Advanced server/authentication combinations and native UI acceptance remain environment-specific; no production credentials are needed for automated tests.
+- Document the complete SFTP command inventory and explain pipeline prerequisites and branch flow.
+
 ## 0.4.0 â€” 2026-10-04
 
 Extension: **0.4.0**. Pipeline plugin: **0.3.0**.

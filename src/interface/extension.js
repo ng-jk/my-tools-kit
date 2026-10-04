@@ -16,6 +16,10 @@ async function selectRoot() {
   return folder.uri.fsPath;
 }
 function activate(context) {
+  require('./sidebar').activateSidebar(vscode, context);
+  const sftp = require('../../build/sftp/extension');
+  sftp.activate(context).catch(error => vscode.window.showErrorMessage('SFTP: ' + error.message));
+  context.subscriptions.push({ dispose: () => sftp.deactivate() });
   require('./text-extension').activateTextTools(vscode, context);
   const register = (name, fn) => context.subscriptions.push(vscode.commands.registerCommand(name, async () => { try { await fn(); } catch (e) { vscode.window.showErrorMessage(e.message); } }));
   register('devkit.secret', async () => {
