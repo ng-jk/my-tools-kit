@@ -7,7 +7,7 @@ import { CONFIG_PATH } from '../../../data/sftp/constants';
 import { reportError } from '../helper/index';
 import { showTextDocument } from '../host';
 
-import { mergedDefault, validateConfig } from '../../../logic/sftp/config';
+import { mergedDefault, validateConfig, initialConfig } from '../../../logic/sftp/config';
 export { validateConfig };
 function getConfigPath(basePath: string) { return path.join(basePath, CONFIG_PATH); }
 
@@ -53,17 +53,7 @@ export function newConfig(basePath: string) {
       return fse
         .outputJson(
           configPath,
-          {
-            name: 'My Server',
-            host: 'localhost',
-            protocol: 'sftp',
-            port: 22,
-            username: 'username',
-            remotePath: '/',
-            uploadOnSave: false,
-            useTempFile: false,
-            openSsh: false,
-          },
+          initialConfig(),
           { spaces: 4 }
         )
         .then(() => showTextDocument(vscode.Uri.file(configPath)));

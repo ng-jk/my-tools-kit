@@ -8,6 +8,8 @@ export { configurePorts } from '../../data/sftp/ports';
 export { sshArguments } from './ssh-arguments';
 export { watchPolicy } from './watch-policy';
 export {getCommitChangedFiles, getUncommittedChangedFiles} from './git-changes';
+export {isOwnLocalChange} from '../../data/sftp/local-events';
+export {initialConfig} from './config';
 export { verifyHostKey, fingerprint } from '../../data/sftp/host-keys';
 export { FileService, FileType, TransferTask, TransferDirection, Scheduler } from './core';
 export { transfer, sync } from './fileHandlers/transfer/transfer';

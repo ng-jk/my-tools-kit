@@ -2,6 +2,7 @@
 import * as fs from 'fs';
 import * as fse from 'fs-extra';
 import * as paths from 'path';
+import {trackLocalChanges, rememberLocalState} from '../../local-events';
 import FileSystem, { FileEntry, FileStats, FileOption } from './fileSystem';
 
 export default class LocalFileSystem extends FileSystem {
@@ -22,6 +23,22 @@ export default class LocalFileSystem extends FileSystem {
       try {
         if (fs.lstatSync(current).isSymbolicLink()) throw new Error('Refusing a write through a destination symlink: ' + current);
       } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    }
+  }
+
+  private async track<T>(values: string[], operation: () => Promise<T>): Promise<T> {
+    if (!this.root) return operation();
+    try { return await trackLocalChanges(values, operation); }
+    finally {
+      for (const value of values) {
+        let parent = paths.dirname(paths.resolve(value));
+        const root = paths.resolve(this.root);
+        while (parent === root || parent.startsWith(root + paths.sep)) {
+          rememberLocalState(parent);
+          if (parent === root) break;
+          parent = paths.dirname(parent);
+        }
+      }
     }
   }
 
@@ -162,7 +179,7 @@ export default class LocalFileSystem extends FileSystem {
 
   ensureDir(dir: string): Promise<void> {
     this.assertWritable(dir);
-    return fse.ensureDir(dir);
+    return this.track([dir], () => fse.ensureDir(dir));
   }
 
   toFileEntry(fullPath: string, stat: FileStats): FileEntry {
@@ -195,7 +212,7 @@ export default class LocalFileSystem extends FileSystem {
 
   unlink(path: string): Promise<void> {
     this.assertWritable(path, false);
-    return new Promise<void>((resolve, reject) => {
+    return this.track([path], () => new Promise<void>((resolve, reject) => {
       fs.unlink(path, err => {
         if (err) {
           reject(err);
@@ -204,16 +221,16 @@ export default class LocalFileSystem extends FileSystem {
 
         resolve();
       });
-    });
+    }));
   }
 
   rmdir(path: string, recursive: boolean): Promise<void> {
     this.assertWritable(path, false);
     if (recursive) {
-      return fse.remove(path);
+      return this.track([path], () => fse.remove(path));
     }
 
-    return new Promise<void>((resolve, reject) => {
+    return this.track([path], () => new Promise<void>((resolve, reject) => {
       fs.rmdir(path, err => {
         if (err) {
           reject(err);
@@ -222,12 +239,12 @@ export default class LocalFileSystem extends FileSystem {
 
         resolve();
       });
-    });
+    }));
   }
 
   rename(srcPath: string, destPath: string): Promise<void> {
     this.assertWritable(srcPath, false); this.assertWritable(destPath, false);
-    return fse.rename(srcPath, destPath);
+    return this.track([srcPath, destPath], () => fse.rename(srcPath, destPath));
   }
 
   renameAtomic(srcPath: string, destPath: string): Promise<void> {

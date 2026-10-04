@@ -2,7 +2,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
-const { createSession, operate, configurePorts, sshArguments, watchPolicy, getCommitChangedFiles, getUncommittedChangedFiles } = require('../../build/sftp/engine');
+const { createSession, operate, configurePorts, sshArguments, watchPolicy, getCommitChangedFiles, getUncommittedChangedFiles, isOwnLocalChange, initialConfig } = require('../../build/sftp/engine');
 function expand(value) {
   if (typeof value === 'string') return value.replace(/\$\{env:([A-Za-z_][A-Za-z0-9_]*)\}/g, (_, key) => {
     if (process.env[key] === undefined) throw new Error('Missing environment variable: ' + key);
@@ -38,7 +38,7 @@ paths and JSON output here. Transfer, profile and sync logic is shared.`);
   const configPath = flags.config ? path.resolve(flags.config) : path.join(root,'.vscode','sftp.json');
   if (action === 'config') {
     fs.mkdirSync(path.dirname(configPath), {recursive:true});
-    if (!fs.existsSync(configPath)) fs.writeFileSync(configPath, JSON.stringify({name:'My Server',host:'localhost',protocol:'sftp',port:22,username:'username',remotePath:'/project',uploadOnSave:false,ignore:['.git','.vscode','node_modules']},null,2)+'\n', {flag:'wx'});
+    if (!fs.existsSync(configPath)) fs.writeFileSync(configPath, JSON.stringify(initialConfig(),null,2)+'\n', {flag:'wx'});
     console.log(JSON.stringify({passed:true,config:configPath})); return;
   }
   const value = expand(JSON.parse(fs.readFileSync(configPath,'utf8')));
@@ -84,9 +84,9 @@ paths and JSON output here. Transfer, profile and sync logic is shared.`);
             if (!name || stopped || cancelled) return;
             const matches = watcherConfig.files !== false && (!watcherConfig.files || minimatch(name.replaceAll('\\','/'),watcherConfig.files,{dot:true}));
             const full = path.join(session.service.baseDir,name);
-            if (session.config.ignore?.(full)) return;
+            if (session.config.ignore?.(full) || isOwnLocalChange(full)) return;
             queue = queue.then(async () => {
-              if (stopped || cancelled) return;
+              if (stopped || cancelled || isOwnLocalChange(full)) return;
               if (fs.existsSync(full)) {
                 if (watcherConfig.uploadOnSave || (matches && watcherConfig.autoUpload)) await operate(session,'upload',name,flags);
               } else if (matches && watcherConfig.autoDelete) await operate(session,'delete',name,flags);

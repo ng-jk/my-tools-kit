@@ -9,6 +9,8 @@ import { WatcherService, TransferDirection } from '../../../logic/sftp/core/inde
 import app from '../app';
 import StatusBarItem from '../ui/statusBarItem';
 import { getRunningTransformTasks } from './serviceManager/index';
+import {isOwnLocalChange, localEntryExists} from '../../../data/sftp/local-events';
+import {isTransferArtifact} from '../../../logic/sftp/core/staged-replacement';
 
 const watchers: {
   [x: string]: vscode.FileSystemWatcher;
@@ -29,6 +31,7 @@ function doUpload() {
   );
 
   files.forEach(async uri => {
+    if (isOwnLocalChange(uri.fsPath) || isTransferArtifact(uri.fsPath)) return;
     // current target is still in downloading, so don't upload it.
     if (currentDownloadTasks.find(task => task.localFsPath === uri.fsPath)) {
       return;
@@ -49,6 +52,7 @@ function doDelete() {
   const files = Array.from(deleteQueue).sort((a, b) => fileDepth(b.fsPath) - fileDepth(a.fsPath));
   deleteQueue.clear();
   files.forEach(async uri => {
+    if (isOwnLocalChange(uri.fsPath) || isTransferArtifact(uri.fsPath) || localEntryExists(uri.fsPath)) return;
     const fspath = uri.fsPath;
     logger.info(`[watcher/removed] ${fspath}`);
     try {
@@ -64,7 +68,7 @@ const debouncedUpload = debounce(doUpload, ACTION_INTEVAL, { leading: true, trai
 const debouncedDelete = debounce(doDelete, ACTION_INTEVAL, { leading: true, trailing: true });
 
 function uploadHandler(uri: vscode.Uri) {
-  if (!isValidFile(uri)) {
+  if (!isValidFile(uri) || isOwnLocalChange(uri.fsPath) || isTransferArtifact(uri.fsPath)) {
     return;
   }
 
@@ -115,7 +119,7 @@ function createWatcher(
 
   if (watcherConfig.autoDelete) {
     watcher.onDidDelete(uri => {
-      if (!isValidFile(uri)) {
+      if (!isValidFile(uri) || isOwnLocalChange(uri.fsPath) || isTransferArtifact(uri.fsPath)) {
         return;
       }
 

@@ -107,7 +107,8 @@
         "node",
         "--test",
         "tests/sftp-wire.test.js",
-        "tests/ftp-wire.test.js"
+        "tests/ftp-wire.test.js",
+        "tests/sftp-interface.test.js"
       ]
     ],
     "build": [

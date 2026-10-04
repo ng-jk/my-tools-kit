@@ -1,6 +1,7 @@
 // Adapted from ng-jk/vscode-sftp (MIT); see THIRD-PARTY-NOTICES.md.
 import { Readable } from 'stream';
 import {stagingPath, replaceStaged} from './staged-replacement';
+import {beginLocalChange} from '../../../data/sftp/local-events';
 import { FileSystem, FileType } from '../../../data/sftp/core/fs/index';
 import { Task } from './scheduler';
 import { logger } from '../../../data/sftp/ports';
@@ -80,6 +81,11 @@ export default class TransferTask implements Task {
   }
 
   async run() {
+    const finish = this._transferDirection === TransferDirection.REMOTE_TO_LOCAL ? beginLocalChange(this._targetFsPath) : () => {};
+    try { await this.runTransfer(); } finally { finish(); }
+  }
+
+  private async runTransfer() {
     const src = this._srcFsPath;
     const target = this._targetFsPath;
     const srcFs = this._srcFs;
@@ -123,8 +129,8 @@ export default class TransferTask implements Task {
       this._handle = await srcFs.get(this._srcFsPath);
       this._handle.pause();
       this._handle.on('error', rememberError);
-      if (mode === undefined && perserveTargetMode) {
-        try { mode = (await targetFs.lstat(target)).mode; }
+      if (mode === undefined) {
+        try { const stat = await targetFs.lstat(target); mode = stat.type === FileType.File ? stat.mode : fallbackMode; }
         catch (error) { if (error.code !== 'ENOENT' && error.code !== 2) throw error; mode = fallbackMode; }
       }
       if (sourceError) throw sourceError;

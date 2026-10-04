@@ -77,7 +77,7 @@ const defaultConfig = {
   useTempFile: false,
   openSsh: false,
   downloadOnOpen: false,
-  ignore: [],
+  ignore: ['.git', '.vscode', '.env', '.env.*', 'node_modules'],
   // ignoreFile: undefined,
   // watcher: {
   //   files: false,
@@ -121,8 +121,12 @@ const defaultConfig = {
 export function mergedDefault(config: any) {
   return {
     ...defaultConfig,
-    ...config,
+    ...Object.fromEntries(Object.entries(config).filter(([,value]) => value !== undefined)),
   };
+}
+export function initialConfig() {
+  return {name:'My Server', host:'localhost', protocol:'sftp', port:22, username:'username', remotePath:'/project',
+    uploadOnSave:false, useTempFile:false, openSsh:false, ignore:[...defaultConfig.ignore]};
 }
 
 export function validateConfig(config: any) {

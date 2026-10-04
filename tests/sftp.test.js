@@ -126,6 +126,28 @@ test('failed transfers preserve destinations and close staging handles',async t=
     assert.deepEqual(fs.readdirSync(remote),['a.txt']);
   } finally {source.get=get;target.put=put;target.close=close;target.rename=rename;}
 });
+test('internal staging and recovery files are excluded from automatic transfers',async t=>{
+  const {local,remote,session}=fixture(t,{ignore:[]});
+  const staged='a.txt.devkit-12345678-1234-1234-1234-123456789abc';
+  for(const name of [staged,staged+'.backup']) {fs.writeFileSync(path.join(local,name),'internal');assert.equal(session.config.ignore(path.join(local,name)),true);}
+  fs.writeFileSync(path.join(local,'a.txt'),'user content');
+  await engine.operate(session,'upload');assert.deepEqual(fs.readdirSync(remote),['a.txt']);
+});
+test('default project uploads exclude credentials and repository metadata',async t=>{
+  const {local,remote,session}=fixture(t,{ignore:undefined});
+  for(const name of ['.git','.vscode']) {fs.mkdirSync(path.join(local,name));fs.writeFileSync(path.join(local,name,'secret'),'private');}
+  fs.writeFileSync(path.join(local,'.env'),'SECRET=private');fs.writeFileSync(path.join(local,'.env.local'),'SECRET=private');fs.writeFileSync(path.join(local,'public.txt'),'public');
+  await engine.operate(session,'upload');assert.deepEqual(fs.readdirSync(remote),['public.txt']);
+});
+test('staged downloads preserve restrictive and executable modes, with source fallback for new files',async()=>{
+  for(const [existing,fallback,expected] of [[0o600,0o644,0o600],[0o755,0o644,0o755],[undefined,0o640,0o640]]) {
+    let createdMode;
+    const source={get:async()=>require('node:stream').Readable.from('content')};
+    const target={lstat:async()=>{if(existing===undefined)throw Object.assign(new Error('missing'),{code:2});return {type:engine.FileType.File,mode:existing};},open:async(_,flags,mode)=>{createdMode=mode;return 1;},put:async input=>{for await(const chunk of input){}},close:async()=>{},rename:async()=>{},unlink:async()=>{}};
+    await new engine.TransferTask({fsPath:'/source',fileSystem:source},{fsPath:'/destination',fileSystem:target},{fileType:engine.FileType.File,transferDirection:engine.TransferDirection.REMOTE_TO_LOCAL,transferOption:{fallbackMode:fallback,perserveTargetMode:false}}).run();
+    assert.equal(createdMode,expected);
+  }
+});
 test('changed symlinks are replaced and permission errors fail the transfer',async()=>{
   const source={readlink:async()=>'new-target'},entries=new Map([['/target','old-target']]);
   const target={symlink:async(value,name)=>entries.set(name,value),lstat:async name=>{if(!entries.has(name))throw Object.assign(new Error('missing'),{code:2});return {type:engine.FileType.SymbolicLink};},rename:async(a,b)=>{entries.set(b,entries.get(a));entries.delete(a);},unlink:async name=>entries.delete(name)};

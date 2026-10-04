@@ -15,6 +15,7 @@ import { resolveProfileContext } from './profileContext';
 import Scheduler from './scheduler';
 import { createRemoteIfNoneExist, removeRemoteFs } from '../../../data/sftp/core/remoteFs';
 import TransferTask from './transferTask';
+import {isTransferArtifact} from './staged-replacement';
 
 type Omit<T, U> = Pick<T, Exclude<keyof T, U>>;
 
@@ -630,11 +631,12 @@ export default class FileService {
 
     const ignoreConfig = filesIgnoredFromConfig(config);
     if (ignoreConfig.length <= 0) {
-      return null;
+      return isTransferArtifact;
     }
 
     const ignore = Ignore.from(ignoreConfig);
     const ignoreFunc = (fsPath: string) => {
+      if (isTransferArtifact(fsPath)) return true;
       // vscode will always return path with / as separator
       const normalizedPath = path.normalize(fsPath);
       let relativePath;
