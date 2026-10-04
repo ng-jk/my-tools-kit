@@ -12,7 +12,7 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
   const files=new Map(),sockets=new Set(),servers=new Set();
   const server=net.createServer(socket=>{
     sockets.add(socket);socket.on('close',()=>sockets.delete(socket));socket.on('error',()=>{});
-    const reply=message=>socket.write(message+'\r\n');let pending='',dataSocket;
+    const reply=message=>socket.write(message+'\r\n');let pending='',dataSocket,renameFrom;
     reply('220 Fixture ready');
     socket.on('data',chunk=>{
       pending+=chunk.toString();let end;
@@ -38,6 +38,8 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
         }else if(cmd==='SIZE')reply(files.has(arg)?'213 '+files.get(arg).length:'550 Missing');
         else if(cmd==='MDTM')reply(files.has(arg)?'213 20260101000000':'550 Missing');
         else if(cmd==='MFMT')reply('213 Modified');
+        else if(cmd==='RNFR'){renameFrom=arg;reply(files.has(arg)?'350 Rename ready':'550 Missing');}
+        else if(cmd==='RNTO'){files.set(arg,files.get(renameFrom));files.delete(renameFrom);reply('250 Renamed');}
         else if(cmd==='DELE'){files.delete(arg);reply('250 Deleted');}
         else if(cmd==='QUIT'){reply('221 Bye');socket.end();}
         else reply('502 Unsupported');
@@ -49,6 +51,8 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
   t.after(async()=>{session.service.dispose();for(const socket of sockets)socket.destroy();for(const data of servers)if(data.listening)data.close();await new Promise(resolve=>server.close(resolve));fs.rmSync(root,{recursive:true,force:true});});
   await engine.operate(session,'upload','local.txt');assert.equal(files.get('/local.txt').toString(),'ftp payload');
   const list=await engine.operate(session,'list');assert.ok(list.some(item=>item.name==='local.txt'));
+  const remoteFs=await session.service.getRemoteFileSystem(session.config);
+  await assert.rejects(remoteFs.symlink('local.txt','/link'),/does not support/);
   await engine.operate(session,'create','new.txt');assert.equal(files.get('/new.txt').length,0);
   await assert.rejects(engine.operate(session,'create','local.txt'),/exists/);
   files.set('/local.txt',Buffer.from('ftp server edit'));await engine.operate(session,'download','local.txt');assert.equal(fs.readFileSync(path.join(root,'local.txt'),'utf8'),'ftp server edit');

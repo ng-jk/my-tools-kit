@@ -1,6 +1,6 @@
 // Adapted from ng-jk/vscode-sftp (MIT); see THIRD-PARTY-NOTICES.md.
 import { Readable } from 'stream';
-import * as fileOperations from '../../../data/sftp/core/fileBaseOperations';
+import {stagingPath, replaceStaged} from './staged-replacement';
 import { FileSystem, FileType } from '../../../data/sftp/core/fs/index';
 import { Task } from './scheduler';
 import { logger } from '../../../data/sftp/ports';
@@ -89,13 +89,12 @@ export default class TransferTask implements Task {
         await this._transferFile();
         break;
       case FileType.SymbolicLink:
-        await fileOperations.transferSymlink(
-          src,
-          target,
-          srcFs,
-          targetFs,
-          this._TransferOption
-        );
+        const link = await srcFs.readlink(src);
+        const stagedLink = stagingPath(target);
+        try {
+          await targetFs.symlink(link, stagedLink);
+          await replaceStaged(targetFs, stagedLink, target, this._TransferOption.openSsh);
+        } finally { await targetFs.unlink(stagedLink).catch(() => {}); }
         break;
       default:
         logger.warn(`Unsupported file type (type = ${this.fileType}). File ${src}`);
@@ -103,10 +102,8 @@ export default class TransferTask implements Task {
   }
 
   cancel() {
-    if (this._handle && !this._cancelled) {
-      this._cancelled = true;
-      FileSystem.abortReadableStream(this._handle);
-    }
+    this._cancelled = true;
+    if (this._handle && !this._handle.destroyed) FileSystem.abortReadableStream(this._handle);
   }
 
   isCancelled(): boolean {
@@ -114,105 +111,41 @@ export default class TransferTask implements Task {
   }
 
   private async _transferFile() {
-    const src = this._srcFsPath;
-    const target = this._targetFsPath;
-    const srcFs = this._srcFs;
-    const targetFs = this._targetFs;
-    const {
-      perserveTargetMode,
-      useTempFile,
-      openSsh,
-      fallbackMode,
-      atime,
-      mtime,
-      filePerm
-    } = this._TransferOption;
-    // Set the mode if it's specified in the config, otherwise get mode from server.
+    const srcFs = this._srcFs, targetFs = this._targetFs, target = this._targetFsPath;
+    const {perserveTargetMode, openSsh, fallbackMode, atime, mtime, filePerm} = this._TransferOption;
     let mode = filePerm ? parseInt(String(filePerm), 8) : this._TransferOption.mode;
-    let targetFd; // Destination file
-    let uploadFd; // Temp file or destination file when no temp file is used
-    const uploadTarget = target + (useTempFile ? ".new" : "");
-
-    // Use mode first.
-    // Then check perserveTargetMode and fallback to fallbackMode if fail to get mode of target
-    if (mode === undefined && perserveTargetMode) {
-      if (useTempFile) {
-        [targetFd, uploadFd] = await Promise.all([
-          targetFs.open(target, 'r')  // Get handle for reading the target mode
-            .catch(() => null), // Return null if target file doesn't exist
-          targetFs.open(uploadTarget, 'w')  // Get handle for the file upload
-        ]);
-      } else {
-        targetFd = uploadFd = await targetFs.open(uploadTarget, 'w');
-      }
-
-      if (targetFd) {
-        [this._handle, mode] = await Promise.all([
-          srcFs.get(src),
-          targetFs
-            .fstat(targetFd)
-            .then(stat => stat.mode)
-            .catch(() => fallbackMode),
-        ]);
-
-        if (useTempFile) {
-          targetFs.close(targetFd);
-        }
-
-      } else {
-        this._handle = await srcFs.get(src);
-        mode = fallbackMode;
-      }
-
-    } else {
-      [this._handle, uploadFd] = await Promise.all([
-        srcFs.get(src),
-        targetFs.open(uploadTarget, 'w'),
-      ]);
-    }
-
+    const staged = stagingPath(target);
+    let fd: any;
+    let sourceError: Error | undefined;
+    const rememberError = (error: Error) => { sourceError = error; };
     try {
-      if (useTempFile) {
-        logger.info("uploading temp file: " + uploadTarget);
+      if (this._cancelled) throw new Error('Transfer cancelled');
+      this._handle = await srcFs.get(this._srcFsPath);
+      this._handle.pause();
+      this._handle.on('error', rememberError);
+      if (mode === undefined && perserveTargetMode) {
+        try { mode = (await targetFs.lstat(target)).mode; }
+        catch (error) { if (error.code !== 'ENOENT' && error.code !== 2) throw error; mode = fallbackMode; }
       }
-      await targetFs.put(this._handle, uploadTarget, {
-        mode,
-        fd: uploadFd,
-        autoClose: false,
-      });
+      if (sourceError) throw sourceError;
+      if (this._cancelled) throw new Error('Transfer cancelled');
+      fd = await targetFs.open(staged, 'wx', mode);
+      if (sourceError) throw sourceError;
+      await targetFs.put(this._handle, staged, {mode, fd, autoClose:false});
+      if (sourceError) throw sourceError;
+      if (this._cancelled) throw new Error('Transfer cancelled');
       if (atime && mtime) {
-        try {
-          await targetFs.futimes(
-            uploadFd,
-            Math.floor(atime / 1000),
-            Math.floor(mtime / 1000)
-          );
-        } catch (error) {
-          if (!hasWarnedModifedTimePermission) {
-            hasWarnedModifedTimePermission = true;
-            logger.warn(
-              `Can't set modified time to the file because ${error.message}`
-            );
-          }
+        try { await targetFs.futimes(fd, Math.floor(atime / 1000), Math.floor(mtime / 1000)); }
+        catch (error) {
+          if (!hasWarnedModifedTimePermission) { hasWarnedModifedTimePermission = true; logger.warn(`Can't set modified time: ${error.message}`); }
         }
       }
-
-      if (useTempFile) {
-        logger.info("moving from: " + target + ".new" + " to: " + target);
-        if(openSsh) {
-          await targetFs.renameAtomic(uploadTarget, target);
-        } else {
-          try {
-            await targetFs.unlink(target);
-          } catch(error) {
-            // Just ignore
-          }
-          await targetFs.rename(uploadTarget, target);
-        }
-      }
-
+      await targetFs.close(fd); fd = undefined;
+      await replaceStaged(targetFs, staged, target, openSsh);
     } finally {
-      await targetFs.close(uploadFd);
+      if (this._handle) { this._handle.destroy(); this._handle.removeListener('error', rememberError); }
+      if (fd !== undefined) await targetFs.close(fd).catch(error => logger.warn(error.message));
+      await targetFs.unlink(staged).catch(() => {});
     }
   }
 }

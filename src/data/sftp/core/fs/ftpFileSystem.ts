@@ -169,8 +169,7 @@ export default class FTPFileSystem extends RemoteFileSystem {
   }
 
   symlink(_targetPath: string, _path: string): Promise<void> {
-    // TO-DO implement
-    return Promise.resolve();
+    return Promise.reject(new Error('FTP does not support symbolic link creation'));
   }
 
   async mkdir(dir: string): Promise<void> {

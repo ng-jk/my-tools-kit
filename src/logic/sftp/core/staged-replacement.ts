@@ -1,0 +1,32 @@
+import {randomUUID} from 'crypto';
+import {FileSystem, FileType} from '../../../data/sftp/core/fs';
+export function stagingPath(target: string) { return target + '.devkit-' + randomUUID(); }
+const locks = new WeakMap<FileSystem, Map<string, Promise<void>>>();
+export async function replaceStaged(fs: FileSystem, staged: string, target: string, atomic = false) {
+  let targets = locks.get(fs);
+  if (!targets) { targets = new Map(); locks.set(fs, targets); }
+  const previous = targets.get(target) || Promise.resolve();
+  let release: () => void;
+  const current = new Promise<void>(resolve => { release = resolve; });
+  targets.set(target, current);
+  await previous;
+  try { await replace(fs, staged, target, atomic); }
+  finally { release!(); if (targets.get(target) === current) targets.delete(target); }
+}
+async function replace(fs: FileSystem, staged: string, target: string, atomic: boolean) {
+  if (atomic) { await fs.renameAtomic(staged, target); return; }
+  let existing;
+  try { existing = await fs.lstat(target); }
+  catch (error) { if (error.code !== 'ENOENT' && error.code !== 2) throw error; }
+  if (!existing) { await fs.rename(staged, target); return; }
+  if (existing.type === FileType.Directory) throw new Error('Refusing to replace a directory with a file');
+  const backup = stagingPath(target) + '.backup';
+  await fs.rename(target, backup);
+  try { await fs.rename(staged, target); }
+  catch (error) {
+    try { await fs.rename(backup, target); }
+    catch (restoreError) { throw new Error(`Replacement failed; original retained at ${backup}. Restore failed: ${restoreError.message}. Transfer error: ${error.message}`); }
+    throw error;
+  }
+  await fs.unlink(backup);
+}

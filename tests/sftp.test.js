@@ -98,11 +98,41 @@ test('malicious directory entries cannot schedule writes outside the destination
 test('sync preserves symbolic link identity without reading linked file contents',async()=>{
   const source={pathResolver:path.posix,list:async()=>[{name:'link',fspath:'/local/link',type:engine.FileType.SymbolicLink,mtime:1,atime:1}],readlink:async()=>'../../private/key',get:async()=>{throw new Error('must not dereference');}};
   let link;
-  const target={pathResolver:path.posix,ensureDir:async()=>{},list:async()=>[],symlink:async(value,destination)=>{link={value,destination};}};
+  const target={pathResolver:path.posix,ensureDir:async()=>{},list:async()=>[],lstat:async()=>{throw Object.assign(new Error('missing'),{code:'ENOENT'});},unlink:async()=>{},rename:async(_,destination)=>{link.destination=destination;},symlink:async(value,destination)=>{link={value,destination};}};
   const tasks=[];
   await engine.sync({srcFsPath:'/local',targetFsPath:'/remote',srcFs:source,targetFs:target,transferDirection:engine.TransferDirection.LOCAL_TO_REMOTE,transferOption:{}},task=>tasks.push(task));
   assert.equal(tasks.length,1);assert.equal(tasks[0].fileType,engine.FileType.SymbolicLink);
   await tasks[0].run();assert.deepEqual(link,{value:'../../private/key',destination:'/remote/link'});
+});
+test('failed transfers preserve destinations and close staging handles',async t=>{
+  const {local,remote,session}=fixture(t);fs.writeFileSync(path.join(local,'a.txt'),'replacement');fs.writeFileSync(path.join(remote,'a.txt'),'original');
+  const source=session.service.getLocalFileSystem(),target=await session.service.getRemoteFileSystem(session.config);
+  const get=source.get,put=target.put,close=target.close,rename=target.rename;let closes=0;
+  target.close=async(...args)=>{closes++;return close.apply(target,args);};
+  try {
+    source.get=async()=>{throw new Error('source denied');};
+    await assert.rejects(engine.operate(session,'upload','a.txt'),/source denied/);
+    assert.equal(closes,0);assert.equal(fs.readFileSync(path.join(remote,'a.txt'),'utf8'),'original');
+    source.get=async()=>new (require('node:stream').Readable)({read(){this.destroy(new Error('source stream failed'));}});
+    await assert.rejects(engine.operate(session,'upload','a.txt'),/source stream failed/);
+    assert.equal(fs.readFileSync(path.join(remote,'a.txt'),'utf8'),'original');
+    const closedBefore=closes;
+    source.get=get;target.put=async()=>{throw new Error('mid-transfer failure');};
+    await assert.rejects(engine.operate(session,'upload','a.txt'),/mid-transfer/);
+    assert.equal(closes,closedBefore+1);assert.equal(fs.readFileSync(path.join(remote,'a.txt'),'utf8'),'original');
+    target.put=put;target.rename=async(a,b)=>{if(a.includes('.devkit-')&&!a.endsWith('.backup')&&b.endsWith('a.txt'))throw new Error('rename denied');return rename.call(target,a,b);};
+    await assert.rejects(engine.operate(session,'upload','a.txt'),/rename denied/);
+    assert.equal(fs.readFileSync(path.join(remote,'a.txt'),'utf8'),'original');
+    assert.deepEqual(fs.readdirSync(remote),['a.txt']);
+  } finally {source.get=get;target.put=put;target.close=close;target.rename=rename;}
+});
+test('changed symlinks are replaced and permission errors fail the transfer',async()=>{
+  const source={readlink:async()=>'new-target'},entries=new Map([['/target','old-target']]);
+  const target={symlink:async(value,name)=>entries.set(name,value),lstat:async name=>{if(!entries.has(name))throw Object.assign(new Error('missing'),{code:2});return {type:engine.FileType.SymbolicLink};},rename:async(a,b)=>{entries.set(b,entries.get(a));entries.delete(a);},unlink:async name=>entries.delete(name)};
+  const task=()=>new engine.TransferTask({fsPath:'/source',fileSystem:source},{fsPath:'/target',fileSystem:target},{fileType:engine.FileType.SymbolicLink,transferDirection:engine.TransferDirection.LOCAL_TO_REMOTE,transferOption:{}});
+  await task().run();assert.equal(entries.get('/target'),'new-target');assert.equal(entries.size,1);
+  target.symlink=async()=>{throw Object.assign(new Error('permission denied'),{code:4});};
+  await assert.rejects(task().run(),/permission denied/);assert.equal(entries.get('/target'),'new-target');
 });
 test('shared Git selection includes root commits and CLI uses the same selection',async t=>{
   const {local,remote,raw}=fixture(t);
