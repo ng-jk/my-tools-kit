@@ -58,6 +58,16 @@ test('failed scheduled transfer rejects and path traversal cannot escape context
     await assert.rejects(engine.operate(session,'rename',name,{to:'new'}),/non-root/);
   }
 });
+test('downloads cannot write outside the local context through links',async t=>{
+  const {dir,local,remote,session}=fixture(t);
+  const outside=path.join(dir,'outside');fs.mkdirSync(outside);fs.writeFileSync(path.join(outside,'secret.txt'),'unchanged');
+  const localFs=session.service.getLocalFileSystem();
+  assert.throws(()=>localFs.symlink('../outside/secret.txt',path.join(local,'escape')),/escapes/);
+  fs.symlinkSync(outside,path.join(local,'linked'),'junction');
+  fs.mkdirSync(path.join(remote,'linked'));fs.writeFileSync(path.join(remote,'linked','secret.txt'),'overwrite');
+  for(let attempt=0;attempt<2;attempt++) await assert.rejects(engine.operate(session,'download','linked/secret.txt'),/symlink/);
+  assert.equal(fs.readFileSync(path.join(outside,'secret.txt'),'utf8'),'unchanged');
+});
 test('host keys reject unknown/changed/revoked keys and support pins and hashed known_hosts',t=>{
   const {dir}=fixture(t);const crypto=require('node:crypto');
   const key=Buffer.from('public-host-key'),changed=Buffer.from('changed-key'),file=path.join(dir,'known_hosts');

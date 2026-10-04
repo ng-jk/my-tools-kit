@@ -119,7 +119,7 @@ export default function createFileHandler<T>(
       app.sftpBarItem.stopSpinner();
     }
     if (handlerOption.afterHandle) {
-      handlerOption.afterHandle.call(handleCtx);
+      await handlerOption.afterHandle.call(handleCtx);
     }
   }
 

@@ -1,5 +1,6 @@
 // Adapted from ng-jk/vscode-sftp (MIT); see THIRD-PARTY-NOTICES.md.
 import * as vscode from 'vscode';
+import * as path from 'path';
 import debounce from 'lodash.debounce';
 import logger from '../logger';
 import { isValidFile, fileDepth } from '../helper/index';
@@ -125,6 +126,14 @@ function createWatcher(
 }
 
 function removeWatcher(watcherBase: string) {
+  for (const queue of [uploadQueue, deleteQueue]) {
+    for (const uri of queue) {
+      const relative = path.relative(watcherBase, uri.fsPath);
+      if (relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative)) queue.delete(uri);
+    }
+  }
+  if (!uploadQueue.size) debouncedUpload.cancel();
+  if (!deleteQueue.size) debouncedDelete.cancel();
   const watcher = getWatcher(watcherBase);
   if (watcher) {
     watcher.dispose();

@@ -122,3 +122,5 @@ The fork also verifies SSH host keys, corrects reverse filesystem selection in b
 | Refresh Active Remote File | `devkit.sftp.remoteExplorer.refreshActiveFile` |
 
 Remote directory entries are validated before transfer: traversal, embedded separators, Windows device names and other unsafe cross-platform names are rejected. Sync deletion walks directories and retains ignored descendants. FTP creation recognizes missing files consistently. Watch settings come from the selected profile; `watcher.files: false` disables watcher actions while separately configured upload-on-save remains available.
+
+Downloads reject symlink targets outside the configured local context and refuse writes through existing destination symlinks. This deliberately restricts unsafe link behavior inherited from upstream. Switching profiles reloads watchers even when the local context stays the same and drops pending watcher events for that context. Git changed-file uploads await completion and map rename endpoints to the remote root.

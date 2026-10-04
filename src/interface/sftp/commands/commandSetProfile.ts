@@ -7,10 +7,8 @@ import logger from '../logger';
 import { getAllFileService, reloadWorkspaceServices } from '../modules/serviceManager/index';
 import { checkCommand } from './abstract/createCommand';
 
-// When the active profile changes, any service whose effective `context` differs
-// between the old and new profile must be reloaded so its local root (baseDir)
-// and the serviceManager trie are re-keyed. Services with no context override
-// just pick up the new profile via getConfig() — no reload, no churn.
+// A profile changes watcher policy as well as context and connection settings.
+// Recreate every affected service even when its local context is unchanged.
 async function reloadOnProfileChange(
   prevProfile: string | null,
   nextProfile: string | null
@@ -21,9 +19,7 @@ async function reloadOnProfileChange(
 
   const workspaces = new Set<string>();
   getAllFileService().forEach(service => {
-    if (service.resolveContext(prevProfile) !== service.resolveContext(nextProfile)) {
-      workspaces.add(service.workspace);
-    }
+    workspaces.add(service.workspace);
   });
 
   for (const workspace of workspaces) {
@@ -82,7 +78,7 @@ export default checkCommand({
     }
 
     app.state.profile = nextProfile;
-    // Reload services whose local context changed with the new profile. Runs for
+    // Reload services and watcher policies for the new profile. Runs for
     // BOTH the programmatic and the quick-pick paths.
     await reloadOnProfileChange(prevProfile, nextProfile);
   },

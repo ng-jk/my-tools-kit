@@ -1,11 +1,28 @@
 // Adapted from ng-jk/vscode-sftp (MIT); see THIRD-PARTY-NOTICES.md.
 import * as fs from 'fs';
 import * as fse from 'fs-extra';
+import * as paths from 'path';
 import FileSystem, { FileEntry, FileStats, FileOption } from './fileSystem';
 
 export default class LocalFileSystem extends FileSystem {
-  constructor(pathResolver: any) {
+  constructor(pathResolver: any, private root?: string) {
     super(pathResolver);
+  }
+
+  private assertWritable(target: string, includeLeaf = true) {
+    if (!this.root) return;
+    const root = paths.resolve(this.root), absolute = paths.resolve(target);
+    const relative = paths.relative(root, absolute);
+    if (relative === '..' || relative.startsWith('..' + paths.sep) || paths.isAbsolute(relative)) throw new Error('Write escapes the configured local context');
+    const parts = relative.split(paths.sep).filter(Boolean);
+    if (!includeLeaf) parts.pop();
+    let current = root;
+    for (const part of parts) {
+      current = paths.join(current, part);
+      try {
+        if (fs.lstatSync(current).isSymbolicLink()) throw new Error('Refusing a write through a destination symlink: ' + current);
+      } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    }
   }
 
   toFileStat(stat: fs.Stats): FileStats {
@@ -44,6 +61,7 @@ export default class LocalFileSystem extends FileSystem {
   }
 
   open(path: string, flags: string, mode?: number): Promise<number> {
+    if (/[wa+]/.test(flags)) this.assertWritable(path);
     return fse.open(path, flags, mode);
   }
 
@@ -72,6 +90,7 @@ export default class LocalFileSystem extends FileSystem {
   }
 
   async chmod(path: string, mode: number): Promise<void> {
+    this.assertWritable(path);
     return new Promise((resolve, reject) => {
       fs.chmod(path, mode, (err) => {
         if (err) {
@@ -84,6 +103,7 @@ export default class LocalFileSystem extends FileSystem {
   }
 
   put(input: fs.ReadStream, path: string, option?: FileOption): Promise<void> {
+    this.assertWritable(path);
     return new Promise<void>((resolve, reject) => {
       if (option && option.fd && typeof option.fd !== 'number') {
         return reject(new Error('fd is not a number'));
@@ -114,6 +134,8 @@ export default class LocalFileSystem extends FileSystem {
   }
 
   symlink(targetPath: string, path: string): Promise<void> {
+    this.assertWritable(path, false);
+    this.assertWritable(paths.resolve(paths.dirname(path), targetPath));
     return new Promise<void>((resolve, reject) => {
       fs.symlink(targetPath, path, null, err => {
         if (err) {
@@ -126,6 +148,7 @@ export default class LocalFileSystem extends FileSystem {
   }
 
   mkdir(dir: string): Promise<void> {
+    this.assertWritable(dir);
     return new Promise<void>((resolve, reject) => {
       fs.mkdir(dir, err => {
         if (err) {
@@ -138,6 +161,7 @@ export default class LocalFileSystem extends FileSystem {
   }
 
   ensureDir(dir: string): Promise<void> {
+    this.assertWritable(dir);
     return fse.ensureDir(dir);
   }
 
@@ -170,6 +194,7 @@ export default class LocalFileSystem extends FileSystem {
   }
 
   unlink(path: string): Promise<void> {
+    this.assertWritable(path, false);
     return new Promise<void>((resolve, reject) => {
       fs.unlink(path, err => {
         if (err) {
@@ -183,6 +208,7 @@ export default class LocalFileSystem extends FileSystem {
   }
 
   rmdir(path: string, recursive: boolean): Promise<void> {
+    this.assertWritable(path, false);
     if (recursive) {
       return fse.remove(path);
     }
@@ -200,10 +226,11 @@ export default class LocalFileSystem extends FileSystem {
   }
 
   rename(srcPath: string, destPath: string): Promise<void> {
+    this.assertWritable(srcPath, false); this.assertWritable(destPath, false);
     return fse.rename(srcPath, destPath);
   }
 
   renameAtomic(srcPath: string, destPath: string): Promise<void> {
-    return fse.rename(srcPath, destPath);
+    return this.rename(srcPath, destPath);
   }
 }

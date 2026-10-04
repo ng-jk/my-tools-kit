@@ -1,18 +1,10 @@
 # Release notes
 
-
-
 This file records implemented functionality and its verification limits. Extension and pipeline-plugin versions are independent.
-
-
 
 ## 0.5.0 — 2026-10-04
 
-
-
 Extension: **0.5.0**. Pipeline plugin: **0.3.1**.
-
-
 
 - Integrate ng-jk/vscode-sftp 1.16.3 source, including all upstream public commands, profiles/contexts, SFTP/FTP/FTPS, remote explorer, Git-change uploads, sync, watchers, temporary uploads, permissions and mirror backups. Preserve upstream licenses and source provenance.
 
@@ -27,20 +19,15 @@ Extension: **0.5.0**. Pipeline plugin: **0.3.1**.
 
 - Permanently decode gzip Marketplace responses with bounded decompression; publication no longer needs the 0.4.0 transport workaround.
 
+- Prevent downloads through destination symlinks, reload watchers on every profile switch, and await Git uploads with correctly mapped remote rename paths.
 - Reject unsafe remote listing paths, preserve ignored descendants during sync deletion, correct FTP file creation, and resolve watcher behavior from the selected profile.
 - Add local SFTP/FTP wire tests, shared-engine/CLI tests, and sidebar/command host-adapter diagnostics. Advanced server/authentication combinations and native UI acceptance remain environment-specific; no production credentials are needed for automated tests.
 
 - Document the complete SFTP command inventory and explain pipeline prerequisites and branch flow.
 
-
-
 ## 0.4.0 — 2026-10-04
 
-
-
 Extension: **0.4.0**. Pipeline plugin: **0.3.0**.
-
-
 
 - Set the Marketplace publisher ID to `NGJUNKAI` and adopt the MIT license for this toolkit and its packaged pipeline plugin. Referenced upstream projects retain their own licenses.
 
@@ -56,19 +43,11 @@ Extension: **0.4.0**. Pipeline plugin: **0.3.0**.
 
 - Add fixture tests for Entra CLI arguments, credential exclusion, manifest identity, Marketplace response validation, upload failure/recovery, version conflicts, branch races, and main-promotion ordering. Live authentication is checked separately; no automated test uploads to the real Marketplace.
 
-
-
 ## 0.3.0 — 2026-09-27
-
-
 
 Extension: **0.3.0**. Pipeline plugin: **0.2.0**.
 
-
-
 ### Changed
-
-
 
 - Replaced the GitHub Actions generator and workflow with Python standard-library CI/CD. No Actions service or workflow is required.
 
@@ -94,11 +73,7 @@ Extension: **0.3.0**. Pipeline plugin: **0.2.0**.
 
 - Updated both agent manifests and the self-configuration skill for Python commands, real test evidence, and user-owned UAT. Plugin builds and ZIP packaging now use Python.
 
-
-
 ### Verification and release boundaries
-
-
 
 - Data/logic and terminal suites include an isolated bare-Git-remote promotion simulation, failed deployment/main-push protection, stale UAT rejection, evidence tampering, exact API wire assertions, JSON precision, long pastes, and Git snapshot comparisons.
 
@@ -108,19 +83,11 @@ Extension: **0.3.0**. Pipeline plugin: **0.2.0**.
 
 - Breaking pipeline migration: legacy `inspect/plan/apply/rollback` and Actions configuration are replaced by `init/status/check/test/accept-uat/publish` and `.devkit-pipeline.json` argv groups. Python 3.11+ is now required.
 
-
-
 ## 0.2.0 — 2026-09-27
-
-
 
 Extension: **0.2.0**. Pipeline plugin: **0.1.0**.
 
-
-
 ### Added
-
-
 
 - Text & JSON Tools workspace, accessible from the command palette and API workspace.
 
@@ -144,11 +111,7 @@ Extension: **0.2.0**. Pipeline plugin: **0.1.0**.
 
 - Undoable formatting of the active editor's JSON selection or full document.
 
-
-
 ### Verification
-
-
 
 - 27 core/integration tests and two browser tests pass locally on Windows with Node.js 24 and Microsoft Edge.
 
@@ -158,11 +121,7 @@ Extension: **0.2.0**. Pipeline plugin: **0.1.0**.
 
 - Installable artifact: `dist/development-tools-kit-0.2.0.vsix` from `npm run package`.
 
-
-
 ### Limits
-
-
 
 - Text/file comparisons accept up to 20 MiB per side. Binary output is a diagnostic summary, not a full binary diff or structural comparison of images, PDFs, or Office documents.
 
@@ -174,19 +133,11 @@ Extension: **0.2.0**. Pipeline plugin: **0.1.0**.
 
 - Browser tests exercise the real handlers with simulated VS Code APIs. Native VS Code host installation has not been separately exercised.
 
-
-
 ## 0.1.0 — 2026-09-27
-
-
 
 Initial API debugger and CI/CD configurator implementation. Pipeline-plugin version: **0.1.0**.
 
-
-
 ### Added
-
-
 
 - Shared HTTP/HTTPS request engine and VS Code request/response editor.
 
@@ -216,11 +167,7 @@ Initial API debugger and CI/CD configurator implementation. Pipeline-plugin vers
 
 - Upstream database-client and SFTP repository references with recorded revisions.
 
-
-
 ### Verification and limits
-
-
 
 - Initial delivery passed 20 core/integration tests and one browser test; plugin and skill validators passed.
 

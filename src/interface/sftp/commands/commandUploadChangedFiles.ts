@@ -96,29 +96,9 @@ async function handleCommand(hint: any) {
     }
   }
 
-  await Promise.all(creates.concat(uploads).map(change => {
-    try {
-      uploadFile(change.uri)
-    } catch (e) {
-      logger.error('Upload failed.', e);
-    }
-  }));
-  await Promise.all(
-    renames.map(change => {
-      try {
-        renameRemote(change.originalUri, { originPath: change.renameUri!.fsPath });
-      } catch (e) {
-        logger.error('Rename failed.', e);
-      }
-    })
-  );
-  await Promise.all(deletes.map(change => {
-    try {
-      removeRemote(change.uri)
-    } catch (e) {
-      logger.error('Deletion failed.', e);
-    }
-  }));
+  await Promise.all(creates.concat(uploads).map(change => uploadFile(change.uri)));
+  await Promise.all(renames.map(change => renameRemote(change.renameUri || change.uri, { originPath: change.originalUri.fsPath })));
+  await Promise.all(deletes.map(change => removeRemote(change.uri)));
 
   logger.log('');
   logger.log('------ Upload Changed Files Result ------');

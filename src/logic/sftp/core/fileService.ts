@@ -10,12 +10,11 @@ import { replaceHomePath, resolvePath } from '../../../data/sftp/config-files';
 import { SETTING_KEY_REMOTE } from '../../../data/sftp/constants';
 import upath from '../../../data/sftp/core/upath';
 import Ignore from './ignore';
-import { FileSystem } from '../../../data/sftp/core/fs/index';
+import { FileSystem, LocalFileSystem } from '../../../data/sftp/core/fs/index';
 import { resolveProfileContext } from './profileContext';
 import Scheduler from './scheduler';
 import { createRemoteIfNoneExist, removeRemoteFs } from '../../../data/sftp/core/remoteFs';
 import TransferTask from './transferTask';
-import localFs from '../../../data/sftp/core/localFs';
 
 type Omit<T, U> = Pick<T, Exclude<keyof T, U>>;
 
@@ -406,11 +405,13 @@ export default class FileService {
   id: number;
   baseDir: string;
   workspace: string;
+  private readonly localFileSystem: FileSystem;
 
   constructor(baseDir: string, workspace: string, config: FileServiceConfig) {
     this.id = ++id;
     this.workspace = workspace;
     this.baseDir = baseDir;
+    this.localFileSystem = new LocalFileSystem(path, baseDir);
     this._watcherConfig = config.watcher;
     this._config = config;
     if (config.profiles) {
@@ -539,7 +540,7 @@ export default class FileService {
   }
 
   getLocalFileSystem(): FileSystem {
-    return localFs;
+    return this.localFileSystem;
   }
 
   getRemoteFileSystem(config: ServiceConfig): Promise<FileSystem> {
