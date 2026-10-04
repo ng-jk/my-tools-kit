@@ -124,6 +124,26 @@ test('bidirectional sync rejects both file/directory conflict orientations',asyn
     assert.equal(tasks.length,0);
   }
 });
+test('excluded file/directory conflicts do not abort sync',async()=>{
+  for(const direction of [engine.TransferDirection.LOCAL_TO_REMOTE,engine.TransferDirection.REMOTE_TO_LOCAL]) {
+    const source={pathResolver:path.posix,list:async()=>[{name:'ignored',fspath:'/source/ignored',type:engine.FileType.File}]};
+    const target={pathResolver:path.posix,ensureDir:async()=>{},list:async()=>[{name:'ignored',fspath:'/destination/ignored',type:engine.FileType.Directory}]};
+    for(const policy of [{ignore:file=>file.endsWith('/ignored')},{ignoreExisting:true}]) {
+      const tasks=[];await engine.sync({srcFsPath:'/source',targetFsPath:'/destination',srcFs:source,targetFs:target,transferDirection:direction,transferOption:policy},task=>tasks.push(task));assert.equal(tasks.length,0);
+    }
+  }
+});
+test('source failure during protocol permission checks rejects instead of hanging',{timeout:1000},async()=>{
+  for(const protocol of ['sftp','ftp']) {
+    const stream=new (require('node:stream').Readable)({read(){}});let payloads=0;
+    const adapter=protocol==='sftp'?new engine.SFTPFileSystem(path.posix,{client:{}}):new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({abort:cb=>cb()})}});
+    const fail=async()=>{stream.destroy(new Error('source failed during permissions'));await new Promise(setImmediate);};
+    if(protocol==='sftp') {adapter.fchmod=fail;adapter.fstat=async()=>({mode:0o600});adapter._put=async()=>{payloads++;};}
+    else {adapter.verifyMode=fail;adapter.atomicAppend=async()=>{payloads++;};}
+    await assert.rejects(adapter.put(stream,'/target',{mode:0o600,fd:{handle:Buffer.from('h'),path:'/target',prepared:true,mode:0o600}}),/source failed during permissions/);
+    assert.equal(payloads,0);
+  }
+});
 test('sync preserves symbolic link identity without reading linked file contents',async()=>{
   const source={pathResolver:path.posix,list:async()=>[{name:'link',fspath:'/local/link',type:engine.FileType.SymbolicLink,mtime:1,atime:1}],readlink:async()=>'../../private/key',get:async()=>{throw new Error('must not dereference');}};
   let link;

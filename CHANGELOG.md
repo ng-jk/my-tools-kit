@@ -6,6 +6,8 @@ This file records implemented functionality and its verification limits. Extensi
 
 Extension: **0.5.0**. Pipeline plugin: **0.3.1**.
 
+- Capture source-stream failures during permission preparation so transfers fail instead of hanging; apply sync exclusions before checking file/directory conflicts.
+
 - Integrate ng-jk/vscode-sftp 1.16.3 source, including all upstream public commands, profiles/contexts, SFTP/FTP/FTPS, remote explorer, Git-change uploads, sync, watchers, temporary uploads, permissions and mirror backups. Preserve upstream licenses and source provenance.
 
 - Add a Development Tools Kit Activity Bar entry with a tool list and embedded SFTP Remote Explorer; namespace SFTP commands to avoid collisions.

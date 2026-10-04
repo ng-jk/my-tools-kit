@@ -250,14 +250,13 @@ async function _sync(
       const srcFile = srcFileTable[id];
       const desFile = desFileTable[id];
       delete desFileTable[id];
+      if (transferOption.ignore && (transferOption.ignore(srcFile.fspath) || (desFile && transferOption.ignore(desFile.fspath)))) return;
 
       // files exist on both side
       if (desFile) {
+        if (transferOption.ignoreExisting) return;
         if (srcFile.type !== desFile.type && (srcFile.type === FileType.Directory || desFile.type === FileType.Directory)) {
           throw new Error('Sync file/directory type conflict: ' + srcFile.fspath + ' and ' + desFile.fspath);
-        }
-        if (transferOption.ignoreExisting) {
-          return;
         }
 
         let from: FileEntry = srcFile;

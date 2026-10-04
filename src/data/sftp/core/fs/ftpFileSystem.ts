@@ -171,6 +171,8 @@ export default class FTPFileSystem extends RemoteFileSystem {
       const handle=option?.fd as FtpFileHandle | undefined;
       const prepared=handle?.prepared ? handle : await this.open(path,'w',option?.mode);
       await this.verifyMode(path,prepared.mode!);
+      if (inputError) throw inputError;
+      if (input.destroyed && !input.readableEnded) throw new Error('Source stream closed before transfer completed');
       await this.atomicAppend(input, path);
       await this.verifyMode(path,prepared.mode!);
     } catch (error) {

@@ -218,6 +218,15 @@ export default class SFTPFileSystem extends RemoteFileSystem {
   }
 
   async put(input: Readable, path: string, option?: FileOption): Promise<void> {
+    let sourceError: Error | undefined;
+    const remember = (error: Error) => { sourceError = error; };
+    const checkSource = () => {
+      if (sourceError) throw sourceError;
+      if (input.destroyed && !input.readableEnded) throw new Error('Source stream closed before transfer completed');
+    };
+    input.on('error', remember);
+    try {
+    checkSource();
     if (option && option.fd) {
       const fd = option.fd as SFTPFileDescriptor;
       // const opt = { ...option, handle: fd.handle, autoDestroy: false };
@@ -230,12 +239,15 @@ export default class SFTPFileSystem extends RemoteFileSystem {
         await this.fchmod(fd, opt.mode).catch(() => {});
         await this.verifyMode(fd, opt.mode);
       }
+      checkSource();
       await this._put(input, path, opt);
+      checkSource();
       if (opt.mode !== undefined) await this.verifyMode(fd, opt.mode);
       return;
     }
 
-    return this._put(input, path, option);
+    await this._put(input, path, option);
+    } finally { input.removeListener('error', remember); }
   }
 
   private async verifyMode(fd:SFTPFileDescriptor,mode:number) {
