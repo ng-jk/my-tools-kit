@@ -7,3 +7,7 @@ dist/
 repositories/
 __pycache__/
 *.pyc
+.azure/
+.env
+.env.*
+.vsce

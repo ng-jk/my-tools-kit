@@ -1,8 +1,10 @@
 # Development Tools Kit
 
-A local API debugger, JSON formatter, text/file/Git comparer, and Python terminal CI/CD pipeline, packaged as a VS Code extension with a shared Codex / Claude Code plugin. Extension version 0.3.0; pipeline plugin version 0.2.0. No GitHub Actions are used.
+A local API debugger, JSON formatter, text/file/Git comparer, and Python terminal CI/CD pipeline, packaged as a VS Code extension with a shared Codex / Claude Code plugin. Extension version 0.4.0; pipeline plugin version 0.3.0. No GitHub Actions are used.
 
 [Release notes](CHANGELOG.md) · [Source repository](https://github.com/ng-jk/my-tools-kit) · [Issue tracker](https://github.com/ng-jk/my-tools-kit/issues)
+
+Licensed under [MIT](LICENSE). Marketplace publisher ID: `NGJUNKAI`. The Python release pipeline publishes through `vsce --azure-credential` using Microsoft Entra ID. Credentials belong in the local Azure login cache, outside this repository. Upstream database/SFTP projects retain their own licenses.
 
 ## What's included
 
@@ -100,6 +102,7 @@ Run **Development Tools Kit: Configure CI/CD** in VS Code. Each menu action laun
 ```sh
 python pipeline.py init
 python pipeline.py status
+python pipeline.py marketplace-check
 python pipeline.py check
 # After committing changes to developement:
 python pipeline.py test --push
@@ -117,7 +120,17 @@ Configuration is checked in as `.devkit-pipeline.json`. Commands are argument ar
 
 Reports, retained VSIX/ZIP artifacts with SHA-256 hashes, UAT records, and an operation lock live under the Git common directory's `devkit/` folder. `status` prints its location. Rerunning test invalidates prior UAT. Evidence is local and authenticated to detect edits; it is not a security boundary against the same OS user or direct Git pushes. Another machine must retest and record acceptance. If a process crashes, verify no pipeline is running before removing its stale `pipeline.lock`.
 
-Publication currently means package creation and Git branch promotion. No external hosting target, marketplace upload, or GitHub Release is configured. The old generated Actions workflow has been removed. Existing repositories must migrate their configuration to this Python format; old inspect/plan/apply/rollback commands are no longer available.
+Marketplace publication is configured for `NGJUNKAI.development-tools-kit`. After deployment gates pass, the pipeline uploads the exact VSIX retained from your UAT-approved test run, verifies the published version and its extension payload, and only then advances main. The separately built agent-plugin ZIP is not uploaded to the VS Code Marketplace. No GitHub Release or other hosting target is configured. The old generated Actions workflow has been removed; legacy inspect/plan/apply/rollback commands are no longer available.
+
+## Marketplace setup and recovery
+
+Install [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli-windows), then sign in locally with `az login --tenant <tenant-id> --allow-no-subscriptions`. Your Entra identity needs Contributor or Owner access on the Marketplace publisher. Run `npm ci` in the toolkit root to install its locked `vsce` dependency. `python pipeline.py marketplace-check` or **Verify Marketplace access** in VS Code checks authentication and publisher access without uploading. This check alone does not prove write permission; upload additionally requires Contributor/Owner. Microsoft may periodically require interactive login/MFA again. No PAT, client secret, or GitHub Actions is needed for this PC-based workflow.
+
+`.devkit-pipeline.json` contains only public Marketplace configuration: `publisher`, `tenantId`, and `artifact`. PAT environment overrides are removed for publishing subprocesses; Entra login caches stay outside Git. The standard Windows Azure CLI installation directory is discovered even when the desktop app has an older PATH. Do not put tokens or Azure configuration caches in the repository. The extension's version must be committed before testing; publish never bumps it or rebuilds the approved VSIX.
+
+Before upload, the pipeline checks for the exact Marketplace version. Matching extension files allow recovery without another upload; different contents block main promotion. Marketplace may add signatures to the outer VSIX container, so remote verification compares the complete `extension/` payload and identity rather than the whole ZIP hash. Local UAT evidence still checks the exact ZIP SHA-256. Verification is limited to 100 MiB compressed and unpacked packages.
+
+An authenticated local receipt is written before upload. If upload times out, or Microsoft scanning/indexing is pending, main stays unchanged. Run publish again to check the existing attempt; it will not blindly reupload. If the version remains absent, inspect **Manage Publishers → Extensions** for validation errors. Keep the receipt; either resolve the pending Marketplace operation or commit a new version and repeat test/UAT. Once Marketplace succeeds, a failed main push can be retried without duplicate publication. If the remote main push succeeded but the local update failed, publish can reconcile local main from its recorded deployment and UAT evidence. Publication cannot be rolled back automatically when Git fails afterward.
 
 ## Shared layers and terminal tools
 
@@ -147,7 +160,7 @@ For mixed input, `compare - file.txt` and `compare file.txt -` read raw text/byt
 
 ## Codex and Claude Code
 
-`plugins/pipeline-configurator` contains both host manifests and a self-contained `configure-pipeline` skill. `python scripts/build.py` synchronizes the Python runtime and shared skill and writes `dist/pipeline-configurator-0.2.0.zip`.
+`plugins/pipeline-configurator` contains both host manifests and a self-contained `configure-pipeline` skill. `python scripts/build.py` synchronizes the Python runtime and shared skill and writes `dist/pipeline-configurator-0.3.0.zip`.
 
 Python is required to run the pipeline. The plugin includes no third-party Python dependencies. Its skill configures actual project CLI checks and project-local agent integration, preserves existing customizations, and never grants itself global permissions or fabricates UAT approval.
 

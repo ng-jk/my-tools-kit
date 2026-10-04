@@ -10,3 +10,7 @@ docs/**
 package-lock.json
 **/__pycache__/**
 **/*.pyc
+.azure/**
+.env
+.env.*
+.vsce

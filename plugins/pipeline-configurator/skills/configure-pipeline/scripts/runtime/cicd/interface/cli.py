@@ -9,7 +9,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Python CI/CD: developement -> test -> deployment -> main")
     parser.add_argument("--root", default=".")
     commands = parser.add_subparsers(dest="command", required=True)
-    for name in ("init", "status", "check", "publish"):
+    for name in ("init", "status", "check", "publish", "marketplace-check"):
         commands.add_parser(name)
     test = commands.add_parser("test")
     test.add_argument("--push", action="store_true")
@@ -26,7 +26,7 @@ def main(argv=None):
         elif args.command == "accept-uat":
             result = pipeline.accept_uat(args.commit, args.reviewer, args.note)
         else:
-            result = getattr(pipeline, args.command)()
+            result = getattr(pipeline, args.command.replace("-", "_"))()
         print(json.dumps(result, indent=2))
         return 0 if result.get("passed") is True else 1
     except Exception as exc:

@@ -14,7 +14,7 @@ devkit send <request.json> [--env file.json] [--allow-scripts] [--out response.j
 devkit curl <request.json> [--out request.sh]
 devkit import <input.json> --out collection.json
 devkit export <collection.json> --out postman.json
-devkit pipeline status|init|check|test|accept-uat|publish <project> [options]
+devkit pipeline status|init|check|test|accept-uat|marketplace-check|publish <project> [options]
 devkit json <file|-> [--minify|--validate] [--indent 2|4|tab] [--out file]
 devkit compare <left-file|-> <right-file|-> [--json] [--ignore-case] [--trim-whitespace] [--line-endings]
 devkit git-history <root>

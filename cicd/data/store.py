@@ -86,6 +86,9 @@ class Store:
             raise ValueError("Pipeline evidence was modified; rerun the gate.")
         return data["payload"]
 
+    def optional(self, name):
+        return self.load(name) if (self.root / name).exists() else None
+
     @contextmanager
     def lock(self):
         file = self.root / "pipeline.lock"

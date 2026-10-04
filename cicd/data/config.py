@@ -1,5 +1,6 @@
 """Read and validate the portable pipeline configuration."""
 import json
+import re
 from pathlib import Path
 
 GATES = ("architecture", "unit", "function", "integration", "build")
@@ -23,4 +24,14 @@ def read(root):
         raise ValueError("artifacts must be relative file paths inside the project")
     if not isinstance(value.get("timeout", 900), int) or not 1 <= value.get("timeout", 900) <= 7200:
         raise ValueError("timeout must be between 1 and 7200 seconds")
+    marketplace = value.get("marketplace")
+    if marketplace is not None:
+        if not isinstance(marketplace, dict) or set(marketplace) != {"publisher", "tenantId", "artifact"}:
+            raise ValueError("marketplace accepts only publisher, tenantId, and artifact; never store credentials here")
+        if not isinstance(marketplace["publisher"], str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]*", marketplace["publisher"]):
+            raise ValueError("Invalid Marketplace publisher ID")
+        if not isinstance(marketplace["tenantId"], str) or not re.fullmatch(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}", marketplace["tenantId"]):
+            raise ValueError("marketplace.tenantId must be a tenant UUID")
+        if marketplace["artifact"] not in artifacts or not marketplace["artifact"].endswith(".vsix"):
+            raise ValueError("marketplace.artifact must name a retained VSIX")
     return value

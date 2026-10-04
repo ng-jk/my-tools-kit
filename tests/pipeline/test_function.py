@@ -88,3 +88,50 @@ class PromotionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "changed"):
             self.pipeline.publish()
         self.git.push.assert_not_called()
+
+    def test_marketplace_failure_never_advances_main(self):
+        self.uat()
+        self.pipeline._gates = Mock(return_value=self.report)
+        self.pipeline.marketplace = Mock()
+        self.pipeline.marketplace.publish.side_effect = ValueError("upload pending")
+        with self.assertRaisesRegex(ValueError, "upload pending"):
+            self.pipeline.publish()
+        self.assertEqual(self.refs["main"], "base")
+        self.git.push.assert_called_once_with("origin", "deployment", "candidate")
+
+    def test_marketplace_success_happens_before_main_push(self):
+        self.uat()
+        self.pipeline._gates = Mock(return_value=self.report)
+        self.pipeline.marketplace = Mock()
+        def publish(report):
+            self.assertEqual(self.refs["main"], "base")
+            self.git.push.assert_called_once_with("origin", "deployment", "candidate")
+            return {"state": "verified"}
+        self.pipeline.marketplace.publish.side_effect = publish
+        result = self.pipeline.publish()
+        self.assertEqual(result["marketplace"]["state"], "verified")
+        self.assertEqual(self.refs["main"], "candidate")
+
+    def test_successful_remote_main_push_recovers_without_reupload(self):
+        self.uat()
+        self.refs["deployment"] = "candidate"
+        self.git.remote_ref.side_effect = lambda remote, branch: "candidate"
+        self.store.save("deployment-candidate.json", self.report)
+        self.pipeline.marketplace = Mock()
+        self.pipeline.marketplace.publish.return_value = {"state": "verified"}
+        self.assertTrue(self.pipeline.publish()["recovered"])
+        self.pipeline.marketplace.publish.assert_called_once_with(self.report, allow_upload=False)
+        self.assertEqual(self.refs["main"], "candidate")
+        self.git.push.assert_not_called()
+
+    def test_branch_change_during_upload_blocks_main(self):
+        self.uat()
+        self.pipeline._gates = Mock(return_value=self.report)
+        self.pipeline.marketplace = Mock()
+        def publish(report):
+            self.refs["developement"] = "new"
+            return {"state": "verified"}
+        self.pipeline.marketplace.publish.side_effect = publish
+        with self.assertRaisesRegex(ValueError, "Branch changed during Marketplace"):
+            self.pipeline.publish()
+        self.assertEqual(self.refs["main"], "base")

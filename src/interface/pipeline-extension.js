@@ -3,12 +3,13 @@ const path = require('node:path');
 async function configurePipeline(vscode, context, root) {
   const action = await vscode.window.showQuickPick([
     { label: 'Status', command: 'status', description: 'Show branches, reviewer, and evidence location' },
+    { label: 'Verify Marketplace access', command: 'marketplace-check', description: 'Read-only vsce check using Microsoft Entra ID' },
     { label: 'Initialize branches', command: 'init', description: 'Create missing developement, test, deployment branches from main' },
     { label: 'Check current changes', command: 'check', description: 'Architecture, unit, function, integration tests and package build' },
     { label: 'Test committed development', command: 'test', description: 'Advance test and run isolated checks plus AI review' },
     { label: 'Test and push test branch', command: 'test', flags: ['--push'], description: 'Also fast-forward the remote test branch' },
     { label: 'Record my interface UAT approval', command: 'accept-uat', description: 'Your approval of the exact tested commit' },
-    { label: 'Publish', command: 'publish', description: 'Push deployment; advance main only after checks pass' }
+    { label: 'Publish', command: 'publish', description: 'Check deployment, publish approved VSIX if configured, then advance main' }
   ], { title: 'Development Tools Kit — Python CI/CD' });
   if (!action) return;
   const args = [path.join(context.extensionPath, 'pipeline.py'), '--root', root, action.command, ...(action.flags || [])];

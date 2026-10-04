@@ -25,8 +25,13 @@ def command(argv):
     return [exe, *result[1:]]
 
 
-def run(argv, cwd, *, timeout=600, stdin=None, check=True):
+def run(argv, cwd, *, timeout=600, stdin=None, check=True, environment=None):
     env = dict(os.environ, GIT_TERMINAL_PROMPT="0", GIT_OPTIONAL_LOCKS="0", PYTHONDONTWRITEBYTECODE="1")
+    for key, value in (environment or {}).items():
+        if value is None:
+            env.pop(key, None)
+        else:
+            env[key] = value
     with subprocess.Popen(command(argv), cwd=cwd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                           text=True, encoding="utf-8", errors="replace", env=env, start_new_session=os.name != "nt",
                           creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0) as process:

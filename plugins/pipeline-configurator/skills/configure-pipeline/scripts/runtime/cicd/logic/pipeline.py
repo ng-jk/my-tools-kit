@@ -7,21 +7,30 @@ from ..data.git import Git
 from ..data.store import Store, digest
 from ..data.process import run
 from ..data.reviewer import review
+from .marketplace import MarketplaceRelease
 
 
 class Pipeline:
-    def __init__(self, root, git=None, store=None, runner=run, reviewer=review, progress=None):
+    def __init__(self, root, git=None, store=None, runner=run, reviewer=review, progress=None, marketplace=None):
         self.root = Path(root).resolve()
         self.git = git or Git(self.root)
         self.store = store or Store(self.git.common)
         self.config = read(self.root)
         self.runner, self.reviewer = runner, reviewer
         self.progress = progress or (lambda message: None)
+        self.marketplace = marketplace or (MarketplaceRelease(self.root, self.config["marketplace"], self.store)
+                                           if self.config.get("marketplace") else None)
 
     def status(self):
         return {"passed": True, "branches": {key: self.git.ref(value) for key, value in BRANCHES.items()},
                 "reviewer": self.config["reviewer"], "evidence": str(self.store.root),
-                "flow": "developement -> test -> human interface UAT -> deployment -> main"}
+                "marketplace": self.config.get("marketplace"),
+                "flow": "developement -> test -> human interface UAT -> deployment -> configured Marketplace upload -> main"}
+
+    def marketplace_check(self):
+        if not self.marketplace:
+            raise ValueError("No marketplace configuration is enabled")
+        return self.marketplace.check()
 
     def init(self):
         with self.store.lock():
@@ -107,12 +116,23 @@ class Pipeline:
             if self.git.sha("developement") != sha:
                 raise ValueError("developement changed since test; test and accept UAT again")
             remote_main = self.git.remote_ref(self.config["remote"], "main")
-            if remote_main != base:
-                raise ValueError("Local and remote main differ; reconcile and test again")
             report = self.store.load(f"test-{sha}.json")
-            require_tested(report, sha, base, digest(self.config))
+            tested_base = report["base"]
+            if remote_main not in (base, sha) or base not in (tested_base, sha):
+                raise ValueError("Local or remote main changed; reconcile and test again")
+            require_tested(report, sha, tested_base, digest(self.config))
             self.store.verify_artifacts(report, self.config.get("artifacts", []))
             require_uat(self.store.load(f"uat-{sha}.json"), sha, digest(report))
+            if remote_main == sha:
+                # Recover a successful remote push followed by a local update failure.
+                require_tested(self.store.load(f"deployment-{sha}.json"), sha, tested_base, digest(self.config))
+                if self.git.sha("deployment") != sha or self.git.remote_ref(self.config["remote"], "deployment") != sha:
+                    raise ValueError("Deployment refs changed; inspect before recovering publication")
+                receipt = self.marketplace.publish(report, allow_upload=False) if self.marketplace else None
+                self.git.update("main", sha)
+                return {"passed": True, "candidate": sha, "recovered": True, "marketplace": receipt}
+            if base != tested_base:
+                raise ValueError("Local main advanced before publication; reconcile before continuing")
             if not self.git.ancestor(base, sha):
                 raise ValueError("Candidate does not contain main")
             self.git.update("deployment", sha)
@@ -129,7 +149,17 @@ class Pipeline:
             # Push first; a rejected push must never advance local main.
             self.git.ensure_update("main", sha)
             self.store.verify_artifacts(report, self.config.get("artifacts", []))
+            receipt = None
+            if self.marketplace:
+                self.progress("Publishing the UAT-approved VSIX through vsce with Microsoft Entra ID")
+                receipt = self.marketplace.publish(report)
+                if (self.git.sha("developement") != sha or self.git.sha("test") != sha
+                        or self.git.sha("deployment") != sha or self.git.sha("main") != base
+                        or self.git.remote_ref(self.config["remote"], "main") != base
+                        or self.git.remote_ref(self.config["remote"], "deployment") != sha):
+                    raise ValueError("Branch changed during Marketplace upload. Publication receipt retained; inspect refs before retrying")
             self.git.push(self.config["remote"], "main", sha)
             self.git.update("main", sha)
             return {"passed": True, "candidate": sha, "promoted": ["deployment", "main"],
-                    "note": "Repository publication complete; no external hosting target is configured."}
+                    "marketplace": receipt,
+                    "note": "Marketplace version verified and main promoted." if receipt else "Repository publication complete; no external hosting target is configured."}

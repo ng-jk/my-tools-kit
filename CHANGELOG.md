@@ -2,6 +2,18 @@
 
 This file records implemented functionality and its verification limits. Extension and pipeline-plugin versions are independent.
 
+## 0.4.0 — 2026-10-04
+
+Extension: **0.4.0**. Pipeline plugin: **0.3.0**.
+
+- Set the Marketplace publisher ID to `NGJUNKAI` and adopt the MIT license for this toolkit and its packaged pipeline plugin. Referenced upstream projects retain their own licenses.
+- Connect Python publication to the installed vsce CLI using Microsoft Entra ID, with no PAT fallback or repository-stored credentials.
+- Add the same read-only Marketplace access check to the CLI and VS Code task menu.
+- Upload the exact UAT-approved VSIX after deployment gates pass; verify its public version and complete extension payload before promoting main.
+- Journal upload attempts, reject conflicting versions, recover uncertain uploads by reading remote content, and reconcile a completed remote main push after local-update failure. No automatic duplicate uploads or version bumps.
+- Include the MIT license in both extension and agent-plugin packages. The agent-plugin ZIP itself is not uploaded to the VS Code Marketplace.
+- Add fixture tests for Entra CLI arguments, credential exclusion, manifest identity, Marketplace response validation, upload failure/recovery, version conflicts, branch races, and main-promotion ordering. Live authentication is checked separately; no automated test uploads to the real Marketplace.
+
 ## 0.3.0 — 2026-09-27
 
 Extension: **0.3.0**. Pipeline plugin: **0.2.0**.
