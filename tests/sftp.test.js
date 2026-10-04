@@ -327,3 +327,26 @@ test('cancellation during planning prevents payload writes and reports failure',
     finally {adapter[phase]=original;}
   }
 });
+
+test('cancellation during symlink reads and file close preserves existing destinations',async t=>{
+  let task, writes=0;
+  const source={readlink:async()=>{task.cancel();return 'new';}};
+  const target={symlink:async()=>writes++,unlink:async()=>{},rename:async()=>writes++};
+  task=new engine.TransferTask({fsPath:'/source',fileSystem:source},{fsPath:'/target',fileSystem:target},{fileType:engine.FileType.SymbolicLink,transferDirection:engine.TransferDirection.LOCAL_TO_REMOTE,transferOption:{}});
+  await assert.rejects(task.run(),/cancelled/);assert.equal(writes,0);
+  const {local,remote,session}=fixture(t);
+  fs.writeFileSync(path.join(local,'a.txt'),'new');fs.writeFileSync(path.join(remote,'a.txt'),'original');
+  const adapter=await session.service.getRemoteFileSystem(session.config),close=adapter.close;
+  adapter.close=async function(...args){await close.apply(this,args);session.service.cancelTransferTasks();};
+  try {await assert.rejects(engine.operate(session,'upload','a.txt'),/cancelled/);assert.equal(fs.readFileSync(path.join(remote,'a.txt'),'utf8'),'original');assert.deepEqual(fs.readdirSync(remote),['a.txt']);}
+  finally {adapter.close=close;}
+});
+test('cancellation while waiting for replacement lock preserves the completed first transfer',async()=>{
+  let release,entered;const blocked=new Promise(resolve=>entered=resolve),hold=new Promise(resolve=>release=resolve);
+  const entries=new Map([['/target','original']]);let first=true;
+  const target={symlink:async(value,name)=>entries.set(name,value),lstat:async name=>{if(!entries.has(name))throw Object.assign(new Error('missing'),{code:2});return {type:engine.FileType.SymbolicLink};},rename:async(a,b)=>{if(first){first=false;entered();await hold;}entries.set(b,entries.get(a));entries.delete(a);},unlink:async name=>entries.delete(name)};
+  const make=value=>new engine.TransferTask({fsPath:'/source',fileSystem:{readlink:async()=>value}},{fsPath:'/target',fileSystem:target},{fileType:engine.FileType.SymbolicLink,transferDirection:engine.TransferDirection.LOCAL_TO_REMOTE,transferOption:{}});
+  const one=make('first'),two=make('second');const running=one.run();await blocked;
+  const waiting=two.run();await new Promise(resolve=>setImmediate(resolve));two.cancel();release();
+  await running;await assert.rejects(waiting,/cancelled/);assert.equal(entries.get('/target'),'first');assert.equal(entries.size,1);
+});

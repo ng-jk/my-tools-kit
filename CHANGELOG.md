@@ -6,6 +6,8 @@ This file records implemented functionality and its verification limits. Extensi
 
 Extension: **0.5.0**. Pipeline plugin: **0.3.1**.
 
+- Check cancellation after symlink reads, after staging completion, and after acquiring the replacement lock, before changing the destination. Once replacement begins, rollback remains enabled.
+
 - UI and CLI now share transfer planning, backup, scheduling and cancellation orchestration. Cancel All Transfers includes transient all-profile sessions and stops later sync mutations after cancellation. Shared connection identity preserves replacement serialization through cancellation guards.
 
 - Cancellation during CLI planning/backup prevents subsequent transfer writes and reports failure. Shared remote connections remain open until all owning services release them; multi-selection all-profile uploads defer cleanup until every item finishes. Interface realpath access uses a data adapter.

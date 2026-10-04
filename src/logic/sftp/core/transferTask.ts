@@ -86,7 +86,10 @@ export default class TransferTask implements Task {
     try { await this.runTransfer(); } finally { finish(); }
   }
 
+  private checkCancelled = () => { if (this._cancelled) throw new Error("Transfer cancelled"); };
+
   private async runTransfer() {
+    this.checkCancelled();
     const src = this._srcFsPath;
     const target = this._targetFsPath;
     const srcFs = this._srcFs;
@@ -97,10 +100,11 @@ export default class TransferTask implements Task {
         break;
       case FileType.SymbolicLink:
         const link = await srcFs.readlink(src);
+        this.checkCancelled();
         const stagedLink = stagingPath(target);
         try {
           await targetFs.symlink(link, stagedLink);
-          await replaceStaged(targetFs, stagedLink, target, this._TransferOption.openSsh);
+          await replaceStaged(targetFs, stagedLink, target, this._TransferOption.openSsh, this.checkCancelled);
         } finally { await targetFs.unlink(stagedLink).catch(() => {}); }
         break;
       default:
@@ -139,6 +143,7 @@ export default class TransferTask implements Task {
       if (this._cancelled) throw new Error('Transfer cancelled');
       fd = await targetFs.open(staged, 'wx', mode);
       if (sourceError) throw sourceError;
+      this.checkCancelled();
       await targetFs.put(this._handle, staged, {mode, fd, autoClose:false});
       if (sourceError) throw sourceError;
       if (this._cancelled) throw new Error('Transfer cancelled');
@@ -149,7 +154,7 @@ export default class TransferTask implements Task {
         }
       }
       await targetFs.close(fd); fd = undefined;
-      await replaceStaged(targetFs, staged, target, openSsh);
+      await replaceStaged(targetFs, staged, target, openSsh, this.checkCancelled);
     } finally {
       if (this._handle) { this._handle.destroy(); this._handle.removeListener('error', rememberError); }
       if (fd !== undefined) await targetFs.close(fd).catch(error => logger.warn(error.message));
