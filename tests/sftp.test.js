@@ -422,3 +422,25 @@ test('Windows downloads accept Unix directory modes with protected native ACLs',
     assert.equal(result.status,0,result.stderr);
   }
 });
+
+test('Windows staging protects new files and preserves destination ACL before payloads',{skip:process.platform!=='win32'},async t=>{
+  const {local,remote,session}=fixture(t);fs.writeFileSync(path.join(remote,'private.txt'),'first payload');
+  const acl=name=>{
+    const script="$a=[System.IO.File]::GetAccessControl($env:DEVKIT_TEST_FILE); if(-not $a.AreAccessRulesProtected){exit 1}; $s=[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value; foreach($r in $a.GetAccessRules($true,$true,[System.Security.Principal.SecurityIdentifier])){if($r.IdentityReference.Value -notin @($s,'S-1-5-18')){exit 2}}; $a.GetSecurityDescriptorSddlForm([System.Security.AccessControl.AccessControlSections]::Access)";
+    const result=spawnSync('powershell.exe',['-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(script,'utf16le').toString('base64')],{windowsHide:true,env:{...process.env,DEVKIT_TEST_FILE:name},encoding:'utf8'});assert.equal(result.status,0,result.stderr);return result.stdout.trim();
+  };
+  const adapter=session.service.getLocalFileSystem(),put=adapter.put;let expected;
+  adapter.put=async function(stream,staged,options){const actual=acl(staged);if(expected)assert.equal(actual,expected);return put.call(this,stream,staged,options);};
+  try {
+    await engine.operate(session,'download','private.txt');expected=acl(path.join(local,'private.txt'));
+    fs.writeFileSync(path.join(remote,'private.txt'),'replacement');await engine.operate(session,'download','private.txt');
+    assert.equal(acl(path.join(local,'private.txt')),expected);assert.equal(fs.readFileSync(path.join(local,'private.txt'),'utf8'),'replacement');
+  } finally {adapter.put=put;}
+});
+test('explicit upload directory permissions apply to every missing parent',async t=>{
+  const {local,remote,session}=fixture(t,{dirPerm:750});fs.mkdirSync(path.join(local,'one','two'),{recursive:true});fs.writeFileSync(path.join(local,'one','two','file.txt'),'nested');
+  const target=await session.service.getRemoteFileSystem(session.config),establish=target.establishDirectoryMode,chmod=target.chmod;const observed=new Map();
+  target.establishDirectoryMode=async(name,mode)=>observed.set(path.resolve(name),mode);target.chmod=async()=>{};
+  try {await engine.operate(session,'upload','one/two/file.txt');assert.equal(observed.get(path.join(remote,'one')),0o750);assert.equal(observed.get(path.join(remote,'one','two')),0o750);}
+  finally {target.establishDirectoryMode=establish;target.chmod=chmod;}
+});

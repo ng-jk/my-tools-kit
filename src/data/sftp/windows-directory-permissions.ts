@@ -29,3 +29,32 @@ export async function protectWindowsDirectory(directory: string) {
   await run('powershell.exe', ['-NoProfile','-NonInteractive','-WindowStyle','Hidden','-EncodedCommand',Buffer.from(script,'utf16le').toString('base64')],
     {windowsHide:true,timeout:30000,env:{...process.env,DEVKIT_ACL_DIRECTORY:directory}});
 }
+
+const fileScript = `
+$ErrorActionPreference = 'Stop'
+$file = $env:DEVKIT_ACL_FILE
+$destination = $env:DEVKIT_ACL_DESTINATION
+if ([System.IO.File]::Exists($destination)) {
+  $original = [System.IO.File]::GetAccessControl($destination)
+  $acl = [System.Security.AccessControl.FileSecurity]::new()
+  $acl.SetSecurityDescriptorSddlForm($original.GetSecurityDescriptorSddlForm([System.Security.AccessControl.AccessControlSections]::Access), [System.Security.AccessControl.AccessControlSections]::Access)
+} else {
+  $sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
+  $acl = [System.Security.AccessControl.FileSecurity]::new()
+  $acl.SetOwner($sid)
+  $acl.SetAccessRuleProtection($true, $false)
+  foreach ($identity in @($sid, [System.Security.Principal.SecurityIdentifier]::new('S-1-5-18'))) {
+    $acl.SetAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($identity, 'FullControl', 'Allow'))
+  }
+}
+$expected = $acl.GetSecurityDescriptorSddlForm([System.Security.AccessControl.AccessControlSections]::Access)
+[System.IO.File]::SetAccessControl($file, $acl)
+$actual = [System.IO.File]::GetAccessControl($file)
+# Windows may add the auto-inherited flag while persisting an otherwise identical DACL.
+$observed = $actual.GetSecurityDescriptorSddlForm([System.Security.AccessControl.AccessControlSections]::Access)
+if ($actual.AreAccessRulesProtected -ne $acl.AreAccessRulesProtected -or ($observed -replace '^D:[A-Z]*','') -ne ($expected -replace '^D:[A-Z]*','')) { throw 'Staging file ACL verification failed' }
+`;
+export async function protectWindowsStagingFile(file: string, destination: string) {
+  await run('powershell.exe', ['-NoProfile','-NonInteractive','-WindowStyle','Hidden','-EncodedCommand',Buffer.from(fileScript,'utf16le').toString('base64')],
+    {windowsHide:true,timeout:30000,env:{...process.env,DEVKIT_ACL_FILE:file,DEVKIT_ACL_DESTINATION:destination}});
+}

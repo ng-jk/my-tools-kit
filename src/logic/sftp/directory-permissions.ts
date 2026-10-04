@@ -16,7 +16,7 @@ async function ensure(source: FileSystem, target: FileSystem, from: string, to: 
   catch (error) { if (error.code !== 'ENOENT' && error.code !== 2) throw error; }
   if (existing) { await target.ensureDir(to); return; }
   const parent = target.pathResolver.dirname(to);
-  if (parent !== to) await ensureTransferDirectory(source, target, source.pathResolver.dirname(from), parent);
+  if (parent !== to) await ensureTransferDirectory(source, target, source.pathResolver.dirname(from), parent, override);
   const stat = await source.lstat(from);
   if (stat.type !== FileType.Directory) throw new Error('Source parent is not a directory: ' + from);
   const mode = override !== undefined ? parseInt(String(override), 8) : stat.mode;

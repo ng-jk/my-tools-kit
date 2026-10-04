@@ -1,6 +1,6 @@
 // Adapted from ng-jk/vscode-sftp (MIT); see THIRD-PARTY-NOTICES.md.
 import * as fs from 'fs';
-import {protectWindowsDirectory} from '../../windows-directory-permissions';
+import {protectWindowsDirectory, protectWindowsStagingFile} from '../../windows-directory-permissions';
 import * as fse from 'fs-extra';
 import * as paths from 'path';
 import {trackLocalChanges, rememberLocalState} from '../../local-events';
@@ -87,6 +87,11 @@ export default class LocalFileSystem extends FileSystem {
   open(path: string, flags: string, mode?: number): Promise<number> {
     if (/[wa+]/.test(flags)) this.assertWritable(path);
     return fse.open(path, flags, mode);
+  }
+
+  async prepareStagedFile(path: string, destination: string): Promise<void> {
+    this.assertWritable(path); this.assertWritable(destination);
+    if (process.platform === "win32") await protectWindowsStagingFile(path, destination);
   }
 
   close(fd: number): Promise<void> {

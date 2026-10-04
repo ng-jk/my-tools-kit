@@ -142,6 +142,7 @@ export default class TransferTask implements Task {
       if (sourceError) throw sourceError;
       if (this._cancelled) throw new Error('Transfer cancelled');
       fd = await targetFs.open(staged, 'wx', mode);
+      await targetFs.prepareStagedFile?.(staged, target);
       if (sourceError) throw sourceError;
       this.checkCancelled();
       await targetFs.put(this._handle, staged, {mode, fd, autoClose:false});
