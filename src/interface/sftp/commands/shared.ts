@@ -12,7 +12,7 @@ function configIngoreFilterCreator(config: any) {
     return;
   }
 
-  return (file: { fsPath: string }) => !config.ignore(file.fsPath);
+  return (file: { fsPath: string }) => !config.ignore(file.fsPath, 'remote');
 }
 
 function createFileSelector(filterCreator?: (config: any) => ((file: any) => boolean) | undefined, type?: FileType) {

@@ -106,7 +106,7 @@ export interface ServiceConfig
     Omit<ServiceOption, 'ignore'>,
     SftpOption,
     FtpOption {
-  ignore?: ((fsPath: string) => boolean) | null;
+  ignore?: ((fsPath: string, side?: 'local' | 'remote') => boolean) | null;
 }
 
 export interface WatcherService {
@@ -647,22 +647,14 @@ export default class FileService {
     }
 
     const ignore = Ignore.from(ignoreConfig);
-    const ignoreFunc = (fsPath: string) => {
+    const ignoreFunc = (fsPath: string, side: 'local' | 'remote' = 'local') => {
       if (isTransferArtifact(fsPath)) return true;
-      // vscode will always return path with / as separator
-      const normalizedPath = path.normalize(fsPath);
-      let relativePath;
-      const localRelative = path.relative(localContext, normalizedPath);
-      const insideLocal = localRelative !== '..' && !localRelative.startsWith('..' + path.sep) && !path.isAbsolute(localRelative);
-      if (insideLocal) {
-        // local path
-        relativePath = localRelative;
-      } else {
-        // remote path
-        relativePath = upath.relative(remoteContext, fsPath);
-      }
-
-      // skip root
+      const relativePath = (side === 'local'
+        ? path.relative(localContext, fsPath)
+        : upath.relative(remoteContext, fsPath)).replace(/\\/g, '/');
+      // The caller identifies the filesystem. Identical/nested path strings on
+      // separate hosts must never change which root anchors an ignore pattern.
+      if (relativePath === '..' || relativePath.startsWith('../') || upath.isAbsolute(relativePath)) return true;
       return relativePath !== '' && ignore.ignores(relativePath);
     };
 

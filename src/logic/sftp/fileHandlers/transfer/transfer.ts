@@ -93,7 +93,7 @@ async function transferFolder(
 ) {
   const { srcFsPath, targetFsPath, srcFs, targetFs, transferOption } = config;
 
-  if (transferOption.ignore && transferOption.ignore(srcFsPath)) {
+  if (transferOption.ignore && transferOption.ignore(srcFsPath, config.transferDirection === TransferDirection.LOCAL_TO_REMOTE ? 'local' : 'remote')) {
     return;
   }
 
@@ -132,7 +132,7 @@ async function transferFile(
   fileType: FileType,
   collect: (t: TransferTask) => void
 ) {
-  if (config.transferOption.ignore && config.transferOption.ignore(config.srcFsPath)) {
+  if (config.transferOption.ignore && config.transferOption.ignore(config.srcFsPath, config.transferDirection === TransferDirection.LOCAL_TO_REMOTE ? 'local' : 'remote')) {
     return;
   }
 
@@ -179,15 +179,15 @@ async function transferWithType(
   }
 }
 
-async function removeFile(file: string, fs: FileSystem, fileType: FileType, option: any) {
-  if (option.ignore && option.ignore(file)) {
+async function removeFile(file: string, fs: FileSystem, fileType: FileType, option: any, side: 'local' | 'remote') {
+  if (option.ignore && option.ignore(file, side)) {
     return;
   }
 
   switch (fileType) {
     case FileType.Directory:
       for (const entry of checkedEntries(fs, file, await fs.list(file))) {
-        await removeFile(entry.fspath, fs, entry.type, option);
+        await removeFile(entry.fspath, fs, entry.type, option, side);
       }
       // Ignored descendants retain their ancestors; never recursively bypass ignore policy.
       if ((await fs.list(file)).length) return;
@@ -214,7 +214,7 @@ async function _sync(
   if (transferOption.delete && !transferOption.bothDiretions && srcFs.supportsCompleteDirectoryListing === false) {
     throw new Error('Destructive sync requires a complete source directory listing; FTP LIST cannot guarantee hidden entries. Use SFTP or disable syncOption.delete.');
   }
-  if (transferOption.ignore && transferOption.ignore(srcFsPath)) {
+  if (transferOption.ignore && transferOption.ignore(srcFsPath, config.transferDirection === TransferDirection.LOCAL_TO_REMOTE ? 'local' : 'remote')) {
     return;
   }
 
@@ -247,7 +247,7 @@ async function _sync(
       const srcFile = srcFileTable[id];
       const desFile = desFileTable[id];
       delete desFileTable[id];
-      if (transferOption.ignore && (transferOption.ignore(srcFile.fspath) || (desFile && transferOption.ignore(desFile.fspath)))) return;
+      if (transferOption.ignore && (transferOption.ignore(srcFile.fspath, transferDirection === TransferDirection.LOCAL_TO_REMOTE ? 'local' : 'remote') || (desFile && transferOption.ignore(desFile.fspath, transferDirection === TransferDirection.LOCAL_TO_REMOTE ? 'remote' : 'local')))) return;
 
       // files exist on both side
       if (desFile) {
@@ -382,8 +382,8 @@ async function _sync(
     }
 
     // side-effect
-    await settleAll(fileMissed.map(file => removeFile(file, targetFs, FileType.File, transferOption)));
-    await settleAll(dirMissed.map(file => removeFile(file, targetFs, FileType.Directory, transferOption)));
+    await settleAll(fileMissed.map(file => removeFile(file, targetFs, FileType.File, transferOption, transferDirection === TransferDirection.LOCAL_TO_REMOTE ? 'remote' : 'local')));
+    await settleAll(dirMissed.map(file => removeFile(file, targetFs, FileType.Directory, transferOption, transferDirection === TransferDirection.LOCAL_TO_REMOTE ? 'remote' : 'local')));
 
     const transFilePromise = file2trans.map(([src, target, direction, type, option]) =>
       transferFile(
@@ -479,7 +479,7 @@ async function saveDirtyDocuments(config: TransferHandleConfig<SyncOption>) {
     if (document.isClosed || !document.isDirty || (document.uri && document.uri.scheme !== 'file')) continue;
     const relative = fs.pathResolver.relative(root, document.fileName);
     if (relative === '..' || relative.startsWith('../') || relative.startsWith('..\\') || fs.pathResolver.isAbsolute(relative)) continue;
-    if (config.transferOption.ignore?.(document.fileName)) continue;
+    if (config.transferOption.ignore?.(document.fileName, 'local')) continue;
     if (await document.save() !== true) throw new Error('Could not save dirty document before transfer: ' + document.fileName);
   }
 }

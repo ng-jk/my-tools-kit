@@ -93,6 +93,12 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     await commands.get('devkit.sftp.upload.activeFile.to.allProfiles')();
     assert.deepEqual(errors,[]);
     assert.equal(fs.readFileSync(path.join(dir,'remote-other','ui.txt'),'utf8'),'from other context');
+    const remoteRoot=(await views.get('devkit.remoteExplorer').getChildren())[0];
+    const remoteSelection=(await views.get('devkit.remoteExplorer').getChildren(remoteRoot)).find(item=>path.basename(item.resource.fsPath)==='ui.txt');
+    assert.ok(remoteSelection);
+    await commands.get('devkit.sftp.upload.file.to.allProfiles')(remoteSelection);
+    assert.deepEqual(errors,[]);
+    assert.equal(fs.readFileSync(path.join(dir,'remote-other','ui.txt'),'utf8'),'from other context');
     fs.writeFileSync(path.join(root,'second.txt'),'second selection');
     fs.writeFileSync(path.join(root,'nested','second.txt'),'second profile selection');
     await commands.get('devkit.sftp.upload.file.to.allProfiles')(URI.file(path.join(root,'ui.txt')),[URI.file(path.join(root,'ui.txt')),URI.file(path.join(root,'second.txt'))]);

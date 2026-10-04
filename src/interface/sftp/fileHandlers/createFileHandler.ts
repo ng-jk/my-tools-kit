@@ -65,7 +65,8 @@ export function allHandleCtxFromUri(uri: Uri): Array<FileHandlerContext> {
     }
   }
 
-  const relative = path.relative(fileService.baseDir, uri.fsPath);
+  const localPath = handleCtxFromUri(uri).target.localFsPath;
+  const relative = path.relative(fileService.baseDir, localPath);
   if (relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative)) throw new Error('File is outside the active context');
   return fileService.getAvailableProfiles().map(profile => {
     const profileService = fileService.forProfile(profile);
@@ -103,7 +104,7 @@ export default function createFileHandler<T>(
       Object.assign(invokeOption, option);
     }
 
-    if (invokeOption.ignore && invokeOption.ignore(target.localFsPath)) {
+    if (invokeOption.ignore && invokeOption.ignore(target.localFsPath, 'local')) {
       return;
     }
 

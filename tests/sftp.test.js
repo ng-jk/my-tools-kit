@@ -664,9 +664,21 @@ test('overlapping local and remote root prefixes preserve ignored remote files d
   const session=engine.createSession(local,{...raw,remotePath:remote.replaceAll('\\','/'),ignore:['.env'],syncOption:{delete:true}});t.after(()=>session.service.dispose());
   fs.writeFileSync(path.join(remote,'.env'),'server secret');fs.writeFileSync(path.join(remote,'obsolete.txt'),'remove');
   fs.mkdirSync(path.join(remote,'nested'));fs.writeFileSync(path.join(remote,'nested','.env'),'nested secret');fs.writeFileSync(path.join(remote,'nested','obsolete.txt'),'remove');
-  assert.equal(session.config.ignore(path.join(remote,'.env')),true);
+  assert.equal(session.config.ignore(path.join(remote,'.env'),'remote'),true);
   await engine.operate(session,'sync-up','.',{yes:true});
   assert.equal(fs.readFileSync(path.join(remote,'.env'),'utf8'),'server secret');assert.equal(fs.readFileSync(path.join(remote,'nested','.env'),'utf8'),'nested secret');assert.equal(fs.existsSync(path.join(remote,'obsolete.txt')),false);
   fs.writeFileSync(path.join(remote,'nested','obsolete.txt'),'remove again');await engine.operate(session,'delete','nested',{yes:true});
   assert.equal(fs.readFileSync(path.join(remote,'nested','.env'),'utf8'),'nested secret');assert.equal(fs.existsSync(path.join(remote,'nested','obsolete.txt')),false);
+});
+
+test('anchored ignores protect both sides when the remote pathname is nested inside the local root',async t=>{
+  const {local,raw}=fixture(t);const remote=path.join(local,'server');fs.mkdirSync(remote);
+  const session=engine.createSession(local,{...raw,remotePath:remote.replaceAll('\\','/'),ignore:['/server','/secret.txt','/folder/secret.txt'],syncOption:{delete:true}});t.after(()=>session.service.dispose());
+  fs.writeFileSync(path.join(remote,'secret.txt'),'remote secret');fs.writeFileSync(path.join(remote,'obsolete.txt'),'remove');
+  assert.equal(session.config.ignore(path.join(remote,'secret.txt'),'remote'),true);
+  await engine.operate(session,'sync-up','.',{yes:true});assert.equal(fs.readFileSync(path.join(remote,'secret.txt'),'utf8'),'remote secret');assert.equal(fs.existsSync(path.join(remote,'obsolete.txt')),false);
+  fs.writeFileSync(path.join(local,'secret.txt'),'local secret');fs.writeFileSync(path.join(local,'obsolete.txt'),'remove');
+  await engine.operate(session,'sync-down','.',{yes:true});assert.equal(fs.readFileSync(path.join(local,'secret.txt'),'utf8'),'local secret');assert.equal(fs.existsSync(path.join(local,'obsolete.txt')),false);
+  fs.mkdirSync(path.join(remote,'folder'));fs.writeFileSync(path.join(remote,'folder','secret.txt'),'nested protected');fs.writeFileSync(path.join(remote,'folder','obsolete.txt'),'remove');
+  await engine.operate(session,'delete','folder',{yes:true});assert.equal(fs.readFileSync(path.join(remote,'folder','secret.txt'),'utf8'),'nested protected');assert.equal(fs.existsSync(path.join(remote,'folder','obsolete.txt')),false);
 });
