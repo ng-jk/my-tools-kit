@@ -558,3 +558,28 @@ test('nested Git workspace maps commits and working changes only into its SFTP c
   assert.equal(fs.readFileSync(path.join(remote,'file.txt'),'utf8'),'modified');assert.equal(fs.readFileSync(path.join(remote,'app','file.txt'),'utf8'),'unrelated');
   fs.unlinkSync(path.join(workspace,'file.txt'));cli('upload-changed','--yes');assert.equal(fs.existsSync(path.join(remote,'file.txt')),false);assert.equal(fs.readFileSync(path.join(remote,'app','file.txt'),'utf8'),'unrelated');
 });
+
+test('directory case detection handles sensitive and insensitive volumes independently of OS',async()=>{
+  for(const insensitive of [false,true]) {
+    const io={readdirSync:()=>['A.txt'],lstatSync:()=>{if(!insensitive)throw Object.assign(new Error('missing'),{code:'ENOENT'});return {};}};
+    assert.equal(engine.directoryIgnoresCase('/dest',io),insensitive);
+    const source={pathResolver:path.posix,list:async()=>[{name:'a.txt',fspath:'/source/a.txt',type:engine.FileType.File,size:3,mtime:2000}],lstat:async()=>({type:engine.FileType.Directory})};
+    const target={pathResolver:path.posix,pathIdentity:name=>engine.directoryIgnoresCase('/dest',io)?name.toLowerCase():name,ensureDir:async()=>{},lstat:async()=>({type:engine.FileType.Directory}),list:async()=>[{name:'A.txt',fspath:'/dest/A.txt',type:engine.FileType.File,size:5,mtime:1000}]};
+    const tasks=[];await engine.sync({srcFsPath:'/source',targetFsPath:'/dest',srcFs:source,targetFs:target,transferDirection:engine.TransferDirection.REMOTE_TO_LOCAL,transferOption:{delete:false}},task=>tasks.push(task));
+    assert.equal(tasks.length,1);assert.equal(tasks[0].targetFsPath,insensitive?'/dest/A.txt':'/dest/a.txt');
+  }
+  assert.equal(engine.directoryIgnoresCase('/dest',{readdirSync:()=>['a.txt','A.txt']}),false);
+  assert.throws(()=>engine.directoryIgnoresCase('/dest',{readdirSync:()=>[],openSync:()=>{throw Object.assign(new Error('permission denied'),{code:'EACCES'});}}),/permission denied/);
+});
+
+test('Git SCM reconciles staged modifications, deletions and renames against current files',()=>{
+  const context=()=>'/root';
+  const deleted=engine.reconcileGitChanges([{kind:'upload',path:'/root/a'},{kind:'delete',path:'/root/a'}],()=>false);
+  assert.deepEqual(engine.planGitTransfers(deleted,context),[{kind:'delete',path:'/root/a'}]);
+  const restored=engine.reconcileGitChanges([{kind:'delete',path:'/root/a'},{kind:'upload',path:'/root/a'}],()=>true);
+  assert.deepEqual(engine.planGitTransfers(restored,context),[{kind:'upload',path:'/root/a'}]);
+  const renamedDeleted=engine.reconcileGitChanges([{kind:'rename',oldPath:'/root/a',path:'/root/b'},{kind:'delete',path:'/root/b'}],()=>false);
+  assert.deepEqual(engine.planGitTransfers(renamedDeleted,context),[{kind:'delete',path:'/root/a'},{kind:'delete',path:'/root/b'}]);
+  const recreatedOrigin=engine.reconcileGitChanges([{kind:'rename',oldPath:'/root/a',path:'/root/b'}],()=>true);
+  assert.deepEqual(engine.planGitTransfers(recreatedOrigin,context),[{kind:'upload',path:'/root/a'},{kind:'upload',path:'/root/b'}]);
+});

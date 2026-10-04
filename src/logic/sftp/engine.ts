@@ -10,7 +10,7 @@ export { configurePorts } from '../../data/sftp/ports';
 export { sshArguments } from './ssh-arguments';
 export { watchPolicy } from './watch-policy';
 export {findGitRoot, getCommitChangedFiles, getUncommittedChangedFiles, getUncommittedTransfers} from './git-changes';
-export {planGitTransfers, executeGitTransfers} from './git-transfer';
+export {reconcileGitChanges, planGitTransfers, executeGitTransfers} from './git-transfer';
 export {isOwnLocalChange, localEntryExists} from '../../data/sftp/local-events';
 export {initialConfig, normalizeConfigurations} from './config';
 export { verifyHostKey, fingerprint } from '../../data/sftp/host-keys';
@@ -80,3 +80,5 @@ async function operate(session: any, action: string, relative = '.', flags: any 
   }
   throw new Error('Unknown SFTP operation: ' + action);
 }
+
+export {directoryIgnoresCase} from '../../data/sftp/local-path-identity';

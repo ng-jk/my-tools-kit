@@ -7,7 +7,8 @@ import { uploadFile, renameRemote, removeRemote } from '../fileHandlers/index';
 import { getGitService, GitAPI, Repository, Status, Change } from '../modules/git/index';
 import { checkCommand } from './abstract/createCommand';
 import logger from '../logger';
-import {planGitTransfers, executeGitTransfers, GitChange} from '../../../logic/sftp/git-transfer';
+import {localEntryExists} from '../../../data/sftp/local-events';
+import {reconcileGitChanges, planGitTransfers, executeGitTransfers, GitChange} from '../../../logic/sftp/git-transfer';
 
 export default checkCommand({
   id: COMMAND_UPLOAD_CHANGEDFILES,
@@ -61,7 +62,7 @@ async function handleCommand(hint: any) {
     if ([Status.INDEX_MODIFIED,Status.MODIFIED,Status.INDEX_ADDED,Status.UNTRACKED].includes(change.status)) return [{kind:'upload' as const,path:destination}];
     return [];
   });
-  const plan = planGitTransfers(normalized, file => {
+  const plan = planGitTransfers(reconcileGitChanges(normalized, localEntryExists), file => {
     const service = getFileService(vscode.Uri.file(file));
     return service && !service.getConfig().ignore?.(file) ? service.baseDir : undefined;
   });

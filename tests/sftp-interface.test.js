@@ -60,9 +60,13 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     fs.writeFileSync(path.join(root,'ui.txt'),'changed upload has completed');
     await commands.get('devkit.sftp.upload.changedFiles')();
     assert.equal(fs.readFileSync(path.join(dir,'remote','ui.txt'),'utf8'),'changed upload has completed');
+    fs.writeFileSync(path.join(dir,'remote','missing.txt'),'staged then deleted locally');
     repository.state.indexChanges=[{status:0,uri:URI.file(path.join(root,'missing.txt'))}];
+    repository.state.workingTreeChanges=[{status:6,uri:URI.file(path.join(root,'missing.txt'))}];
     await commands.get('devkit.sftp.upload.changedFiles')();
-    assert.ok(errors.some(message=>/ENOENT|no such file/i.test(message)),'failed uploads are handled by the command');
+    assert.deepEqual(errors,[]);
+    assert.equal(fs.existsSync(path.join(dir,'remote','missing.txt')),false,'staged modification followed by deletion removes the remote file');
+    repository.state.workingTreeChanges=[];
     errors.length=0;
     await commands.get('devkit.sftp.upload.activeFile.to.allProfiles')();
     assert.deepEqual(errors,[]);

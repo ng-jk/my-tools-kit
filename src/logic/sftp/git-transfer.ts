@@ -30,3 +30,17 @@ export async function executeGitTransfers(plan: GitOperation[], adapter: {
   }
   return plan;
 }
+
+// SCM index and worktree states can disagree; transfers always send live files.
+export function reconcileGitChanges(changes: GitChange[], exists: (path: string) => boolean): GitChange[] {
+  return changes.flatMap(change => {
+    const present = exists(change.path);
+    if (change.kind === 'rename' && change.oldPath) {
+      const oldPresent = exists(change.oldPath);
+      if (present && !oldPresent) return [change];
+      return [{kind: oldPresent ? 'upload' : 'delete', path: change.oldPath},
+        {kind: present ? 'upload' : 'delete', path: change.path}] as GitChange[];
+    }
+    return [{kind: present ? 'upload' : 'delete', path: change.path}] as GitChange[];
+  });
+}

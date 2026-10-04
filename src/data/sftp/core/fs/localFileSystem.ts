@@ -1,5 +1,6 @@
 // Adapted from ng-jk/vscode-sftp (MIT); see THIRD-PARTY-NOTICES.md.
 import * as fs from 'fs';
+import {localPathIdentity} from '../../local-path-identity';
 import {protectWindowsDirectory, protectWindowsStagingFile} from '../../windows-directory-permissions';
 import * as fse from 'fs-extra';
 import * as paths from 'path';
@@ -12,8 +13,7 @@ export default class LocalFileSystem extends FileSystem {
   }
 
   pathIdentity(value: string): string {
-    const normalized=paths.resolve(value);
-    return process.platform==='win32'||process.platform==='darwin' ? normalized.toLowerCase() : normalized;
+    return localPathIdentity(value);
   }
   async establishDirectoryMode(path: string, mode: number): Promise<void> {
     this.assertWritable(path);
