@@ -30,6 +30,7 @@ Extension: **0.5.0**. Pipeline plugin: **0.3.1**.
 - Preserve each child file mode during recursive transfers, compare symlink targets during sync, and share configuration persistence/environment expansion across UI and terminal adapters.
 - Reject FTP control-command delimiters, validate every recursive FTP deletion entry, and apply upload permission overrides only to uploads through shared policy.
 - Enforce remote-root deletion/rename protection in shared logic and verify FTP staging permissions before appending payloads, failing when the server cannot honor them.
+- Verify effective SFTP staging permissions before payload transfer and reject file/directory sync conflicts instead of reporting an unsupported task as successful.
 - Document the complete SFTP command inventory and explain pipeline prerequisites and branch flow.
 
 ## 0.4.0 — 2026-10-04

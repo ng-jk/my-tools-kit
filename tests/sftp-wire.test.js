@@ -11,7 +11,7 @@ test('SFTP wire: password authentication, list, upload, temp rename, download an
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-ssh-'));
   const local=path.join(root,'local'),remote=path.join(root,'remote');fs.mkdirSync(local);fs.mkdirSync(remote);
   const hostKey=crypto.generateKeyPairSync('rsa',{modulusLength:2048}).privateKey.export({type:'pkcs1',format:'pem'});
-  let authentications=0;
+  let authentications=0,honorOpen=true,allowChmod=true;const modes=new Map(),writeModes=[];
   const clients=new Set();const {STATUS_CODE,OPEN_MODE}=utils.sftp;
   const server=new Server({hostKeys:[hostKey]},client=>{
     clients.add(client);client.on('close',()=>clients.delete(client));client.on('error',()=>{});
@@ -19,24 +19,24 @@ test('SFTP wire: password authentication, list, upload, temp rename, download an
     client.on('ready',()=>client.on('session',accept=>accept().on('sftp',accept=>{
       const sftp=accept(),handles=new Map();let id=0;
       const resolve=p=>{const target=path.resolve(remote,'.'+p);if(!target.startsWith(remote+path.sep)&&target!==remote)throw new Error('outside fixture');return target;};
-      const attrs=s=>({mode:s.mode,size:s.size,uid:0,gid:0,atime:Math.floor(s.atimeMs/1000),mtime:Math.floor(s.mtimeMs/1000)});
+      const attrs=(s,p)=>({mode:(s.mode & ~0o777)|(modes.get(p)??(s.mode & 0o777)),size:s.size,uid:0,gid:0,atime:Math.floor(s.atimeMs/1000),mtime:Math.floor(s.mtimeMs/1000)});
       const guard=fn=>(request,...args)=>{try{fn(request,...args);}catch(e){sftp.status(request,e.code==='ENOENT'?STATUS_CODE.NO_SUCH_FILE:STATUS_CODE.FAILURE,e.message);}};
       const handle=value=>{const h=Buffer.alloc(4);h.writeUInt32BE(++id);handles.set(h.toString('hex'),value);return h;};
-      for(const name of ['STAT','LSTAT'])sftp.on(name,guard((req,p)=>sftp.attrs(req,attrs(fs.statSync(resolve(p))))));
+      for(const name of ['STAT','LSTAT'])sftp.on(name,guard((req,p)=>sftp.attrs(req,attrs(fs.statSync(resolve(p)),p))));
       sftp.on('REALPATH',guard((req,p)=>sftp.name(req,[{filename:p,longname:p,attrs:{}}])));
-      sftp.on('OPENDIR',guard((req,p)=>sftp.handle(req,handle({dir:resolve(p)}))));
-      sftp.on('READDIR',guard((req,h)=>{const v=handles.get(h.toString('hex'));if(v.read)return sftp.status(req,STATUS_CODE.EOF);v.read=true;sftp.name(req,fs.readdirSync(v.dir).map(name=>({filename:name,longname:name,attrs:attrs(fs.statSync(path.join(v.dir,name)))})));}));
-      sftp.on('OPEN',guard((req,p,flags)=>{const f=flags & OPEN_MODE.WRITE?'w':'r';sftp.handle(req,handle({fd:fs.openSync(resolve(p),f)}));}));
-      sftp.on('FSTAT',guard((req,h)=>sftp.attrs(req,attrs(fs.fstatSync(handles.get(h.toString('hex')).fd)))));
+      sftp.on('OPENDIR',guard((req,p)=>sftp.handle(req,handle({dir:resolve(p),remotePath:p}))));
+      sftp.on('READDIR',guard((req,h)=>{const v=handles.get(h.toString('hex'));if(v.read)return sftp.status(req,STATUS_CODE.EOF);v.read=true;sftp.name(req,fs.readdirSync(v.dir).map(name=>({filename:name,longname:name,attrs:attrs(fs.statSync(path.join(v.dir,name)),path.posix.join(v.remotePath,name))})));}));
+      sftp.on('OPEN',guard((req,p,flags,a)=>{const f=flags & OPEN_MODE.WRITE?'w':'r';if(f==='w')modes.set(p,honorOpen?(a.mode??0o644)&0o777:0o644);sftp.handle(req,handle({fd:fs.openSync(resolve(p),f),path:p}));}));
+      sftp.on('FSTAT',guard((req,h)=>{const value=handles.get(h.toString('hex'));sftp.attrs(req,attrs(fs.fstatSync(value.fd),value.path));}));
       sftp.on('READ',guard((req,h,offset,len)=>{const data=Buffer.alloc(len),n=fs.readSync(handles.get(h.toString('hex')).fd,data,0,len,offset);if(n)sftp.data(req,data.subarray(0,n));else sftp.status(req,STATUS_CODE.EOF);}));
-      sftp.on('WRITE',guard((req,h,offset,data)=>{fs.writeSync(handles.get(h.toString('hex')).fd,data,0,data.length,offset);sftp.status(req,STATUS_CODE.OK);}));
+      sftp.on('WRITE',guard((req,h,offset,data)=>{writeModes.push(modes.get(handles.get(h.toString('hex')).path));fs.writeSync(handles.get(h.toString('hex')).fd,data,0,data.length,offset);sftp.status(req,STATUS_CODE.OK);}));
       sftp.on('CLOSE',guard((req,h)=>{const v=handles.get(h.toString('hex'));if(v.fd!==undefined)fs.closeSync(v.fd);handles.delete(h.toString('hex'));sftp.status(req,STATUS_CODE.OK);}));
-      sftp.on('FSETSTAT',guard((req,h,a)=>{if(a.atime!==undefined)fs.futimesSync(handles.get(h.toString('hex')).fd,a.atime,a.mtime);sftp.status(req,STATUS_CODE.OK);}));
-      sftp.on('SETSTAT',guard((req,p,a)=>{if(a.atime!==undefined)fs.utimesSync(resolve(p),a.atime,a.mtime);sftp.status(req,STATUS_CODE.OK);}));
+      sftp.on('FSETSTAT',guard((req,h,a)=>{if(a.mode!==undefined){if(!allowChmod)return sftp.status(req,STATUS_CODE.PERMISSION_DENIED);modes.set(handles.get(h.toString('hex')).path,a.mode&0o777);}if(a.atime!==undefined)fs.futimesSync(handles.get(h.toString('hex')).fd,a.atime,a.mtime);sftp.status(req,STATUS_CODE.OK);}));
+      sftp.on('SETSTAT',guard((req,p,a)=>{if(a.mode!==undefined){if(!allowChmod)return sftp.status(req,STATUS_CODE.PERMISSION_DENIED);modes.set(p,a.mode&0o777);}if(a.atime!==undefined)fs.utimesSync(resolve(p),a.atime,a.mtime);sftp.status(req,STATUS_CODE.OK);}));
       sftp.on('MKDIR',guard((req,p)=>{fs.mkdirSync(resolve(p));sftp.status(req,STATUS_CODE.OK);}));
       sftp.on('REMOVE',guard((req,p)=>{fs.unlinkSync(resolve(p));sftp.status(req,STATUS_CODE.OK);}));
       sftp.on('RMDIR',guard((req,p)=>{fs.rmdirSync(resolve(p));sftp.status(req,STATUS_CODE.OK);}));
-      sftp.on('RENAME',guard((req,a,b)=>{fs.renameSync(resolve(a),resolve(b));sftp.status(req,STATUS_CODE.OK);}));
+      sftp.on('RENAME',guard((req,a,b)=>{fs.renameSync(resolve(a),resolve(b));modes.set(b,modes.get(a));modes.delete(a);sftp.status(req,STATUS_CODE.OK);}));
       sftp.on('EXTENDED',(req)=>sftp.status(req,STATUS_CODE.OP_UNSUPPORTED));
       sftp.on('close',()=>{for(const value of handles.values())if(value.fd!==undefined)try{fs.closeSync(value.fd);}catch{};});
     })));
@@ -48,6 +48,12 @@ test('SFTP wire: password authentication, list, upload, temp rename, download an
   try {await assert.rejects(engine.operate(bad,'list'),/verification|host key/i);assert.equal(authentications,0);} finally {bad.service.dispose();}
   fs.writeFileSync(path.join(local,'wire.txt'),'over SSH');
   await engine.operate(session,'upload','wire.txt');assert.equal(fs.readFileSync(path.join(remote,'wire.txt'),'utf8'),'over SSH');
+  modes.set('/wire.txt',0o600);
+  await engine.operate(session,'upload','wire.txt');assert.equal(modes.get('/wire.txt'),0o600);assert.equal(writeModes.at(-1),0o600);
+  honorOpen=false;allowChmod=false;const written=writeModes.length;
+  await assert.rejects(engine.operate(session,'upload','wire.txt'),/required file permissions/);
+  assert.equal(writeModes.length,written);assert.equal(fs.readFileSync(path.join(remote,'wire.txt'),'utf8'),'over SSH');
+  honorOpen=true;allowChmod=true;
   assert.equal((await engine.operate(session,'list')).some(item=>item.name==='wire.txt'),true);
   fs.writeFileSync(path.join(remote,'wire.txt'),'server change');await engine.operate(session,'download','wire.txt');assert.equal(fs.readFileSync(path.join(local,'wire.txt'),'utf8'),'server change');
   fs.mkdirSync(path.join(remote,'nested'));fs.writeFileSync(path.join(remote,'nested','remote-only.txt'),'nested from server');

@@ -253,6 +253,9 @@ async function _sync(
 
       // files exist on both side
       if (desFile) {
+        if (srcFile.type !== desFile.type && (srcFile.type === FileType.Directory || desFile.type === FileType.Directory)) {
+          throw new Error('Sync file/directory type conflict: ' + srcFile.fspath + ' and ' + desFile.fspath);
+        }
         if (transferOption.ignoreExisting) {
           return;
         }

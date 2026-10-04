@@ -140,3 +140,5 @@ Recursive transfers use each child file’s permissions, rather than its parent 
 FTP rejects CR/LF/NUL command delimiters and validates recursive deletion listings before issuing deletion commands. Upload file/directory permission overrides are ignored for local downloads in both interfaces, including reverse tasks during bidirectional sync. Replacing a symlink with a regular file uses file permissions, not the link’s mode.
 
 Remote-root deletion and rename protections apply to UI, CLI and mixed explorer selections. FTP uploads create an empty staging file, apply and verify its mode, then append content and recheck permissions before replacement. FTP servers must support the required permission and append commands; unsupported or ignored permission changes fail before payload transfer.
+
+SFTP also verifies effective staging-file permissions before transmitting content and after writing. Servers unable to establish the required mode fail explicitly. File/directory type conflicts stop sync with a clear error so the user can resolve the conflict; they are never reported as successful no-op transfers.

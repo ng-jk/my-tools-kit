@@ -27,7 +27,7 @@ interface WriteStream extends Writable {
 }
 
 function toSimpleFileMode(mode: number) {
-  return mode & parseInt('777', 8); // tslint:disable-line:no-bitwise
+  return typeof mode === 'number' ? mode & parseInt('777', 8) : undefined; // tslint:disable-line:no-bitwise
 }
 
 export default class SFTPFileSystem extends RemoteFileSystem {
@@ -224,20 +224,23 @@ export default class SFTPFileSystem extends RemoteFileSystem {
       const opt = { ...option, handle: fd.handle };
       delete opt.fd;
 
-      if (opt.mode) {
-        // mode will get ignored if handle passed in.
-        // call chmod manunally.
-        try {
-          await this.fchmod(fd, opt.mode);
-        } catch {
-          // ignore error
-        }
+      if (opt.mode !== undefined) {
+        // Some servers honor OPEN mode but do not implement chmod. Verify the
+        // effective mode in either case before sending any private content.
+        await this.fchmod(fd, opt.mode).catch(() => {});
+        await this.verifyMode(fd, opt.mode);
       }
-
-      return this._put(input, path, opt);
+      await this._put(input, path, opt);
+      if (opt.mode !== undefined) await this.verifyMode(fd, opt.mode);
+      return;
     }
 
     return this._put(input, path, option);
+  }
+
+  private async verifyMode(fd:SFTPFileDescriptor,mode:number) {
+    const actual=(await this.fstat(fd)).mode;
+    if (typeof actual !== 'number' || (actual & 0o777) !== (mode & 0o777)) throw new Error('SFTP server did not establish required file permissions');
   }
 
   readlink(path: string): Promise<string> {

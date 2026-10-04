@@ -115,6 +115,15 @@ test('downloads ignore configured upload file and directory permission overrides
   try {await engine.operate(session,'download');assert.ok(modes.includes(0o600));assert.equal(modes.includes(0o644),false);assert.equal(chmods,0);}
   finally{adapter.lstat=lstat;adapter.open=open;adapter.chmod=chmod;}
 });
+test('bidirectional sync rejects both file/directory conflict orientations',async()=>{
+  for(const [left,right] of [[engine.FileType.File,engine.FileType.Directory],[engine.FileType.Directory,engine.FileType.File]]) {
+    const source={pathResolver:path.posix,list:async()=>[{name:'conflict',fspath:'/source/conflict',type:left,mtime:1}]};
+    const target={pathResolver:path.posix,ensureDir:async()=>{},list:async()=>[{name:'conflict',fspath:'/destination/conflict',type:right,mtime:2}]};
+    const tasks=[];
+    await assert.rejects(engine.sync({srcFsPath:'/source',targetFsPath:'/destination',srcFs:source,targetFs:target,transferDirection:engine.TransferDirection.LOCAL_TO_REMOTE,transferOption:{bothDiretions:true}},task=>tasks.push(task)),/type conflict/);
+    assert.equal(tasks.length,0);
+  }
+});
 test('sync preserves symbolic link identity without reading linked file contents',async()=>{
   const source={pathResolver:path.posix,list:async()=>[{name:'link',fspath:'/local/link',type:engine.FileType.SymbolicLink,mtime:1,atime:1}],readlink:async()=>'../../private/key',get:async()=>{throw new Error('must not dereference');}};
   let link;
