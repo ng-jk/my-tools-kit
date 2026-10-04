@@ -168,3 +168,5 @@ Create File uses exclusive creation on SFTP/local filesystems. FTP Create File r
 Reject unparseable FTP listing records before sync can infer deletions. Normalize the SSH port for every jump destination, including the final hop, without mutating configuration.
 
 Block deletion-based FTP sync-down because LIST cannot guarantee hidden-entry completeness; an omitted dotfile must never be interpreted as permission to delete its local counterpart. Use SFTP for destructive remote-to-local synchronization. Non-destructive FTP sync and ordinary transfers remain supported.
+
+Apply ignore rules to every descendant during remote deletion, including watcher autoDelete and terminal deletion; preserve ancestors containing ignored remote-only files.

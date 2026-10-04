@@ -501,3 +501,9 @@ test('incomplete FTP listing semantics cannot delete omitted local dotfiles',asy
   await assert.rejects(engine.operate(session,'sync-down','.',{yes:true}),/complete source directory listing/);
   assert.equal(fs.readFileSync(path.join(local,'.htaccess'),'utf8'),'keep');
 });
+
+test('recursive terminal deletion preserves ignored remote-only descendants',async t=>{
+  const {remote,session}=fixture(t,{ignore:['**/.env']});fs.mkdirSync(path.join(remote,'config'));fs.writeFileSync(path.join(remote,'config','.env'),'server only');fs.writeFileSync(path.join(remote,'config','remove.txt'),'obsolete');
+  await engine.operate(session,'delete','config',{yes:true});
+  assert.equal(fs.readFileSync(path.join(remote,'config','.env'),'utf8'),'server only');assert.equal(fs.existsSync(path.join(remote,'config','remove.txt')),false);
+});

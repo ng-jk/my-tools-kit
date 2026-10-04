@@ -75,7 +75,7 @@ async function operate(session: any, action: string, relative = '.', flags: any 
   }
   if (action === 'delete') {
     if (!flags.yes || path.posix.resolve('/', remote) === path.posix.resolve('/', config.remotePath)) throw new Error('Delete requires --yes and a non-root path');
-    await removeRemotePath(remoteFs, remote, config.remotePath);
+    await removeRemotePath(remoteFs, remote, config.remotePath, false, flags.force ? undefined : config.ignore);
     return { passed: true };
   }
   throw new Error('Unknown SFTP operation: ' + action);

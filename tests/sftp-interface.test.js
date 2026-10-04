@@ -89,6 +89,11 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
       await new Promise(resolve=>setTimeout(resolve,850));
       assert.equal(fs.existsSync(path.join(dir,'remote','ui.txt')),false,'a real user deletion still propagates');
     } finally {native.close();}
+    fs.mkdirSync(path.join(dir,'remote','config'));fs.writeFileSync(path.join(dir,'remote','config','.env'),'server credential');fs.writeFileSync(path.join(dir,'remote','config','remove.txt'),'obsolete');
+    observer.handlers.delete(URI.file(path.join(root,'config')));
+    await new Promise(resolve=>setTimeout(resolve,850));
+    assert.equal(fs.readFileSync(path.join(dir,'remote','config','.env'),'utf8'),'server credential');
+    assert.equal(fs.existsSync(path.join(dir,'remote','config','remove.txt')),false);
     await commands.get('devkit.sftp.setProfile')('other');await views.get('devkit.remoteExplorer').getChildren();
     fs.mkdirSync(path.join(dir,'private'));fs.writeFileSync(path.join(dir,'private','secret.txt'),'unrelated remote content');
     const incoming=URI.file(path.join(root,'nested','incoming.txt'));

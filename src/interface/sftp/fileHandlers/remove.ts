@@ -10,7 +10,7 @@ export const removeRemote = createFileHandler<FileHandleOption & { skipDir?: boo
   async handle(option) {
     const remoteFs = await this.fileService.getRemoteFileSystem(this.config);
     const { remoteFsPath } = this.target;
-    await removeRemotePath(remoteFs,remoteFsPath,this.config.remotePath,option.skipDir);
+    await removeRemotePath(remoteFs,remoteFsPath,this.config.remotePath,option.skipDir,option.ignore);
   },
   transformOption() {
     const config = this.config;
