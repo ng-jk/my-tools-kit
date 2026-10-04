@@ -441,7 +441,7 @@ test('explicit upload directory permissions apply to every missing parent',async
   const {local,remote,session}=fixture(t,{dirPerm:750});fs.mkdirSync(path.join(local,'one','two'),{recursive:true});fs.writeFileSync(path.join(local,'one','two','file.txt'),'nested');
   const target=await session.service.getRemoteFileSystem(session.config),establish=target.establishDirectoryMode,chmod=target.chmod;const observed=new Map();
   target.establishDirectoryMode=async(name,mode)=>observed.set(path.resolve(name),mode);target.chmod=async()=>{};
-  try {await engine.operate(session,'upload','one/two/file.txt');assert.equal(observed.get(path.join(remote,'one')),0o750);assert.equal(observed.get(path.join(remote,'one','two')),0o750);}
+  try {await engine.operate(session,'upload','one/two/file.txt');assert.equal(observed.get(path.join(remote,'one')),0o750);assert.equal(observed.get(path.join(remote,'one','two')),0o750);assert.equal(observed.has(path.resolve(remote)),false,'existing ancestor permissions stay untouched');}
   finally {target.establishDirectoryMode=establish;target.chmod=chmod;}
 });
 
@@ -648,4 +648,13 @@ test('concurrent transfers retain directory population permissions until both fi
     release[0]();await first;assert.equal(modes.get(path.join(remote,'readonly')),0o755);
     release[1]();await second;assert.equal(modes.get(path.join(remote,'readonly')),0o555);
   } finally {release.forEach(fn=>fn());await Promise.allSettled([first,second]);source.lstat=stat;target.establishDirectoryMode=establish;target.put=put;}
+});
+
+test('creating a remote root never chmods its existing outside ancestor',async t=>{
+  const {local,remote,raw}=fixture(t);fs.writeFileSync(path.join(local,'file.txt'),'content');
+  const root=path.join(remote,'new-project');const session=engine.createSession(local,{...raw,remotePath:root.replaceAll('\\','/'),dirPerm:700});t.after(()=>session.service.dispose());
+  const target=await session.service.getRemoteFileSystem(session.config),establish=target.establishDirectoryMode;const observed=new Map();
+  target.establishDirectoryMode=async(name,mode)=>observed.set(path.resolve(name),mode);
+  try {await engine.operate(session,'upload');assert.equal(observed.get(root),0o700);assert.equal(observed.has(remote),false);assert.equal(fs.readFileSync(path.join(root,'file.txt'),'utf8'),'content');}
+  finally {target.establishDirectoryMode=establish;}
 });

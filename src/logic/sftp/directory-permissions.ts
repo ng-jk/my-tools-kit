@@ -1,8 +1,8 @@
 import {FileSystem, FileType} from '../../data/sftp/core/fs';
 import {filesystemIdentity} from './core/staged-replacement';
 const locks = new WeakMap<object, Map<string, Promise<void>>>();
-export async function ensureTransferDirectory(source: FileSystem, target: FileSystem, from: string, to: string, override?: number, scope?: DirectoryPermissionScope) {
-  return withDirectoryLock(target, to, () => ensure(source, target, from, to, override, scope));
+export async function ensureTransferDirectory(source: FileSystem, target: FileSystem, from: string, to: string, override?: number, scope?: DirectoryPermissionScope, ancestor = false) {
+  return withDirectoryLock(target, to, () => ensure(source, target, from, to, override, scope, ancestor));
 }
 async function withDirectoryLock(target: FileSystem, to: string, operation: () => Promise<void>) {
   const identity = (target as any)[filesystemIdentity] || target;
@@ -14,19 +14,19 @@ async function withDirectoryLock(target: FileSystem, to: string, operation: () =
   try { await operation(); }
   finally {release!(); if (paths.get(key) === current) paths.delete(key);}
 }
-async function ensure(source: FileSystem, target: FileSystem, from: string, to: string, override?: number, scope?: DirectoryPermissionScope) {
+async function ensure(source: FileSystem, target: FileSystem, from: string, to: string, override?: number, scope?: DirectoryPermissionScope, ancestor = false) {
   let existing;
   try { existing = await target.lstat(to); }
   catch (error) { if (error.code !== 'ENOENT' && error.code !== 2) throw error; }
   if (existing) {
     await target.ensureDir(to);
-    const requested = override === undefined ? undefined : parseInt(String(override), 8);
+    const requested = ancestor || override === undefined ? undefined : parseInt(String(override), 8);
     if (scope) await scope.establish(target, to, requested);
     else if (requested !== undefined) await target.establishDirectoryMode(to, requested);
     return;
   }
   const parent = target.pathResolver.dirname(to);
-  if (parent !== to) await ensureTransferDirectory(source, target, source.pathResolver.dirname(from), parent, override, scope);
+  if (parent !== to) await ensureTransferDirectory(source, target, source.pathResolver.dirname(from), parent, override, scope, true);
   const stat = await source.lstat(from);
   if (stat.type !== FileType.Directory) throw new Error('Source parent is not a directory: ' + from);
   const mode = override !== undefined ? parseInt(String(override), 8) : stat.mode;

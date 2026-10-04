@@ -233,3 +233,5 @@ SFTP menu file actions now resolve an active editor or offer target selection wi
 Jump-host destinations use the shared authentication resolver, including UI/terminal password prompts and cancellation when final-hop credentials are omitted.
 
 Populate new directories with temporary owner write/search permission, then verify their final permissions after transfers settle, including failure cleanup and shared concurrent directory use. Save relevant dirty editors before upload/sync comparison and stop when saving fails.
+
+Directory permission overrides stop at existing ancestors during recursive creation; parent directories outside the selected destination retain their original access permissions.
