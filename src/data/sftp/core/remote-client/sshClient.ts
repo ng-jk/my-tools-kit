@@ -190,48 +190,49 @@ export default class SSHClient extends RemoteClient {
     );
   }
 
+  private _releaseDescriptorSlot() {
+    this._opendFdNum = Math.max(0, this._opendFdNum - 1);
+    Promise.resolve().then(() => {
+      while (this._opendFdNum < MAX_OPEN_FD_NUM && this._queuedFdRequireCall.length) {
+        this._queuedFdRequireCall.shift()!();
+      }
+    });
+  }
+
   private _hookCallForReleaseFileDescriptor(fn: (...args: any[]) => any) {
     const self = this;
-    return function releaseFileDescriptor() {
-      const last = arguments.length - 1;
-      const args = Array.prototype.slice.call(arguments, 0, last);
-      const cb = arguments[last];
-      function wrapped() {
-        // 队列到下一周期执行, 确保 cb 先执行.
-        Promise.resolve().then(() => {
-          if (self._queuedFdRequireCall.length > 0) {
-            const queuedCall = self._queuedFdRequireCall.pop()!;
-            queuedCall();
-          }
-        });
-        self._opendFdNum -= 1;
-        cb.apply(this, arguments);
-      }
-      args.push(wrapped);
+    return function(...args: any[]) {
+      const cb = args.pop();
+      let completed = false;
+      args.push(function(error: any, ...values: any[]) {
+        if (completed) return;
+        completed = true;
+        if (!error) self._releaseDescriptorSlot();
+        cb.call(this, error, ...values);
+      });
       return fn.apply(this, args);
     };
   }
 
   private _hookCallForRequestFileDescriptor(fn: (...args: any[]) => any) {
     const self = this;
-    return function requestFileDescriptor() {
-      const last = arguments.length - 1;
-      const args = Array.prototype.slice.call(arguments, 0, last);
-      const cb = arguments[last];
-      function wrapped() {
-        self._opendFdNum += 1;
-        cb.apply(this, arguments);
-      }
+    return function(...args: any[]) {
+      const cb = args.pop();
+      let completed = false;
+      const wrapped = function(error: any, ...values: any[]) {
+        if (completed) return;
+        completed = true;
+        if (error) self._releaseDescriptorSlot();
+        cb.call(this, error, ...values);
+      };
       args.push(wrapped);
-
-      if (self._opendFdNum >= MAX_OPEN_FD_NUM) {
-        self._queuedFdRequireCall.push(() => {
-          fn.apply(this, args);
-        });
-        return;
-      }
-
-      return fn.apply(this, args);
+      const request = () => {
+        self._opendFdNum++;
+        try { return fn.apply(this, args); }
+        catch (error) { if (completed) throw error; wrapped(error); }
+      };
+      if (self._opendFdNum >= MAX_OPEN_FD_NUM) { self._queuedFdRequireCall.push(request); return; }
+      return request();
     };
   }
 

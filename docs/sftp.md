@@ -152,3 +152,5 @@ UI and CLI now share transfer planning, backup, scheduling and cancellation orch
 Check cancellation after symlink reads, after staging completion, and after acquiring the replacement lock, before changing the destination. Once replacement begins, rollback remains enabled.
 
 Bind each configuration service to its own selected profile, keeping local context, watcher policy and connection destination consistent when configurations have different defaults.
+
+Reserve remote descriptor slots before issuing open requests and release failed requests, preventing repeated errors or concurrent opens from exhausting the optional limiter.

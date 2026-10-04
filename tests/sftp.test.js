@@ -350,3 +350,23 @@ test('cancellation while waiting for replacement lock preserves the completed fi
   const waiting=two.run();await new Promise(resolve=>setImmediate(resolve));two.cancel();release();
   await running;await assert.rejects(waiting,/cancelled/);assert.equal(entries.get('/target'),'first');assert.equal(entries.size,1);
 });
+
+test('SSH descriptor limiter releases failed opens and reserves concurrent slots',async()=>{
+  const client=new engine.SFTPFileSystem(path.posix,{client:{}})._createClient({});
+  let callbacks=0;
+  const failing=client._hookCallForRequestFileDescriptor((name,cb)=>cb(new Error('denied')));
+  for(let n=0;n<350;n++)failing('missing',error=>{assert.match(error.message,/denied/);callbacks++;});
+  await new Promise(resolve=>setImmediate(resolve));assert.equal(callbacks,350);assert.equal(client._opendFdNum,0);
+  const pending=[];let completed=0;
+  const concurrent=client._hookCallForRequestFileDescriptor((name,cb)=>pending.push(cb));
+  for(let n=0;n<300;n++)concurrent('file',()=>completed++);
+  assert.equal(pending.length,222);assert.equal(client._opendFdNum,222);
+  pending.splice(0).forEach(cb=>cb(new Error('denied')));
+  await new Promise(resolve=>setImmediate(resolve));assert.equal(pending.length,78);
+  pending.splice(0).forEach(cb=>cb(new Error('missing')));
+  await new Promise(resolve=>setImmediate(resolve));assert.equal(completed,300);assert.equal(client._opendFdNum,0);
+  client._hookCallForRequestFileDescriptor((name,cb)=>cb(null,Buffer.from('handle')))('ok',()=>{});
+  assert.equal(client._opendFdNum,1);
+  client._hookCallForReleaseFileDescriptor((handle,cb)=>cb(null))(Buffer.from('handle'),()=>{});
+  await new Promise(resolve=>setImmediate(resolve));assert.equal(client._opendFdNum,0);
+});
