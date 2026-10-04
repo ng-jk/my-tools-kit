@@ -1,5 +1,6 @@
 // Adapted from ng-jk/vscode-sftp (MIT); see THIRD-PARTY-NOTICES.md.
 import { Uri } from 'vscode';
+import * as path from 'path';
 import app from '../app';
 import { UResource, FileService, ServiceConfig } from '../../../logic/sftp/core/index';
 import logger from '../logger';
@@ -10,6 +11,7 @@ interface FileHandlerConfig {
 }
 
 export interface FileHandlerContext {
+  transient?: boolean;
   target: UResource;
   fileService: FileService;
   config: ServiceConfig;
@@ -63,11 +65,13 @@ export function allHandleCtxFromUri(uri: Uri): Array<FileHandlerContext> {
     }
   }
 
-  const configArr = fileService.getAllConfig();
-
-  return configArr.map(config => {
-    const target = UResource.from(uri, {
-      localBasePath: fileService.baseDir,
+  const relative = path.relative(fileService.baseDir, uri.fsPath);
+  if (relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative)) throw new Error('File is outside the active context');
+  return fileService.getAvailableProfiles().map(profile => {
+    const profileService = fileService.forProfile(profile);
+    const config = profileService.getConfig(profile);
+    const target = UResource.from(Uri.file(path.resolve(profileService.baseDir, relative)), {
+      localBasePath: profileService.baseDir,
       remoteBasePath: config.remotePath,
       remoteId: fileService.id,
       remote: {
@@ -77,7 +81,8 @@ export function allHandleCtxFromUri(uri: Uri): Array<FileHandlerContext> {
     });
 
     return {
-      fileService,
+      transient: true,
+      fileService: profileService,
       config,
       target,
     };
@@ -118,7 +123,7 @@ export default function createFileHandler<T>(
     } finally {
       app.sftpBarItem.stopSpinner();
     }
-    if (handlerOption.afterHandle) {
+    if (handlerOption.afterHandle && !handleCtx.transient) {
       await handlerOption.afterHandle.call(handleCtx);
     }
   }

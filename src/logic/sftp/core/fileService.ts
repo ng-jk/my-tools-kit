@@ -444,6 +444,12 @@ export default class FileService {
     return this._profiles || [];
   }
 
+  forProfile(profile: string): FileService {
+    const service = new FileService(path.resolve(this.workspace, this.resolveContext(profile) || '.'), this.workspace, this._config);
+    service.setConfigValidator(this._configValidator);
+    return service;
+  }
+
   // The raw (unresolved) `context` for a given profile — used to detect whether
   // a profile switch actually changes the local root and warrants a reload.
   resolveContext(profile: string | null = app.state.profile): string | undefined {

@@ -1,6 +1,7 @@
 // Adapted from ng-jk/vscode-sftp (MIT); see THIRD-PARTY-NOTICES.md.
 import { Uri, window } from 'vscode';
 import logger from '../../logger';
+import app from '../../app';
 import { reportError } from '../../helper/index';
 import { handleCtxFromUri, allHandleCtxFromUri, FileHandlerContext } from '../../fileHandlers/index';
 import Command from './command';
@@ -102,7 +103,13 @@ export function createFileMultiCommand(commandOption: FileCommandOption & { name
             const targetList: Uri[] = Array.isArray(target) ? target : [target];
             const pendingTasks = targetList.map(async uri => {
                 try {
-                    await Promise.all(allHandleCtxFromUri(uri).map(commandOption.handleFile));
+                    const contexts = allHandleCtxFromUri(uri);
+                    try {
+                        const results = await Promise.allSettled(contexts.map(commandOption.handleFile));
+                        const failure = results.find(result => result.status === 'rejected');
+                        if (failure && failure.status === 'rejected') throw failure.reason;
+                    }
+                    finally { contexts.forEach(ctx => ctx.fileService.dispose()); app.remoteExplorer.refresh(); }
                 } catch (error) {
                     if (error instanceof Error) {
                         reportError(error);

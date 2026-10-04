@@ -95,6 +95,27 @@ test('malicious directory entries cannot schedule writes outside the destination
     assert.equal(tasks.length,0);
   }
 });
+test('sync preserves symbolic link identity without reading linked file contents',async()=>{
+  const source={pathResolver:path.posix,list:async()=>[{name:'link',fspath:'/local/link',type:engine.FileType.SymbolicLink,mtime:1,atime:1}],readlink:async()=>'../../private/key',get:async()=>{throw new Error('must not dereference');}};
+  let link;
+  const target={pathResolver:path.posix,ensureDir:async()=>{},list:async()=>[],symlink:async(value,destination)=>{link={value,destination};}};
+  const tasks=[];
+  await engine.sync({srcFsPath:'/local',targetFsPath:'/remote',srcFs:source,targetFs:target,transferDirection:engine.TransferDirection.LOCAL_TO_REMOTE,transferOption:{}},task=>tasks.push(task));
+  assert.equal(tasks.length,1);assert.equal(tasks[0].fileType,engine.FileType.SymbolicLink);
+  await tasks[0].run();assert.deepEqual(link,{value:'../../private/key',destination:'/remote/link'});
+});
+test('shared Git selection includes root commits and CLI uses the same selection',async t=>{
+  const {local,remote,raw}=fixture(t);
+  const git=(...args)=>{const result=spawnSync('git',['-c','safe.directory='+local.replaceAll('\\','/'),...args],{cwd:local,encoding:'utf8'});assert.equal(result.status,0,result.stderr);return result.stdout.trim();};
+  git('init');git('config','user.name','Fixture');git('config','user.email','fixture@example.test');
+  fs.writeFileSync(path.join(local,'root.txt'),'root commit');git('add','root.txt');git('commit','-m','root');
+  assert.deepEqual(await engine.getCommitChangedFiles(local,'HEAD'),['root.txt']);
+  fs.mkdirSync(path.join(local,'.vscode'));fs.writeFileSync(path.join(local,'.vscode','sftp.json'),JSON.stringify(raw));
+  const result=spawnSync(process.execPath,[path.resolve('cli.js'),'sftp','upload-commit',local,'--commit','HEAD'],{encoding:'utf8',timeout:20000});
+  assert.equal(result.status,0,result.stderr);assert.equal(fs.readFileSync(path.join(remote,'root.txt'),'utf8'),'root commit');
+  fs.writeFileSync(path.join(local,'root.txt'),'modified');fs.writeFileSync(path.join(local,'new.txt'),'new');
+  const selected=await engine.getUncommittedChangedFiles(local);assert.ok(selected.includes('root.txt'));assert.ok(selected.includes('new.txt'));
+});
 test('sync deletion keeps ignored descendants and their parent directories in both directions',async t=>{
   const {local,remote,session}=fixture(t,{ignore:['**/keep.txt'],syncOption:{delete:true}});
   for(const [target,action] of [[remote,'sync-up'],[local,'sync-down']]) {

@@ -9,7 +9,7 @@ import {
   listRecentCommits,
   getCommitChangedFiles,
   getUncommittedChangedFiles,
-} from '../modules/gitChanges';
+} from '../../../logic/sftp/git-changes';
 import { checkCommand } from './abstract/createCommand';
 import { showWarningMessage, showInformationMessage } from '../host';
 import { simplifyPath } from '../helper/index';

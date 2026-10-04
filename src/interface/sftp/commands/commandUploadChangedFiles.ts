@@ -96,8 +96,9 @@ async function handleCommand(hint: any) {
     }
   }
 
-  await Promise.all(creates.concat(uploads).map(change => uploadFile(change.uri)));
   await Promise.all(renames.map(change => renameRemote(change.renameUri || change.uri, { originPath: change.originalUri.fsPath })));
+  const destinations = new Map(creates.concat(uploads, renames).map(change => { const uri = change.renameUri || change.uri; return [uri.toString(), uri]; }));
+  await Promise.all(Array.from(destinations.values()).map(uri => uploadFile(uri)));
   await Promise.all(deletes.map(change => removeRemote(change.uri)));
 
   logger.log('');

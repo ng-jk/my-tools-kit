@@ -2,8 +2,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
-const { createSession, operate, configurePorts, sshArguments, watchPolicy } = require('../../build/sftp/engine');
-const { git } = require('../data/git');
+const { createSession, operate, configurePorts, sshArguments, watchPolicy, getCommitChangedFiles, getUncommittedChangedFiles } = require('../../build/sftp/engine');
 function expand(value) {
   if (typeof value === 'string') return value.replace(/\$\{env:([A-Za-z_][A-Za-z0-9_]*)\}/g, (_, key) => {
     if (process.env[key] === undefined) throw new Error('Missing environment variable: ' + key);
@@ -57,17 +56,18 @@ paths and JSON output here. Transfer, profile and sync logic is shared.`);
     return process.env.DEVKIT_SFTP_PASSWORD;
   }});
   const results = [];
+  let cancelled = false;
   for (const profile of profiles) {
+    if (cancelled) break;
     const session = createSession(root,raw,profile);
-    const cancel = () => { session.service.cancelTransferTasks(); session.service.dispose(); process.exitCode = 130; };
+    const cancel = () => { cancelled = true; session.service.cancelTransferTasks(); session.service.dispose(); process.exitCode = 130; };
     process.once('SIGINT', cancel);
     try {
       if (action === 'upload-changed' || action === 'upload-commit') {
-        const argv = action === 'upload-commit' ? ['diff-tree','--no-commit-id','--name-only','-r','-z','--diff-filter=ACMRT',flags.commit || 'HEAD','--'] : ['diff','--name-only','-z','--diff-filter=ACMRT','HEAD','--'];
-        const files = (await git(root,argv)).toString().split('\0').filter(Boolean);
-        if (action === 'upload-changed') files.push(...(await git(root,['ls-files','--others','--exclude-standard','-z'])).toString().split('\0').filter(Boolean));
+        const files = action === 'upload-commit' ? await getCommitChangedFiles(root, flags.commit || 'HEAD') : await getUncommittedChangedFiles(root);
         const transfers = [];
         for (const file of new Set(files)) {
+          if (cancelled) break;
           const local = path.relative(session.service.baseDir,path.resolve(root,file));
           if (local === '..' || local.startsWith('..'+path.sep) || path.isAbsolute(local)) continue;
           transfers.push(await operate(session,'upload',local,flags));
@@ -79,19 +79,23 @@ paths and JSON output here. Transfer, profile and sync logic is shared.`);
         const { minimatch } = require('../../build/sftp/watch-match');
         await new Promise((resolve,reject) => {
           let queue = Promise.resolve();
+          let stopped = false;
           const watcher = fs.watch(session.service.baseDir,{recursive:true},(_,name) => {
-            if (!name) return;
+            if (!name || stopped || cancelled) return;
             const matches = watcherConfig.files !== false && (!watcherConfig.files || minimatch(name.replaceAll('\\','/'),watcherConfig.files,{dot:true}));
             const full = path.join(session.service.baseDir,name);
             if (session.config.ignore?.(full)) return;
             queue = queue.then(async () => {
+              if (stopped || cancelled) return;
               if (fs.existsSync(full)) {
                 if (watcherConfig.uploadOnSave || (matches && watcherConfig.autoUpload)) await operate(session,'upload',name,flags);
               } else if (matches && watcherConfig.autoDelete) await operate(session,'delete',name,flags);
-            }).catch(error => { watcher.close(); reject(error); });
+            }).catch(error => { finish(error); });
           });
-          watcher.once('error',reject);
-          process.once('SIGINT',() => { watcher.close(); queue.finally(resolve); });
+          const stop = () => { stopped = true; watcher.close(); queue.then(() => finish(), finish); };
+          const finish = error => { stopped = true; watcher.close(); process.removeListener('SIGINT',stop); error ? reject(error) : resolve(); };
+          watcher.once('error',finish);
+          process.once('SIGINT',stop);
           console.error('Watching ' + session.service.baseDir + '; Ctrl+C to stop');
         });
       } else if (action === 'ssh') {

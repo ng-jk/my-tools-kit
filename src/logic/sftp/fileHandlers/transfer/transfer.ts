@@ -235,7 +235,7 @@ async function _sync(
       id: fileEntry.name,
     }));
 
-    const file2trans: [string, string, TransferDirection, InternalTransferOption][] = [];
+    const file2trans: [string, string, TransferDirection, FileType, InternalTransferOption][] = [];
     const dir2trans: [string, string, TransferDirection][] = [];
     const dir2sync: [string, string][] = [];
 
@@ -283,6 +283,7 @@ async function _sync(
                 from.fspath,
                 to.fspath,
                 direction,
+                from.type,
                 {
                   ...transferOption,
                   mode: to.mode, // prefer target mode
@@ -314,6 +315,7 @@ async function _sync(
             srcFile.fspath,
             fspath,
             transferDirection,
+            srcFile.type,
             {
               ...transferOption,
               fallbackMode: srcFile.mode,
@@ -343,6 +345,7 @@ async function _sync(
                 file.fspath,
                 fspath,
                 altDirection,
+                file.type,
                 {
                   ...transferOption,
                   fallbackMode: file.mode,
@@ -378,7 +381,7 @@ async function _sync(
     await Promise.all(fileMissed.map(file => removeFile(file, targetFs, FileType.File, transferOption)));
     await Promise.all(dirMissed.map(file => removeFile(file, targetFs, FileType.Directory, transferOption)));
 
-    const transFilePromise = file2trans.map(([src, target, direction, option]) =>
+    const transFilePromise = file2trans.map(([src, target, direction, type, option]) =>
       transferFile(
         {
           ...config,
@@ -389,7 +392,7 @@ async function _sync(
           srcFsPath: src,
           targetFsPath: target,
         },
-        FileType.File,
+        type,
         collect
       )
     );

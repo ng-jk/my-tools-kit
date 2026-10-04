@@ -23,6 +23,7 @@ Extension: **0.5.0**. Pipeline plugin: **0.3.1**.
 - Reject unsafe remote listing paths, preserve ignored descendants during sync deletion, correct FTP file creation, and resolve watcher behavior from the selected profile.
 - Add local SFTP/FTP wire tests, shared-engine/CLI tests, and sidebar/command host-adapter diagnostics. Advanced server/authentication combinations and native UI acceptance remain environment-specific; no production credentials are needed for automated tests.
 
+- Preserve symlink identity during sync, upload edited rename destinations, resolve all-profile transfers from each profile context, share Git change selection across UI/CLI (including root commits), and stop queued CLI work on cancellation.
 - Document the complete SFTP command inventory and explain pipeline prerequisites and branch flow.
 
 ## 0.4.0 — 2026-10-04

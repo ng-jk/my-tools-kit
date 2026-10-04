@@ -7,6 +7,7 @@ import { resolveProfileContext } from './core/profileContext';
 export { configurePorts } from '../../data/sftp/ports';
 export { sshArguments } from './ssh-arguments';
 export { watchPolicy } from './watch-policy';
+export {getCommitChangedFiles, getUncommittedChangedFiles} from './git-changes';
 export { verifyHostKey, fingerprint } from '../../data/sftp/host-keys';
 export { FileService, FileType, TransferTask, TransferDirection, Scheduler } from './core';
 export { transfer, sync } from './fileHandlers/transfer/transfer';
