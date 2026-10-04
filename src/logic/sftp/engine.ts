@@ -39,9 +39,18 @@ function resolveTarget(session: any, relative: string) {
 }
 async function operate(session: any, action: string, relative = '.', flags: any = {}) {
   const { service, config } = session;
+  const checkCancelled = service.cancellationCheck();
+  checkCancelled();
   const { local, remote } = resolveTarget(session, relative);
-  const remoteFs = await service.getRemoteFileSystem(config);
-  const localFs = service.getLocalFileSystem();
+  let planning = true;
+  const guard = (fs: any) => new Proxy(fs, {get(target, key) {
+    const value = Reflect.get(target, key);
+    if (typeof value !== 'function') return value;
+    return (...args: any[]) => { if (planning) checkCancelled(); return value.apply(target, args); };
+  }});
+  const remoteFs = guard(await service.getRemoteFileSystem(config));
+  checkCancelled();
+  const localFs = guard(service.getLocalFileSystem());
   if (action === 'list') return remoteFs.list(remote);
   if (action === 'read') return (await remoteFs.readFile(remote)).toString('utf8');
   if (action === 'diff') return { local: (await localFs.readFile(local)).toString('utf8'), remote: (await remoteFs.readFile(remote)).toString('utf8') };
@@ -68,12 +77,18 @@ async function operate(session: any, action: string, relative = '.', flags: any 
   if (options.delete && !flags.yes) throw new Error('syncOption.delete requires --yes');
   const tasks: any[] = [];
   const operation = action.startsWith('sync-') ? sync : transfer;
+  const scheduler = service.createTransferScheduler(config.concurrency);
+  try {
   const deleted = await operation({ srcFsPath: down ? remote : local, targetFsPath: down ? local : remote,
     srcFs: down ? remoteFs : localFs, targetFs: down ? localFs : remoteFs, transferDirection: direction,
-    transferOption: options, filePerm: config.filePerm, dirPerm: config.dirPerm }, task => tasks.push(task));
+    transferOption: options, filePerm: config.filePerm, dirPerm: config.dirPerm }, task => { checkCancelled(); tasks.push(task); });
+  checkCancelled();
   if (!down) await backupBeforeUpload({config, fileService: service}, tasks, remoteFs);
-  const scheduler = service.createTransferScheduler(config.concurrency);
+  checkCancelled();
+  planning = false;
   tasks.forEach(task => scheduler.add(task));
   await scheduler.run();
+  checkCancelled();
   return { passed: true, transferred: tasks.length, deleted: deleted || [] };
+  } finally { scheduler.stop(); }
 }

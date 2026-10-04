@@ -1,7 +1,7 @@
 // Adapted from ng-jk/vscode-sftp (MIT); see THIRD-PARTY-NOTICES.md.
 import * as os from 'os';
 import * as path from 'path';
-import * as fs from 'fs';
+import { nativeRealpath } from '../../../data/sftp/local-path';
 import { upath } from '../../../logic/sftp/core/index';
 import { pathRelativeToWorkspace, getWorkspaceFolders } from '../host';
 
@@ -15,7 +15,7 @@ function getFileSystemPath(fsPath: string): string {
 		result = result[0].toUpperCase() + result.substr(1);
 	}
 	if (process.platform === 'win32' || process.platform === 'darwin') {
-		const realpath = fs.realpathSync.native(result);
+		const realpath = nativeRealpath(result);
 		// Only use the real path if only the casing has changed.
 		if (realpath.toLowerCase() === result.toLowerCase()) {
 			result = realpath;

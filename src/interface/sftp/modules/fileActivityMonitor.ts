@@ -1,7 +1,7 @@
 // Adapted from ng-jk/vscode-sftp (MIT); see THIRD-PARTY-NOTICES.md.
 import * as vscode from 'vscode';
 import logger from '../logger';
-import { realpathSync } from 'fs';
+import { nativeRealpath } from '../../../data/sftp/local-path';
 import app from '../app';
 import StatusBarItem from '../ui/statusBarItem';
 import { onDidOpenTextDocument, onDidSaveTextDocument, showConfirmMessage } from '../host';
@@ -29,7 +29,7 @@ async function handleFileSave(uri: vscode.Uri) {
 
   const config = fileService.getConfig();
   if (config.uploadOnSave) {
-    const fspath = await realpathSync.native(uri.fsPath);
+    const fspath = await nativeRealpath(uri.fsPath);
     uri = vscode.Uri.file(fspath);
     logger.info(`[file-save] ${fspath}`);
     try {

@@ -101,15 +101,17 @@ export function createFileMultiCommand(commandOption: FileCommandOption & { name
             }
 
             const targetList: Uri[] = Array.isArray(target) ? target : [target];
+            const ownedContexts: FileHandlerContext[] = [];
             const pendingTasks = targetList.map(async uri => {
                 try {
                     const contexts = allHandleCtxFromUri(uri);
-                    try {
+                    ownedContexts.push(...contexts);
+                    {
                         const results = await Promise.allSettled(contexts.map(commandOption.handleFile));
                         const failure = results.find(result => result.status === 'rejected');
                         if (failure && failure.status === 'rejected') throw failure.reason;
                     }
-                    finally { contexts.forEach(ctx => ctx.fileService.dispose()); app.remoteExplorer.refresh(); }
+
                 } catch (error) {
                     if (error instanceof Error) {
                         reportError(error);
@@ -119,7 +121,8 @@ export function createFileMultiCommand(commandOption: FileCommandOption & { name
                 }
             });
 
-            await Promise.all(pendingTasks);
+            try { await Promise.all(pendingTasks); }
+            finally { ownedContexts.forEach(ctx => ctx.fileService.dispose()); app.remoteExplorer.refresh(); }
         }
     };
 }

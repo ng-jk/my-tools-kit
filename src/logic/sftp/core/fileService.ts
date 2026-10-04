@@ -465,10 +465,19 @@ export default class FileService {
     return this._transferSchedulers.length > 0;
   }
 
+  private cancellationGeneration = 0;
+  private disposed = false;
+
+  cancellationCheck() {
+    const generation = this.cancellationGeneration;
+    return () => { if (this.disposed || generation !== this.cancellationGeneration) throw new Error("Transfer cancelled"); };
+  }
+
   cancelTransferTasks() {
+    this.cancellationGeneration++;
     // keep the order
     // 1, remove tasks not start
-    this._transferSchedulers.forEach(transfer => transfer.stop());
+    [...this._transferSchedulers].forEach(transfer => transfer.stop());
     this._transferSchedulers.length = 0;
 
     // 2. cancel running task
@@ -510,6 +519,7 @@ export default class FileService {
       stop() {
         isStopped = true;
         scheduler.empty();
+        fileService._removeScheduler(transferScheduler);
       },
       add(task: TransferTask) {
         if (isStopped) {
@@ -594,6 +604,8 @@ export default class FileService {
   }
 
   dispose() {
+    this.disposed = true;
+    this.cancelTransferTasks();
     this._disposeWatcher();
     this._disposeFileSystem();
   }

@@ -182,7 +182,7 @@ async function transferWithType(
         }
       }
       // save before upload: end >>>
-      transferFile(config, fileType, collect);
+      await transferFile(config, fileType, collect);
       break;
     default:
       logger.warn(`Unsupported file type (type = ${fileType}). File ${config.srcFsPath}`);

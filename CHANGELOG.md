@@ -6,6 +6,8 @@ This file records implemented functionality and its verification limits. Extensi
 
 Extension: **0.5.0**. Pipeline plugin: **0.3.1**.
 
+- Cancellation during CLI planning/backup prevents subsequent transfer writes and reports failure. Shared remote connections remain open until all owning services release them; multi-selection all-profile uploads defer cleanup until every item finishes. Interface realpath access uses a data adapter.
+
 - Capture source-stream failures during permission preparation so transfers fail instead of hanging; apply sync exclusions before checking file/directory conflicts.
 
 - Integrate ng-jk/vscode-sftp 1.16.3 source, including all upstream public commands, profiles/contexts, SFTP/FTP/FTPS, remote explorer, Git-change uploads, sync, watchers, temporary uploads, permissions and mirror backups. Preserve upstream licenses and source provenance.

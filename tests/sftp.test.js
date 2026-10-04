@@ -315,3 +315,15 @@ test('sidebar contributes a toolkit entry and all upstream public SFTP commands'
   assert.equal(Object.keys(metadata.inputs).some(p=>p.startsWith('src/interface/')),false);
   assert.equal(Object.values(metadata.outputs).some(o=>o.imports.some(i=>i.path==='vscode')),false);
 });
+
+test('cancellation during planning prevents payload writes and reports failure',async t=>{
+  for (const phase of ['ensureDir','list']) {
+    const {local,remote,session}=fixture(t);
+    fs.writeFileSync(path.join(local,'cancel.txt'),'must not upload');
+    const source=session.service.getLocalFileSystem(),target=await session.service.getRemoteFileSystem(session.config);
+    const adapter=phase==='list'?source:target,original=adapter[phase];
+    adapter[phase]=async function(...args){const result=await original.apply(this,args);session.service.cancelTransferTasks();return result;};
+    try {await assert.rejects(engine.operate(session,'upload'),/cancelled/);assert.equal(fs.existsSync(path.join(remote,'cancel.txt')),false);assert.equal(session.service.isTransferring(),false);}
+    finally {adapter[phase]=original;}
+  }
+});

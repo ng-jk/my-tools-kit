@@ -20,6 +20,7 @@ function hashOption(opiton: { [x: string]: any }) {
 }
 
 class KeepAliveRemoteFs {
+  owners = 0;
   private isValid: boolean = false;
 
   private pendingPromise: Promise<RemoteFileSystem> | null;
@@ -127,10 +128,12 @@ export function createRemoteIfNoneExist(option: any): Promise<FileSystem> {
   const identity = hashOption(option);
   const fs = fsTable[identity];
   if (fs !== undefined) {
+    fs.owners++;
     return fs.getFs(option);
   }
 
   const fsInstance = new KeepAliveRemoteFs();
+  fsInstance.owners = 1;
   fsTable[identity] = fsInstance;
   return fsInstance.getFs(option);
 }
@@ -138,7 +141,7 @@ export function createRemoteIfNoneExist(option: any): Promise<FileSystem> {
 export function removeRemoteFs(option: any) {
   const identity = hashOption(option);
   const fs = fsTable[identity];
-  if (fs !== undefined) {
+  if (fs !== undefined && --fs.owners === 0) {
     fs.end();
     delete fsTable[identity];
   }

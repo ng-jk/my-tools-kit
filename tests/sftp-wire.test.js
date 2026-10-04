@@ -48,6 +48,12 @@ test('SFTP wire: password authentication, list, upload, temp rename, download an
   try {await assert.rejects(engine.operate(bad,'list'),/verification|host key/i);assert.equal(authentications,0);} finally {bad.service.dispose();}
   fs.writeFileSync(path.join(local,'wire.txt'),'over SSH');
   await engine.operate(session,'upload','wire.txt');assert.equal(fs.readFileSync(path.join(remote,'wire.txt'),'utf8'),'over SSH');
+  const peer=engine.createSession(local,{host:'127.0.0.1',port:server.address().port,username:'fixture',password:'test-password',remotePath:'/',useTempFile:true,hostFingerprint:engine.fingerprint(utils.parseKey(hostKey).getPublicSSH())});
+  const originalFs=await session.service.getRemoteFileSystem(session.config);
+  const peerFs=await peer.service.getRemoteFileSystem(peer.config);
+  assert.equal(peerFs,originalFs,'services share the same cached connection');
+  peer.service.dispose();
+  assert.equal((await originalFs.list('/')).some(entry=>entry.name==='wire.txt'),true,'disposing one owner does not disconnect another');
   modes.set('/wire.txt',0o600);
   await engine.operate(session,'upload','wire.txt');assert.equal(modes.get('/wire.txt'),0o600);assert.equal(writeModes.at(-1),0o600);
   honorOpen=false;allowChmod=false;const written=writeModes.length;

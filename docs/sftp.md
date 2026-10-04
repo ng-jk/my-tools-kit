@@ -144,3 +144,5 @@ Remote-root deletion and rename protections apply to UI, CLI and mixed explorer 
 SFTP also verifies effective staging-file permissions before transmitting content and after writing. Servers unable to establish the required mode fail explicitly. File/directory type conflicts stop sync with a clear error so the user can resolve the conflict; they are never reported as successful no-op transfers.
 
 Source-stream errors during permission preparation fail the transfer before payload writes. Sync applies ignore and ignoreExisting policies before checking type conflicts, so excluded entries do not stop synchronization.
+
+Cancellation during CLI planning/backup prevents subsequent transfer writes and reports failure. Shared remote connections remain open until all owning services release them; multi-selection all-profile uploads defer cleanup until every item finishes. Interface realpath access uses a data adapter.
