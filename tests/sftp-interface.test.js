@@ -145,5 +145,23 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     assert.equal(fs.existsSync(path.join(dir,'remote-other','batch','payload.txt')),false);
     assert.ok(errors.some(message=>/cancelled/.test(message)));
 
+    extension.deactivate();commands.clear();views.clear();errors.length=0;
+    for(const name of ['first-dev','first-prod','second-dev','second-prod','dest-first-dev','dest-first-prod','dest-second-dev','dest-second-prod'])fs.mkdirSync(path.join(root,name));
+    const configs=['first','second'].map((name,index)=>({name,protocol:'local',host:'fixture',username:'fixture',remotePath:path.join(root,'dest-'+name+'-dev').replaceAll('\\','/'),defaultProfile:index?'prod':'dev',profiles:{
+      dev:{context:name+'-dev',remotePath:path.join(root,'dest-'+name+'-dev').replaceAll('\\','/'),watcher:{files:false}},
+      prod:{context:name+'-prod',remotePath:path.join(root,'dest-'+name+'-prod').replaceAll('\\','/'),watcher:{files:false}}
+    }}));
+    fs.writeFileSync(path.join(root,'.vscode','sftp.json'),JSON.stringify(configs));
+    fs.writeFileSync(path.join(root,'first-dev','profile.txt'),'first dev');fs.writeFileSync(path.join(root,'second-prod','profile.txt'),'second prod');
+    await extension.activate(context);
+    assert.equal((await views.get('devkit.remoteExplorer').getChildren()).length,2);
+    await commands.get('devkit.sftp.upload.file')(URI.file(path.join(root,'first-dev','profile.txt')));
+    await commands.get('devkit.sftp.upload.file')(URI.file(path.join(root,'second-prod','profile.txt')));
+    assert.deepEqual(errors,[]);
+    assert.equal(fs.readFileSync(path.join(root,'dest-first-dev','profile.txt'),'utf8'),'first dev');
+    assert.equal(fs.readFileSync(path.join(root,'dest-second-prod','profile.txt'),'utf8'),'second prod');
+    assert.equal(fs.existsSync(path.join(root,'dest-first-prod','profile.txt')),false);
+    assert.equal(fs.existsSync(path.join(root,'dest-second-dev','profile.txt')),false);
+
   } finally {extension?.deactivate();context.subscriptions.forEach(item=>item.dispose());Module._load=original;fs.readdir=nativeReaddir;}
 });

@@ -28,7 +28,7 @@ function inspectConfig(raw: any, profile?: string) {
 function createSession(workspace: string, raw: any, profile?: string) {
   const { config, selected, context } = inspectConfig(raw, profile);
   const base = path.resolve(workspace, context || '.');
-  const service = new FileService(base, path.resolve(workspace), config);
+  const service = new FileService(base, path.resolve(workspace), config, selected);
   service.setConfigValidator(validateConfig);
   const resolved = service.getConfig(selected);
   return { service, config: resolved, profile: selected };

@@ -97,19 +97,11 @@ export function createFileService(
   workspace: string,
   options: { preserveProfile?: boolean } = {}
 ) {
-  // On a profile-switch reload we must keep the user's selection; only honor
-  // defaultProfile on a fresh creation (startup / config save).
-  if (!options.preserveProfile && config.defaultProfile) {
-    app.state.profile = config.defaultProfile;
-  }
-
-  // baseDir reflects the ACTIVE profile's context so switching profiles (which
-  // reloads services) re-keys the trie to the profile's local root.
-  const normalizedBasePath = getBasePath(
-    resolveProfileContext(config, app.state.profile),
-    workspace
-  );
-  const service = new FileService(normalizedBasePath, workspace, config);
+  // Capture selection per service; creating another config must not retarget it.
+  const requested = options.preserveProfile ? app.state.profile : config.defaultProfile || null;
+  const selected = requested && config.profiles && !config.profiles[requested] ? config.defaultProfile || null : requested;
+  const normalizedBasePath = getBasePath(resolveProfileContext(config, selected), workspace);
+  const service = new FileService(normalizedBasePath, workspace, config, selected);
 
   logger.info(`config at ${normalizedBasePath}`, maskConfig(config));
 

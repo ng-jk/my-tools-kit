@@ -408,7 +408,7 @@ export default class FileService {
   workspace: string;
   private readonly localFileSystem: FileSystem;
 
-  constructor(baseDir: string, workspace: string, config: FileServiceConfig) {
+  constructor(baseDir: string, workspace: string, config: FileServiceConfig, public readonly profile: string | null = config.defaultProfile || null) {
     this.id = ++id;
     this.workspace = workspace;
     this.baseDir = baseDir;
@@ -446,14 +446,14 @@ export default class FileService {
   }
 
   forProfile(profile: string): FileService {
-    const service = new FileService(path.resolve(this.workspace, this.resolveContext(profile) || '.'), this.workspace, this._config);
+    const service = new FileService(path.resolve(this.workspace, this.resolveContext(profile) || '.'), this.workspace, this._config, profile);
     service.setConfigValidator(this._configValidator);
     return service;
   }
 
   // The raw (unresolved) `context` for a given profile — used to detect whether
   // a profile switch actually changes the local root and warrants a reload.
-  resolveContext(profile: string | null = app.state.profile): string | undefined {
+  resolveContext(profile: string | null = this.profile): string | undefined {
     return resolveProfileContext(this._config, profile);
   }
 
@@ -566,7 +566,7 @@ export default class FileService {
     return createRemoteIfNoneExist(option);
   }
 
-  getConfig(useProfile = app.state.profile): ServiceConfig {
+  getConfig(useProfile = this.profile): ServiceConfig {
     let config = this._config;
     const hasProfile =
       config.profiles && Object.keys(config.profiles).length > 0;
@@ -589,7 +589,7 @@ export default class FileService {
     if (error) {
       let errorMsg = `Config validation fail: ${error.message}.`;
       // tslint:disable-next-line triple-equals
-      if (hasProfile && app.state.profile == null) {
+      if (hasProfile && useProfile == null) {
         errorMsg += ' You might want to set a profile first.';
       }
       throw new Error(errorMsg);

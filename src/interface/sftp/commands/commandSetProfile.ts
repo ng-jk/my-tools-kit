@@ -13,9 +13,6 @@ async function reloadOnProfileChange(
   prevProfile: string | null,
   nextProfile: string | null
 ) {
-  if (prevProfile === nextProfile) {
-    return;
-  }
 
   const workspaces = new Set<string>();
   getAllFileService().forEach(service => {
@@ -42,7 +39,7 @@ export default checkCommand({
         service.getAvailableProfiles().forEach(profile => {
           acc.push({
             value: profile,
-            label: app.state.profile === profile ? `${profile} (active)` : profile,
+            label: service.profile === profile ? `${profile} (active)` : profile,
           });
         });
         return acc;
