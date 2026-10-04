@@ -13,6 +13,7 @@ import { flatten } from '../../utils';
 import { logger } from '../../../../data/sftp/ports';
 import { getOpenTextDocuments } from '../../../../data/sftp/ports';
 import { checkedEntries } from '../../../../data/sftp/path-safety';
+import {ensureTransferDirectory} from '../../directory-permissions';
 import {transferPermissions} from '../../transfer-permissions';
 
 interface InternalTransferOption extends FileHandleOption, TransferTaskTransferOption {}
@@ -86,7 +87,7 @@ async function transferFolder(
   }
 
   // Need this to make sure file can correct transfer
-  await targetFs.ensureDir(targetFsPath);
+  await ensureTransferDirectory(srcFs, targetFs, srcFsPath, targetFsPath, transferPermissions(transferOption, config.transferDirection === TransferDirection.LOCAL_TO_REMOTE).dirPerm);
 
   // If dirPerm is configured, we chmod the remote directory after creation.
   if(transferPermissions(config.transferOption, config.transferDirection === TransferDirection.LOCAL_TO_REMOTE).dirPerm) {
@@ -162,7 +163,7 @@ async function transferWithType(
     case FileType.SymbolicLink:
       if (config.ensureDirExist) {
         const { targetFs, targetFsPath } = config;
-        await targetFs.ensureDir(targetFs.pathResolver.dirname(targetFsPath));
+        await ensureTransferDirectory(config.srcFs, targetFs, config.srcFs.pathResolver.dirname(config.srcFsPath), targetFs.pathResolver.dirname(targetFsPath), transferPermissions(config.transferOption, config.transferDirection === TransferDirection.LOCAL_TO_REMOTE).dirPerm);
         // If dirPerm is configured, we chmod the remote directory after creation.
         if(transferPermissions(config.transferOption, config.transferDirection === TransferDirection.LOCAL_TO_REMOTE).dirPerm) {
           logger.info("Running chmod on remote directory with perm: ", config.transferOption.dirPerm)
@@ -254,7 +255,7 @@ async function _sync(
 
       // files exist on both side
       if (desFile) {
-        if (transferOption.ignoreExisting) return;
+        if (transferOption.ignoreExisting && !(srcFile.type === FileType.Directory && desFile.type === FileType.Directory)) return;
         if (srcFile.type !== desFile.type && (srcFile.type === FileType.Directory || desFile.type === FileType.Directory)) {
           throw new Error('Sync file/directory type conflict: ' + srcFile.fspath + ' and ' + desFile.fspath);
         }
@@ -434,7 +435,7 @@ async function _sync(
   };
 
   // create dir here so we don't have to ensure it for children files.
-  await targetFs.ensureDir(targetFsPath);
+  await ensureTransferDirectory(srcFs, targetFs, srcFsPath, targetFsPath, transferPermissions(transferOption, config.transferDirection === TransferDirection.LOCAL_TO_REMOTE).dirPerm);
 
   const files = await Promise.all([
     srcFs.list(srcFsPath),

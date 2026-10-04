@@ -154,3 +154,5 @@ Check cancellation after symlink reads, after staging completion, and after acqu
 Bind each configuration service to its own selected profile, keeping local context, watcher policy and connection destination consistent when configurations have different defaults.
 
 Reserve remote descriptor slots before issuing open requests and release failed requests, preventing repeated errors or concurrent opens from exhausting the optional limiter.
+
+Establish and verify source directory modes (or explicit upload overrides) on new destination directories before payloads, including missing parents. Serialize creation and clean up failed permission setup. Recurse through matching directories with ignoreExisting so new nested files are still copied. A filesystem or server unable to establish the required directory mode rejects the transfer before content is copied.
