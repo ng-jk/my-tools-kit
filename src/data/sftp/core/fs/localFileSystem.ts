@@ -11,6 +11,10 @@ export default class LocalFileSystem extends FileSystem {
     super(pathResolver);
   }
 
+  pathIdentity(value: string): string {
+    const normalized=paths.resolve(value);
+    return process.platform==='win32'||process.platform==='darwin' ? normalized.toLowerCase() : normalized;
+  }
   async establishDirectoryMode(path: string, mode: number): Promise<void> {
     this.assertWritable(path);
     if (process.platform === 'win32') { await protectWindowsDirectory(path); return; }

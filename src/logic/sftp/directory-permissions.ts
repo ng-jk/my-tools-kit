@@ -4,11 +4,12 @@ const locks = new WeakMap<object, Map<string, Promise<void>>>();
 export async function ensureTransferDirectory(source: FileSystem, target: FileSystem, from: string, to: string, override?: number) {
   const identity = (target as any)[filesystemIdentity] || target;
   let paths = locks.get(identity); if (!paths) {paths = new Map(); locks.set(identity, paths);}
-  const previous = paths.get(to) || Promise.resolve();
+  const key=target.pathIdentity ? target.pathIdentity(to) : to;
+  const previous = paths.get(key) || Promise.resolve();
   let release: () => void; const current = new Promise<void>(resolve => {release = resolve;});
-  paths.set(to, current); await previous;
+  paths.set(key, current); await previous;
   try { await ensure(source, target, from, to, override); }
-  finally {release!(); if (paths.get(to) === current) paths.delete(to);}
+  finally {release!(); if (paths.get(key) === current) paths.delete(key);}
 }
 async function ensure(source: FileSystem, target: FileSystem, from: string, to: string, override?: number) {
   let existing;

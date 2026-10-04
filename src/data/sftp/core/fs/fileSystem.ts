@@ -53,6 +53,7 @@ export default abstract class FileSystem {
     }
   }
 
+  pathIdentity(value: string): string { return this.pathResolver.normalize(value); }
   supportsExclusiveCreate = true;
   supportsCompleteDirectoryListing = true;
   pathResolver: any;

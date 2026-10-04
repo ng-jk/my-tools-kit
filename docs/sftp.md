@@ -170,3 +170,5 @@ Reject unparseable FTP listing records before sync can infer deletions. Normaliz
 Block deletion-based FTP sync-down because LIST cannot guarantee hidden-entry completeness; an omitted dotfile must never be interpreted as permission to delete its local counterpart. Use SFTP for destructive remote-to-local synchronization. Non-destructive FTP sync and ordinary transfers remain supported.
 
 Apply ignore rules to every descendant during remote deletion, including watcher autoDelete and terminal deletion; preserve ancestors containing ignored remote-only files.
+
+Reject source names that collide on the destination filesystem before transfer/sync mutations, and use destination-aware replacement/directory lock keys. Resolve Git log, status and commit changes through the Git process adapter so linked worktrees use their common object database. Git-upload commands require Git on PATH and retain its ownership checks.

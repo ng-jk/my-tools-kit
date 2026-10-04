@@ -344,8 +344,8 @@ test('cancellation during symlink reads and file close preserves existing destin
 test('cancellation while waiting for replacement lock preserves the completed first transfer',async()=>{
   let release,entered;const blocked=new Promise(resolve=>entered=resolve),hold=new Promise(resolve=>release=resolve);
   const entries=new Map([['/target','original']]);let first=true;
-  const target={symlink:async(value,name)=>entries.set(name,value),lstat:async name=>{if(!entries.has(name))throw Object.assign(new Error('missing'),{code:2});return {type:engine.FileType.SymbolicLink};},rename:async(a,b)=>{if(first){first=false;entered();await hold;}entries.set(b,entries.get(a));entries.delete(a);},unlink:async name=>entries.delete(name)};
-  const make=value=>new engine.TransferTask({fsPath:'/source',fileSystem:{readlink:async()=>value}},{fsPath:'/target',fileSystem:target},{fileType:engine.FileType.SymbolicLink,transferDirection:engine.TransferDirection.LOCAL_TO_REMOTE,transferOption:{}});
+  const target={pathIdentity:name=>name.toLowerCase(),symlink:async(value,name)=>entries.set(name.toLowerCase(),value),lstat:async name=>{name=name.toLowerCase();if(!entries.has(name))throw Object.assign(new Error('missing'),{code:2});return {type:engine.FileType.SymbolicLink};},rename:async(a,b)=>{a=a.toLowerCase();b=b.toLowerCase();if(first){first=false;entered();await hold;}entries.set(b,entries.get(a));entries.delete(a);},unlink:async name=>entries.delete(name.toLowerCase())};
+  const make=value=>new engine.TransferTask({fsPath:'/source',fileSystem:{readlink:async()=>value}},{fsPath:value==='first'?'/Target':'/target',fileSystem:target},{fileType:engine.FileType.SymbolicLink,transferDirection:engine.TransferDirection.LOCAL_TO_REMOTE,transferOption:{}});
   const one=make('first'),two=make('second');const running=one.run();await blocked;
   const waiting=two.run();await new Promise(resolve=>setImmediate(resolve));two.cancel();release();
   await running;await assert.rejects(waiting,/cancelled/);assert.equal(entries.get('/target'),'first');assert.equal(entries.size,1);
@@ -506,4 +506,21 @@ test('recursive terminal deletion preserves ignored remote-only descendants',asy
   const {remote,session}=fixture(t,{ignore:['**/.env']});fs.mkdirSync(path.join(remote,'config'));fs.writeFileSync(path.join(remote,'config','.env'),'server only');fs.writeFileSync(path.join(remote,'config','remove.txt'),'obsolete');
   await engine.operate(session,'delete','config',{yes:true});
   assert.equal(fs.readFileSync(path.join(remote,'config','.env'),'utf8'),'server only');assert.equal(fs.existsSync(path.join(remote,'config','remove.txt')),false);
+});
+
+test('downloads and sync reject case-colliding source names before mutations',async()=>{
+  const entries=['Readme','README'].map(name=>({name,fspath:'/source/'+name,type:engine.FileType.File,mode:0o644}));
+  const source={pathResolver:path.posix,lstat:async()=>({type:engine.FileType.Directory,mode:0o755}),list:async()=>entries};let mutations=0;
+  const target={pathResolver:path.posix,pathIdentity:name=>name.toLowerCase(),list:async()=>[],lstat:async()=>({type:engine.FileType.Directory}),ensureDir:async()=>mutations++,unlink:async()=>mutations++};
+  for(const operation of [engine.transfer,engine.sync]) {
+    await assert.rejects(operation({srcFsPath:'/source',targetFsPath:'/destination',srcFs:source,targetFs:target,transferDirection:engine.TransferDirection.REMOTE_TO_LOCAL,transferOption:{delete:true}},()=>mutations++),/filename collision/);
+    assert.equal(mutations,0);
+  }
+});
+test('Git commit and working changes resolve linked worktrees',async t=>{
+  const {dir,local}=fixture(t);const linked=path.join(dir,'linked');
+  const git=(...args)=>{const result=spawnSync('git',['-c','user.name=Fixture','-c','user.email=fixture@example.test',...args],{cwd:local,encoding:'utf8'});assert.equal(result.status,0,result.stderr);return result.stdout;};
+  git('init');fs.writeFileSync(path.join(local,'root.txt'),'root');git('add','.');git('commit','-m','root');git('worktree','add','--detach',linked,'HEAD');
+  assert.deepEqual(await engine.getCommitChangedFiles(linked,'HEAD'),['root.txt']);
+  fs.writeFileSync(path.join(linked,'new.txt'),'linked file');assert.ok((await engine.getUncommittedChangedFiles(linked)).includes('new.txt'));
 });

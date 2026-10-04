@@ -8,13 +8,14 @@ export async function replaceStaged(fs: FileSystem, staged: string, target: stri
   const identity = (fs as any)[filesystemIdentity] || fs;
   let targets = locks.get(identity);
   if (!targets) { targets = new Map(); locks.set(identity, targets); }
-  const previous = targets.get(target) || Promise.resolve();
+  const key = fs.pathIdentity ? fs.pathIdentity(target) : target;
+  const previous = targets.get(key) || Promise.resolve();
   let release: () => void;
   const current = new Promise<void>(resolve => { release = resolve; });
-  targets.set(target, current);
+  targets.set(key, current);
   await previous;
   try { checkCancelled(); await replace(fs, staged, target, atomic, checkCancelled); }
-  finally { release!(); if (targets.get(target) === current) targets.delete(target); }
+  finally { release!(); if (targets.get(key) === current) targets.delete(key); }
 }
 async function replace(fs: FileSystem, staged: string, target: string, atomic: boolean, checkCancelled: () => void) {
   checkCancelled();

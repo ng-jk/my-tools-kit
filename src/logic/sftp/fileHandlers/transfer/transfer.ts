@@ -76,6 +76,16 @@ function toHash<T, R = T>(items: T[], key: string, transform?: (a: T) => R): { [
   }, Object.create(null) as { [key: string]: R });
 }
 
+function rejectDestinationCollisions(entries: FileEntry[], target: FileSystem, directory: string) {
+  const names=new Map<string,string>();
+  for(const entry of entries) {
+    const pathname=target.pathResolver.join(directory,entry.name);
+    const identity=target.pathIdentity ? target.pathIdentity(pathname) : target.pathResolver.normalize(pathname);
+    if(names.has(identity)) throw new Error('Destination filename collision: '+names.get(identity)+' and '+entry.name);
+    names.set(identity,entry.name);
+  }
+}
+
 async function transferFolder(
   config: TransferHandleConfig<TransferOption>,
   collect: (t: TransferTask) => void
@@ -86,6 +96,9 @@ async function transferFolder(
     return;
   }
 
+  const fileEntries = checkedEntries(srcFs, srcFsPath, await srcFs.list(srcFsPath));
+  rejectDestinationCollisions(fileEntries,targetFs,targetFsPath);
+
   // Need this to make sure file can correct transfer
   await ensureTransferDirectory(srcFs, targetFs, srcFsPath, targetFsPath, transferPermissions(transferOption, config.transferDirection === TransferDirection.LOCAL_TO_REMOTE).dirPerm);
 
@@ -95,7 +108,6 @@ async function transferFolder(
     await targetFs.chmod(targetFsPath, parseInt(String(config.transferOption.dirPerm), 8))
   }
 
-  const fileEntries = checkedEntries(srcFs, srcFsPath, await srcFs.list(srcFsPath));
   await Promise.all(
     fileEntries.map(file =>
       transferWithType(
@@ -438,13 +450,14 @@ async function _sync(
   };
 
   // create dir here so we don't have to ensure it for children files.
-  await ensureTransferDirectory(srcFs, targetFs, srcFsPath, targetFsPath, transferPermissions(transferOption, config.transferDirection === TransferDirection.LOCAL_TO_REMOTE).dirPerm);
 
-  const files = await Promise.all([
-    srcFs.list(srcFsPath),
-    targetFs.list(targetFsPath).catch(err => { if (err.code === 'ENOENT' || err.code === 2) return []; throw err; }),
-  ]);
-  await syncFiles(...files);
+
+  const sourceEntries=checkedEntries(srcFs,srcFsPath,await srcFs.list(srcFsPath));
+  rejectDestinationCollisions(sourceEntries,targetFs,targetFsPath);
+  await ensureTransferDirectory(srcFs, targetFs, srcFsPath, targetFsPath, transferPermissions(transferOption, config.transferDirection === TransferDirection.LOCAL_TO_REMOTE).dirPerm);
+  const targetEntries=checkedEntries(targetFs,targetFsPath,await targetFs.list(targetFsPath));
+  if(transferOption.bothDiretions) rejectDestinationCollisions(targetEntries,srcFs,srcFsPath);
+  await syncFiles(sourceEntries,targetEntries);
 }
 
 export { TransferOption, SyncOption, TransferDirection };
