@@ -27,7 +27,7 @@ export default class SSHClient extends RemoteClient {
       // or interactiveAuth : array of phrases
       (Array.isArray(connectOption.interactiveAuth) && !!connectOption.interactiveAuth.length) ||
       // or key defined
-      ['password', 'agent', 'privateKeyPath'].some(
+      ['password', 'agent', 'privateKeyPath', 'privateKey'].some(
         // tslint:disable-next-line triple-equals
         key => (connectOption as any)[key] != undefined
       )
@@ -42,7 +42,7 @@ export default class SSHClient extends RemoteClient {
 
     let lastOption: ConnectOption = option;
     let fs: FileSystem | RemoteFileSystem = localFs;
-    let sock;
+    let sock = option.sock;
     if (
       (Array.isArray(hop) && hop.length > 0) ||
       (hop && Object.keys(hop).length > 0)
@@ -65,7 +65,7 @@ export default class SSHClient extends RemoteClient {
           });
         }
 
-        if (curOpt.privateKeyPath) {
+        if (curOpt.privateKeyPath && curOpt.privateKey === undefined) {
           const buffer = await fs.readFile(curOpt.privateKeyPath);
           curOpt.privateKey = buffer.toString();
         }
@@ -86,7 +86,7 @@ export default class SSHClient extends RemoteClient {
       });
     }
 
-    if (lastOption.privateKeyPath) {
+    if (lastOption.privateKeyPath && lastOption.privateKey === undefined) {
       const buffer = await fs.readFile(lastOption.privateKeyPath);
       lastOption.privateKey = buffer.toString();
     }

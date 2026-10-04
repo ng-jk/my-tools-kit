@@ -583,3 +583,22 @@ test('Git SCM reconciles staged modifications, deletions and renames against cur
   const recreatedOrigin=engine.reconcileGitChanges([{kind:'rename',oldPath:'/root/a',path:'/root/b'}],()=>true);
   assert.deepEqual(engine.planGitTransfers(recreatedOrigin,context),[{kind:'upload',path:'/root/a'},{kind:'upload',path:'/root/b'}]);
 });
+
+test('nested SSH connect preserves each tunnel and reads intermediate keys only on the preceding host',async()=>{
+  const client=new engine.SFTPFileSystem(path.posix,{client:{}})._createClient({});
+  const proto=Object.getPrototypeOf(client),connect=proto._connectSSHClient,getSftp=proto._getSftp,hop=proto._makeHopping;
+  const read=engine.SFTPFileSystem.prototype.readFile;const calls=[],reads=[],sockets=[];
+  proto._connectSSHClient=async function(_,option){calls.push(option);};
+  proto._getSftp=async()=>({});
+  proto._makeHopping=async(previous,host,port)=>{const socket={host,port,previous:previous._option.host};sockets.push(socket);return socket;};
+  engine.SFTPFileSystem.prototype.readFile=async function(name){reads.push(name);return Buffer.from('resolved-remote-key');};
+  const options={host:'first',password:'fixture',hop:[{host:'middle',privateKeyPath:'/only-on-first/id_key'},{host:'final',password:'fixture'}]};
+  try {
+    await client.connect(options,{askForPasswd:async()=>{throw new Error('resolved key must not prompt');}});
+    assert.deepEqual(calls.map(value=>value.host),['first','middle','final']);
+    assert.equal(calls[0].sock,undefined);assert.equal(calls[1].sock,sockets[0]);assert.equal(calls[2].sock,sockets[1]);
+    assert.equal(calls[1].privateKey,'resolved-remote-key');assert.deepEqual(reads,['/only-on-first/id_key']);
+    assert.deepEqual(sockets.map(({host,port,previous})=>({host,port,previous})),[{host:'middle',port:22,previous:'first'},{host:'final',port:22,previous:'middle'}]);
+    assert.equal(options.hop[0].privateKey,undefined);
+  } finally {proto._connectSSHClient=connect;proto._getSftp=getSftp;proto._makeHopping=hop;engine.SFTPFileSystem.prototype.readFile=read;client.end();}
+});

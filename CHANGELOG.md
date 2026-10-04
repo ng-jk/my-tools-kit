@@ -6,6 +6,8 @@ This file records implemented functionality and its verification limits. Extensi
 
 Extension: **0.5.0**. Pipeline plugin: **0.3.1**.
 
+- Preserve incoming SSH tunnel sockets and already-resolved private keys through intermediate jump-host connections; the nested connection regression covers every hop without replacing connect().
+
 - Detect filename case behavior from the actual local directory rather than the operating system, preserving distinct names on case-sensitive Windows/macOS volumes. Reconcile SCM staged and working-tree selections against current local files before planning uploads or deletions.
 
 - Resolve Git change paths against the repository root before mapping into the selected SFTP context. Nested workspaces exclude outside-context changes and cannot mistake modified files for remote deletions.
