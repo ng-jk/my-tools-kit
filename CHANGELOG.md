@@ -6,6 +6,8 @@ This file records implemented functionality and its verification limits. Extensi
 
 Extension: **0.5.0**. Pipeline plugin: **0.3.1**.
 
+- Populate new directories with temporary owner write/search permission, then verify their final permissions after transfers settle, including failure cleanup and shared concurrent directory use. Save relevant dirty editors before upload/sync comparison and stop when saving fails.
+
 - Jump-host destinations use the shared authentication resolver, including UI/terminal password prompts and cancellation when final-hop credentials are omitted.
 
 - SFTP menu file actions now resolve an active editor or offer target selection without Explorer arguments. Remote actions can browse remote files, creation prompts for a destination context, and cancelled selection leaves files unchanged.

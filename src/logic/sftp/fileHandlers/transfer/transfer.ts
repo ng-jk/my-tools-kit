@@ -13,7 +13,7 @@ import { flatten } from '../../utils';
 import { logger } from '../../../../data/sftp/ports';
 import { getOpenTextDocuments } from '../../../../data/sftp/ports';
 import { checkedEntries } from '../../../../data/sftp/path-safety';
-import {ensureTransferDirectory} from '../../directory-permissions';
+import {ensureTransferDirectory, DirectoryPermissionScope} from '../../directory-permissions';
 import {transferPermissions} from '../../transfer-permissions';
 
 interface InternalTransferOption extends FileHandleOption, TransferTaskTransferOption {}
@@ -42,6 +42,7 @@ interface SyncOption extends TransferOption {
 }
 
 interface BaseTransferHandleConfig {
+  directoryScope?: DirectoryPermissionScope;
   srcFsPath: string;
   targetFsPath: string;
   dirPerm?: number,
@@ -100,15 +101,9 @@ async function transferFolder(
   rejectDestinationCollisions(fileEntries,targetFs,targetFsPath);
 
   // Need this to make sure file can correct transfer
-  await ensureTransferDirectory(srcFs, targetFs, srcFsPath, targetFsPath, transferPermissions(transferOption, config.transferDirection === TransferDirection.LOCAL_TO_REMOTE).dirPerm);
+  await ensureTransferDirectory(srcFs, targetFs, srcFsPath, targetFsPath, transferPermissions(transferOption, config.transferDirection === TransferDirection.LOCAL_TO_REMOTE).dirPerm, config.directoryScope);
 
-  // If dirPerm is configured, we chmod the remote directory after creation.
-  if(transferPermissions(config.transferOption, config.transferDirection === TransferDirection.LOCAL_TO_REMOTE).dirPerm) {
-    logger.info("chmod remote directory as configured by dirPerm, dirPerm is: ", config.transferOption.dirPerm)
-    await targetFs.chmod(targetFsPath, parseInt(String(config.transferOption.dirPerm), 8))
-  }
-
-  await Promise.all(
+  await settleAll(
     fileEntries.map(file =>
       transferWithType(
         {
@@ -175,26 +170,8 @@ async function transferWithType(
     case FileType.SymbolicLink:
       if (config.ensureDirExist) {
         const { targetFs, targetFsPath } = config;
-        await ensureTransferDirectory(config.srcFs, targetFs, config.srcFs.pathResolver.dirname(config.srcFsPath), targetFs.pathResolver.dirname(targetFsPath), transferPermissions(config.transferOption, config.transferDirection === TransferDirection.LOCAL_TO_REMOTE).dirPerm);
-        // If dirPerm is configured, we chmod the remote directory after creation.
-        if(transferPermissions(config.transferOption, config.transferDirection === TransferDirection.LOCAL_TO_REMOTE).dirPerm) {
-          logger.info("Running chmod on remote directory with perm: ", config.transferOption.dirPerm)
-          await targetFs.chmod(targetFs.pathResolver.dirname(targetFsPath), parseInt(String(config.transferOption.dirPerm), 8));
-        }
+        await ensureTransferDirectory(config.srcFs, targetFs, config.srcFs.pathResolver.dirname(config.srcFsPath), targetFs.pathResolver.dirname(targetFsPath), transferPermissions(config.transferOption, config.transferDirection === TransferDirection.LOCAL_TO_REMOTE).dirPerm, config.directoryScope);
       }
-      // <<< save before upload: start
-      if (config.transferDirection === TransferDirection.LOCAL_TO_REMOTE) {
-        const textDocuments = getOpenTextDocuments();
-        const document = textDocuments.find(doc => doc.fileName === config.srcFsPath);
-        if (document && !document.isClosed && document.isDirty) {
-          await document.save();
-          // Update mtime after file was saved
-          const stat = await config.srcFs.lstat(config.srcFsPath);
-          config.transferOption.mtime = stat.mtime;
-          logger.info('save before upload.');
-        }
-      }
-      // save before upload: end >>>
       await transferFile(config, fileType, collect);
       break;
     default:
@@ -266,7 +243,7 @@ async function _sync(
     const fileMissed: string[] = [];
     const dirMissed: string[] = [];
 
-    await Promise.all(Object.keys(srcFileTable).map(async id => {
+    await settleAll(Object.keys(srcFileTable).map(async id => {
       const srcFile = srcFileTable[id];
       const desFile = desFileTable[id];
       delete desFileTable[id];
@@ -405,8 +382,8 @@ async function _sync(
     }
 
     // side-effect
-    await Promise.all(fileMissed.map(file => removeFile(file, targetFs, FileType.File, transferOption)));
-    await Promise.all(dirMissed.map(file => removeFile(file, targetFs, FileType.Directory, transferOption)));
+    await settleAll(fileMissed.map(file => removeFile(file, targetFs, FileType.File, transferOption)));
+    await settleAll(dirMissed.map(file => removeFile(file, targetFs, FileType.Directory, transferOption)));
 
     const transFilePromise = file2trans.map(([src, target, direction, type, option]) =>
       transferFile(
@@ -450,7 +427,7 @@ async function _sync(
       )
     );
 
-    return Promise.all([...transFilePromise, ...transDirPromise, ...syncPromise]).then(flatten);
+    return settleAll([...transFilePromise, ...transDirPromise, ...syncPromise]).then(flatten);
   };
 
   // create dir here so we don't have to ensure it for children files.
@@ -458,7 +435,7 @@ async function _sync(
 
   const sourceEntries=checkedEntries(srcFs,srcFsPath,await srcFs.list(srcFsPath));
   rejectDestinationCollisions(sourceEntries,targetFs,targetFsPath);
-  await ensureTransferDirectory(srcFs, targetFs, srcFsPath, targetFsPath, transferPermissions(transferOption, config.transferDirection === TransferDirection.LOCAL_TO_REMOTE).dirPerm);
+  await ensureTransferDirectory(srcFs, targetFs, srcFsPath, targetFsPath, transferPermissions(transferOption, config.transferDirection === TransferDirection.LOCAL_TO_REMOTE).dirPerm, config.directoryScope);
   const targetEntries=checkedEntries(targetFs,targetFsPath,await targetFs.list(targetFsPath));
   if(transferOption.bothDiretions) rejectDestinationCollisions(targetEntries,srcFs,srcFsPath);
   await syncFiles(sourceEntries,targetEntries);
@@ -470,6 +447,7 @@ export async function transfer(
   config: TransferHandleConfig<TransferOption>,
   collect: (t: TransferTask) => void
 ) {
+  await saveDirtyDocuments(config);
   const stat = await config.srcFs.lstat(config.srcFsPath);
   const transferOption = {
     ...config.transferOption,
@@ -486,7 +464,29 @@ export async function sync(
   config: TransferHandleConfig<SyncOption>,
   collect: (t: TransferTask) => void
 ): Promise<FileEntry[]> {
+  await saveDirtyDocuments(config);
   const deleted: FileEntry[] = [];
   await _sync(config, collect, deleted);
   return deleted;
+}
+
+async function saveDirtyDocuments(config: TransferHandleConfig<SyncOption>) {
+  const uploading = config.transferDirection === TransferDirection.LOCAL_TO_REMOTE;
+  if (!uploading && !config.transferOption.bothDiretions) return;
+  const fs = uploading ? config.srcFs : config.targetFs;
+  const root = uploading ? config.srcFsPath : config.targetFsPath;
+  for (const document of getOpenTextDocuments()) {
+    if (document.isClosed || !document.isDirty || (document.uri && document.uri.scheme !== 'file')) continue;
+    const relative = fs.pathResolver.relative(root, document.fileName);
+    if (relative === '..' || relative.startsWith('../') || relative.startsWith('..\\') || fs.pathResolver.isAbsolute(relative)) continue;
+    if (config.transferOption.ignore?.(document.fileName)) continue;
+    if (await document.save() !== true) throw new Error('Could not save dirty document before transfer: ' + document.fileName);
+  }
+}
+
+async function settleAll<T>(operations: Promise<T>[]): Promise<T[]> {
+  const results = await Promise.allSettled(operations);
+  const failed = results.find(result => result.status === 'rejected');
+  if (failed && failed.status === 'rejected') throw failed.reason;
+  return results.map(result => (result as PromiseFulfilledResult<T>).value);
 }

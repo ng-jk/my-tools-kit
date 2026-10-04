@@ -604,3 +604,48 @@ test('nested SSH connect preserves tunnels, resolves intermediate keys and promp
     assert.equal(options.hop[0].privateKey,undefined);
   } finally {proto._connectSSHClient=connect;proto._getSftp=getSftp;proto._makeHopping=hop;engine.SFTPFileSystem.prototype.readFile=read;client.end();}
 });
+
+test('nonempty read-only directories remain owner-writable during transfers and finalize on success or failure',async t=>{
+  for(const fail of [false,true]) {
+    const {local,remote,session}=fixture(t);fs.mkdirSync(path.join(local,'readonly'));fs.writeFileSync(path.join(local,'readonly','file.txt'),'content');
+    const source=session.service.getLocalFileSystem(),target=await session.service.getRemoteFileSystem(session.config);
+    const stat=source.lstat,establish=target.establishDirectoryMode,put=target.put;const modes=new Map();
+    source.lstat=async name=>{const value=await stat.call(source,name);return {...value,mode:value.type===engine.FileType.Directory?0o555:value.mode};};
+    target.establishDirectoryMode=async(name,mode)=>{modes.set(name,mode);};
+    target.put=async function(...args){assert.equal(modes.get(path.join(remote,'readonly')),0o755);if(fail)throw new Error('simulated transfer failure');return put.apply(this,args);};
+    try {
+      if(fail)await assert.rejects(engine.operate(session,'upload'),/simulated transfer failure/);else await engine.operate(session,'upload');
+      assert.equal(modes.get(path.join(remote,'readonly')),0o555);
+      if(!fail)assert.equal(fs.readFileSync(path.join(remote,'readonly','file.txt'),'utf8'),'content');
+    } finally {source.lstat=stat;target.establishDirectoryMode=establish;target.put=put;}
+  }
+});
+
+test('sync saves relevant dirty documents before comparison and aborts on unsuccessful save',async t=>{
+  const {local,remote,session}=fixture(t);const localFile=path.join(local,'file.txt'),remoteFile=path.join(remote,'file.txt');
+  fs.writeFileSync(localFile,'old');fs.writeFileSync(remoteFile,'old');const same=new Date();fs.utimesSync(localFile,same,same);fs.utimesSync(remoteFile,same,same);
+  let saves=0;const document={fileName:localFile,isDirty:true,isClosed:false,save:async()=>{saves++;fs.writeFileSync(localFile,'saved dirty editor content');document.isDirty=false;return true;}};
+  engine.configurePorts({documents:()=>[document,{fileName:path.join(local,'..','outside.txt'),isDirty:true,save:async()=>{throw new Error('outside editor must not save');}}]});
+  try {
+    await engine.operate(session,'sync-up');assert.equal(saves,1);assert.equal(fs.readFileSync(remoteFile,'utf8'),'saved dirty editor content');
+    document.isDirty=true;document.save=async()=>false;
+    await assert.rejects(engine.operate(session,'sync-up'),/Could not save dirty document/);
+    assert.equal(fs.readFileSync(remoteFile,'utf8'),'saved dirty editor content');
+  } finally {engine.configurePorts({documents:()=>[]});}
+});
+
+test('concurrent transfers retain directory population permissions until both finish',async t=>{
+  const {local,remote,session}=fixture(t);fs.mkdirSync(path.join(local,'readonly'));fs.writeFileSync(path.join(local,'readonly','file.txt'),'content');
+  const source=session.service.getLocalFileSystem(),target=await session.service.getRemoteFileSystem(session.config);
+  const stat=source.lstat,establish=target.establishDirectoryMode,put=target.put;const modes=new Map(),release=[],started=[];
+  const waits=[0,1].map(index=>new Promise(resolve=>started[index]=resolve));let count=0;
+  source.lstat=async name=>{const value=await stat.call(source,name);return {...value,mode:value.type===engine.FileType.Directory?0o555:value.mode};};
+  target.establishDirectoryMode=async(name,mode)=>{modes.set(path.resolve(name),mode);};
+  target.put=async function(...args){const index=count++;await new Promise(resolve=>{release[index]=resolve;started[index]();});return put.apply(this,args);};
+  let first,second;
+  try {
+    first=engine.operate(session,'upload','readonly');await waits[0];second=engine.operate(session,'upload','readonly');await waits[1];
+    release[0]();await first;assert.equal(modes.get(path.join(remote,'readonly')),0o755);
+    release[1]();await second;assert.equal(modes.get(path.join(remote,'readonly')),0o555);
+  } finally {release.forEach(fn=>fn());await Promise.allSettled([first,second]);source.lstat=stat;target.establishDirectoryMode=establish;target.put=put;}
+});

@@ -2,6 +2,7 @@ import {filesystemIdentity} from './core/staged-replacement';
 import {transfer, sync} from './fileHandlers/transfer/transfer';
 import {TransferDirection} from './core';
 import {backupBeforeUpload} from './backup';
+import {DirectoryPermissionScope} from './directory-permissions';
 
 const active = new Set<() => void>();
 export function cancelActiveTransfers() { for (const cancel of [...active]) cancel(); }
@@ -10,6 +11,7 @@ export async function executeTransfer(service: any, config: any, local: string, 
   const checkCancelled = service.cancellationCheck();
   const cancel = () => service.cancelTransferTasks();
   active.add(cancel);
+  const directoryScope = new DirectoryPermissionScope();
   let scheduler: any;
   let planning = true;
   const guard = (fs: any) => new Proxy(fs, {get(target, key) {
@@ -26,6 +28,7 @@ export async function executeTransfer(service: any, config: any, local: string, 
     scheduler = service.createTransferScheduler(config.concurrency);
     const tasks: any[] = [];
     const deleted = await (synchronize ? sync : transfer)({
+      directoryScope,
       srcFsPath: down ? remote : local, targetFsPath: down ? local : remote,
       srcFs: down ? remoteFs : localFs, targetFs: down ? localFs : remoteFs,
       transferDirection: down ? TransferDirection.REMOTE_TO_LOCAL : TransferDirection.LOCAL_TO_REMOTE,
@@ -39,5 +42,8 @@ export async function executeTransfer(service: any, config: any, local: string, 
     await scheduler.run();
     checkCancelled();
     return {passed: true, transferred: tasks.length, deleted: deleted || []};
-  } finally { scheduler?.stop(); active.delete(cancel); }
+  } finally {
+    scheduler?.stop(); active.delete(cancel);
+    await directoryScope.finish();
+  }
 }
