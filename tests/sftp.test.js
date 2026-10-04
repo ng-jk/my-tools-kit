@@ -444,3 +444,23 @@ test('explicit upload directory permissions apply to every missing parent',async
   try {await engine.operate(session,'upload','one/two/file.txt');assert.equal(observed.get(path.join(remote,'one')),0o750);assert.equal(observed.get(path.join(remote,'one','two')),0o750);}
   finally {target.establishDirectoryMode=establish;target.chmod=chmod;}
 });
+
+test('Git mirror object database is private, including an existing repository',async t=>{
+  const {dir,local,remote,raw}=fixture(t);const mirror=path.join(dir,'private-mirror');
+  fs.mkdirSync(mirror);fs.writeFileSync(path.join(mirror,'preexisting.txt'),'existing private data');
+  const session=engine.createSession(local,{...raw,mirror:{enabled:true,path:mirror}});t.after(()=>session.service.dispose());
+  fs.writeFileSync(path.join(local,'a.txt'),'local');fs.writeFileSync(path.join(remote,'a.txt'),'remote secret');
+  await engine.operate(session,'upload','a.txt');
+  fs.writeFileSync(path.join(local,'a.txt'),'second');await engine.operate(session,'upload','a.txt');
+  assert.ok(fs.existsSync(path.join(mirror,'.git','objects')));
+  if(process.platform==='win32') {
+    const script="$s=[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value; foreach($p in [System.IO.Directory]::GetFiles($env:DEVKIT_TEST_DIRECTORY,'*',[System.IO.SearchOption]::AllDirectories)){foreach($r in [System.IO.File]::GetAccessControl($p).GetAccessRules($true,$true,[System.Security.Principal.SecurityIdentifier])){if($r.IdentityReference.Value -notin @($s,'S-1-5-18')){exit 2}}}";
+    const result=spawnSync('powershell.exe',['-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(script,'utf16le').toString('base64')],{windowsHide:true,env:{...process.env,DEVKIT_TEST_DIRECTORY:mirror},encoding:'utf8'});assert.equal(result.status,0,result.stderr);
+  } else assert.equal(fs.statSync(mirror).mode & 0o777,0o700);
+});
+test('Unix staging restores destination permissions masked by umask',{skip:process.platform==='win32'},async t=>{
+  const {local,remote,session}=fixture(t);fs.writeFileSync(path.join(local,'a.txt'),'old');fs.chmodSync(path.join(local,'a.txt'),0o664);fs.writeFileSync(path.join(remote,'a.txt'),'new');
+  const mask=process.umask(0o022);
+  try {await engine.operate(session,'download','a.txt');assert.equal(fs.statSync(path.join(local,'a.txt')).mode & 0o777,0o664);}
+  finally {process.umask(mask);}
+});

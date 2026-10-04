@@ -160,3 +160,5 @@ Establish and verify source directory modes (or explicit upload overrides) on ne
 Windows downloads protect newly created directories with verified ACLs for the current user and SYSTEM instead of comparing unrepresentable POSIX modes. Other users do not inherit access to those new directories; existing destination directories retain their ACLs. Unix/remote targets continue using verified mode bits. Windows ACL setup uses the built-in Windows PowerShell/.NET adapter without a visible window. Native ACL tests cover Unix-mode downloads on Windows.
 
 Protect Windows staging files before payload writes: new files receive a verified private ACL, and replacement files retain the existing destination DACL. Apply explicit upload directory permissions to all missing parent directories.
+
+Protect the entire Git mirror before initialization or backup, including existing object databases: private root mode on Unix and verified recursive private ACLs on Windows. Reject mirror links. Restore and verify Unix staging descriptor modes after open so umask cannot remove destination permission bits.

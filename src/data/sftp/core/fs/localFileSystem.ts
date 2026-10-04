@@ -89,9 +89,14 @@ export default class LocalFileSystem extends FileSystem {
     return fse.open(path, flags, mode);
   }
 
-  async prepareStagedFile(path: string, destination: string): Promise<void> {
+  async prepareStagedFile(path: string, destination: string, mode?: number, fd?: number): Promise<void> {
     this.assertWritable(path); this.assertWritable(destination);
     if (process.platform === "win32") await protectWindowsStagingFile(path, destination);
+    else if (typeof mode === 'number' && fd !== undefined) {
+      await fse.fchmod(fd, mode);
+      const actual=await fse.fstat(fd);
+      if ((actual.mode & 0o777)!==(mode & 0o777)) throw new Error('Cannot establish required staging file permissions');
+    }
   }
 
   close(fd: number): Promise<void> {

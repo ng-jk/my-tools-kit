@@ -62,7 +62,7 @@ export default abstract class FileSystem {
   abstract readFile(path: string, option?: FileOption): Promise<string | Buffer>;
   abstract open(path: string, flags: string, mode?: number): Promise<FileHandle>;
   abstract close(fd: FileHandle): Promise<void>;
-  async prepareStagedFile(path: string, destination: string): Promise<void> {}
+  async prepareStagedFile(path: string, destination: string, mode?: number, fd?: FileHandle): Promise<void> {}
   abstract fstat(fd: FileHandle): Promise<FileStats>;
   /**
    * Change the file system timestamps of the object referenced by the supplied file descriptor.

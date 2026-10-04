@@ -58,3 +58,35 @@ export async function protectWindowsStagingFile(file: string, destination: strin
   await run('powershell.exe', ['-NoProfile','-NonInteractive','-WindowStyle','Hidden','-EncodedCommand',Buffer.from(fileScript,'utf16le').toString('base64')],
     {windowsHide:true,timeout:30000,env:{...process.env,DEVKIT_ACL_FILE:file,DEVKIT_ACL_DESTINATION:destination}});
 }
+
+const treeScript = script + `
+$fileAcl = [System.Security.AccessControl.FileSecurity]::new()
+$fileAcl.SetOwner($sid)
+$fileAcl.SetAccessRuleProtection($true, $false)
+foreach ($identity in @($sid, $system)) { $fileAcl.SetAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($identity, 'FullControl', 'Allow')) }
+$queue = [System.Collections.Generic.Queue[string]]::new()
+$queue.Enqueue($directory)
+while ($queue.Count -gt 0) {
+  $parent = $queue.Dequeue()
+  foreach ($entry in [System.IO.Directory]::GetFileSystemEntries($parent)) {
+    $attributes = [System.IO.File]::GetAttributes($entry)
+    if (($attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'Mirror repository contains a link' }
+    if (($attributes -band [System.IO.FileAttributes]::Directory) -ne 0) {
+      [System.IO.Directory]::SetAccessControl($entry, $acl)
+      $value = [System.IO.Directory]::GetAccessControl($entry)
+      $queue.Enqueue($entry)
+    } else {
+      [System.IO.File]::SetAccessControl($entry, $fileAcl)
+      $value = [System.IO.File]::GetAccessControl($entry)
+    }
+    if (-not $value.AreAccessRulesProtected) { throw 'Mirror ACL inheritance remains enabled' }
+    foreach ($rule in $value.GetAccessRules($true,$true,[System.Security.Principal.SecurityIdentifier])) {
+      if ($rule.IdentityReference.Value -notin @($sid.Value,$system.Value) -or $rule.AccessControlType -ne 'Allow' -or $rule.IsInherited) { throw 'Unexpected mirror access rule' }
+    }
+  }
+}
+`;
+export async function protectWindowsTree(directory: string) {
+  await run('powershell.exe', ['-NoProfile','-NonInteractive','-WindowStyle','Hidden','-EncodedCommand',Buffer.from(treeScript,'utf16le').toString('base64')],
+    {windowsHide:true,timeout:30000,env:{...process.env,DEVKIT_ACL_DIRECTORY:directory}});
+}
