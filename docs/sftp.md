@@ -164,3 +164,5 @@ Protect Windows staging files before payload writes: new files receive a verifie
 Protect the entire Git mirror before initialization or backup, including existing object databases: private root mode on Unix and verified recursive private ACLs on Windows. Reject mirror links. Restore and verify Unix staging descriptor modes after open so umask cannot remove destination permission bits.
 
 Create File uses exclusive creation on SFTP/local filesystems. FTP Create File reports an unsupported guarantee instead of risking truncation in a concurrent-creation race; regular FTP uploads remain supported.
+
+Reject unparseable FTP listing records before sync can infer deletions. Normalize the SSH port for every jump destination, including the final hop, without mutating configuration.

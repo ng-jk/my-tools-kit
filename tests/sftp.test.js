@@ -473,3 +473,23 @@ test('Create File does not truncate a concurrent creator',async t=>{
   finally {target.lstat=stat;}
   assert.equal(new engine.FTPFileSystem(path.posix,{client:{}}).supportsExclusiveCreate,false);
 });
+
+test('unparseable FTP listings cannot cause sync to delete local files',async t=>{
+  for(const invalid of ['unparsed server line',{},null]) {
+    const {local,session}=fixture(t,{syncOption:{delete:true}});fs.writeFileSync(path.join(local,'keep.txt'),'must survive');
+    const ftp=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({list:(_,cb)=>cb(null,[invalid])})}});
+    session.service.getRemoteFileSystem=async()=>ftp;
+    await assert.rejects(engine.operate(session,'sync-down','.',{yes:true}),/unparseable/);
+    assert.equal(fs.readFileSync(path.join(local,'keep.txt'),'utf8'),'must survive');
+  }
+});
+test('SSH final jump destination receives default port without mutating configuration',async()=>{
+  const client=new engine.SFTPFileSystem(path.posix,{client:{}})._createClient({});
+  const proto=Object.getPrototypeOf(client),connect=proto.connect;const forwarded=[];
+  proto.connect=async()=>{};
+  client._makeHopping=async(previous,host,port)=>{forwarded.push({host,port});return {};};
+  client._connectSSHClient=async()=>{};client._getSftp=async()=>({});
+  const hop=[{host:'middle'},{host:'final'}];
+  try {await client._doConnect({host:'first',hop},{});assert.deepEqual(forwarded,[{host:'middle',port:22},{host:'final',port:22}]);assert.equal(hop[1].port,undefined);}
+  finally {proto.connect=connect;client.end();}
+});

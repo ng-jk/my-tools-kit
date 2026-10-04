@@ -268,11 +268,12 @@ export default class FTPFileSystem extends RemoteFileSystem {
   ): Promise<FileEntry[]> {
     // -al flag only get partially support
     const stats = await this.atomicList(dir);
+    if (!Array.isArray(stats) || stats.some(item => !item || typeof item !== 'object' || typeof item.name !== 'string' || !item.name)) {
+      throw new Error('FTP listing contains unparseable entries; refusing an incomplete directory snapshot');
+    }
 
     return (
       stats
-        // item will be a string if ftp fail to parse it (https://github.com/liximomo/vscode-sftp/issues/308)
-        // we simply ignore it by check whether it has a name property
         .filter(item => item.name && item.name !== '.' && item.name !== '..')
         .map(item =>
           this.toFileEntry(this.pathResolver.join(dir, item.name), item)

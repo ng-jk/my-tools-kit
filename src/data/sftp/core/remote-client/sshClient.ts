@@ -48,9 +48,8 @@ export default class SSHClient extends RemoteClient {
       (hop && Object.keys(hop).length > 0)
     ) {
       this.hoppingClients = [];
-      const connectOptions = Array.isArray(hop)
-        ? [option].concat(hop)
-        : [option, hop];
+      const connectOptions = (Array.isArray(hop) ? [option].concat(hop) : [option, hop])
+        .map(value => ({...value, port: value.port === undefined ? 22 : value.port}));
       lastOption = connectOptions.pop()!;
 
       for (let index = 0; index < connectOptions.length; index++) {
