@@ -2,12 +2,12 @@
 import { COMMAND_REMOTEEXPLORER_EDITINLOCAL } from '../../../data/sftp/constants';
 import { downloadFile } from '../fileHandlers/index';
 import { showTextDocument } from '../host';
-import { uriFromExplorerContextOrEditorContext } from './shared';
+import { selectRemoteTarget } from './shared';
 import { checkFileCommand } from './abstract/createCommand';
 
 export default checkFileCommand({
   id: COMMAND_REMOTEEXPLORER_EDITINLOCAL,
-  getFileTarget: uriFromExplorerContextOrEditorContext,
+  getFileTarget: selectRemoteTarget,
 
   async handleFile(ctx) {
     await downloadFile(ctx, { ignore: null });

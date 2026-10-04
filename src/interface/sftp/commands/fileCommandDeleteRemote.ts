@@ -4,12 +4,12 @@ import { upath } from '../../../logic/sftp/core/index';
 import { removeRemote } from '../fileHandlers/index';
 import { showConfirmMessage } from '../host';
 import { checkFileCommand } from './abstract/createCommand';
-import { uriFromExplorerContextOrEditorContext } from './shared';
+import { selectRemoteTarget } from './shared';
 
 export default checkFileCommand({
   id: COMMAND_DELETE_REMOTE,
   async getFileTarget(item, items) {
-    const targets = await uriFromExplorerContextOrEditorContext(item, items);
+    const targets = await selectRemoteTarget(item, items);
 
     if (!targets) {
       return;

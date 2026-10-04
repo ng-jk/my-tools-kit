@@ -3,13 +3,13 @@ import { COMMAND_CREATE_FOLDER } from '../../../data/sftp/constants';
 import { createRemoteFolder } from '../fileHandlers/index';
 // import { showConfirmMessage } from '../host';
 import { checkFileCommand } from './abstract/createCommand';
-import { uriFromExplorerContextOrEditorContext } from './shared';
+import { selectFolderFallbackToConfigContext } from './shared';
 import { window, Uri } from 'vscode';
 
 export default checkFileCommand({
   id: COMMAND_CREATE_FOLDER,
   async getFileTarget(item, items) {
-    const targets = await uriFromExplorerContextOrEditorContext(item, items);
+    const targets = await selectFolderFallbackToConfigContext(item, items);
 
     if (!targets) {
       return;
@@ -27,7 +27,9 @@ export default checkFileCommand({
     if (result !== undefined) {
      //   window.showInformationMessage(targets.toString() + '%252F' + result);
 
-        return Uri.parse(targets.toString() + '/' + result);
+        if (Array.isArray(targets)) throw new Error('Select one destination folder');
+        if (!result || /[\\/]/.test(result) || result === '.' || result === '..') throw new Error('Enter a single file or folder name');
+        return Uri.joinPath(targets, result);
     }
 
 

@@ -2,11 +2,11 @@
 import { COMMAND_DOWNLOAD_FOLDER } from '../../../data/sftp/constants';
 import { downloadFolder } from '../fileHandlers/index';
 import { checkFileCommand } from './abstract/createCommand';
-import { uriFromExplorerContextOrEditorContext } from './shared';
+import { selectRemoteFolder } from './shared';
 
 export default checkFileCommand({
   id: COMMAND_DOWNLOAD_FOLDER,
-  getFileTarget: uriFromExplorerContextOrEditorContext,
+  getFileTarget: selectRemoteFolder,
 
   handleFile: downloadFolder,
 });

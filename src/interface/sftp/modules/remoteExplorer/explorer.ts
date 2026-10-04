@@ -1,6 +1,7 @@
 // Adapted from ng-jk/vscode-sftp (MIT); see THIRD-PARTY-NOTICES.md.
 import * as vscode from 'vscode';
 import { registerCommand } from '../../host';
+import { selectRemoteFileOnly } from '../../commands/shared';
 import {
   COMMAND_REMOTEEXPLORER_REFRESH,
   COMMAND_REMOTEEXPLORER_REFRESH_ACTIVE_FILE,
@@ -30,9 +31,19 @@ export default class RemoteExplorer {
 
     registerCommand(context, COMMAND_REMOTEEXPLORER_REFRESH, () => this._refreshSelection());
     registerCommand(context, COMMAND_REMOTEEXPLORER_REFRESH_ACTIVE_FILE, () => this._refreshActiveRemoteFile());
-    registerCommand(context, COMMAND_REMOTEEXPLORER_VIEW_CONTENT, (item: ExplorerItem) =>
-      this._treeDataProvider.showItem(item)
-    );
+    registerCommand(context, COMMAND_REMOTEEXPLORER_VIEW_CONTENT, async (item?: ExplorerItem) => {
+      item = item || this._explorerView.selection[0];
+      if (!item) {
+        const uri = await selectRemoteFileOnly();
+        if (!uri) return;
+        const service = getFileService(uri);
+        if (!service) throw new Error('No SFTP configuration for the selected file');
+        const config = service.getConfig();
+        item = {resource: UResource.makeResource({remote: {host: config.host, port: config.port},
+          fsPath: toRemotePath(uri.fsPath, service.baseDir, config.remotePath), remoteId: service.id}), isDirectory: false} as ExplorerItem;
+      }
+      return this._treeDataProvider.showItem(item);
+    });
   }
 
   refresh(item?: ExplorerItem) {

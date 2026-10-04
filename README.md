@@ -227,3 +227,5 @@ Resolve Git change paths against the repository root before mapping into the sel
 Detect filename case behavior from the actual local directory rather than the operating system, preserving distinct names on case-sensitive Windows/macOS volumes. Reconcile SCM staged and working-tree selections against current local files before planning uploads or deletions.
 
 Preserve incoming SSH tunnel sockets and already-resolved private keys through intermediate jump-host connections; the nested connection regression covers every hop without replacing connect().
+
+SFTP menu file actions now resolve an active editor or offer target selection without Explorer arguments. Remote actions can browse remote files, creation prompts for a destination context, and cancelled selection leaves files unchanged.

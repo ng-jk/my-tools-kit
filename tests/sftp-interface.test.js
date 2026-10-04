@@ -5,7 +5,8 @@ const Module=require('node:module');
 const fs=require('node:fs');
 const os=require('node:os');
 const path=require('node:path');
-const {URI}=require('vscode-uri');
+const {URI,Utils}=require('vscode-uri');
+URI.joinPath=Utils.joinPath;
 test('bundled SFTP registers upstream commands and toolkit sidebar in a host adapter',async t=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-host-'));const root=path.join(dir,'local');fs.mkdirSync(root);t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
   fs.mkdirSync(path.join(root,'.vscode'));fs.mkdirSync(path.join(dir,'remote'));
@@ -21,8 +22,10 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     workspace:{isTrusted:true,asRelativePath:value=>path.relative(root,value),workspaceFolders:[{uri:URI.file(root)}],textDocuments:[],getConfiguration:()=>({get:()=>undefined}),
       createFileSystemWatcher:()=>{const watcher={disposed:false,handlers:{},onDidCreate(fn){this.handlers.create=fn;return disposable();},onDidChange(fn){this.handlers.change=fn;return disposable();},onDidDelete(fn){this.handlers.delete=fn;return disposable();},dispose(){this.disposed=true;}};watchers.push(watcher);return watcher;},
       onDidSaveTextDocument:disposable,onDidOpenTextDocument:disposable,registerTextDocumentContentProvider:disposable},
-    commands:{registerCommand:(id,fn,self)=>{assert.equal(commands.has(id),false,'duplicate '+id);commands.set(id,fn.bind(self));return disposable();},executeCommand:async()=>{}},
+    commands:{registerCommand:(id,fn,self)=>{assert.equal(commands.has(id),false,'duplicate '+id);commands.set(id,fn.bind(self));return disposable();},executeCommand:async(id,...args)=>commands.has(id)?commands.get(id)(...args):undefined},
     window:{activeTextEditor:{document:{uri:URI.file(path.join(root,'ui.txt'))}},createStatusBarItem:()=>({show(){},hide(){},dispose(){}}),createOutputChannel:()=>({appendLine(){},show(){},hide(){},dispose(){}}),
+      showQuickPick:async choices=>choices.find(item=>item.command==='devkit.sftp.upload.file') || choices[0],
+      showOpenDialog:async()=>[URI.file(path.join(root,'ui.txt'))],
       showInformationMessage:async(message,...choices)=>choices[0],showErrorMessage:async message=>{errors.push(message);},registerTreeDataProvider:(id,provider)=>{views.set(id,provider);return disposable();},
       createTreeView:(id,options)=>{views.set(id,options.treeDataProvider);return {selection:[],reveal:async()=>{},dispose(){}}}}
   };
@@ -43,6 +46,25 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     await commands.get('devkit.sftp.upload.activeFile')();
     assert.deepEqual(errors,[]);
     assert.equal(fs.readFileSync(path.join(dir,'remote','ui.txt'),'utf8'),'uploaded from the UI adapter');
+    await commands.get('devkit.sftp.menu')();
+    assert.deepEqual(errors,[]);
+    vscode.window.activeTextEditor=undefined;
+    await commands.get('devkit.sftp.menu')();
+    assert.deepEqual(errors,[]);
+    assert.equal(fs.readFileSync(path.join(dir,'remote','ui.txt'),'utf8'),'uploaded from the UI adapter');
+    vscode.window.activeTextEditor={document:{uri:URI.file(path.join(root,'ui.txt'))}};
+    await commands.get('devkit.sftp.download.file')();
+    assert.deepEqual(errors,[]);
+    const originalDialog=vscode.window.showOpenDialog;vscode.window.activeTextEditor=undefined;vscode.window.showOpenDialog=async()=>undefined;
+    await commands.get('devkit.sftp.upload.file')();assert.deepEqual(errors,[]);
+    vscode.window.showOpenDialog=originalDialog;vscode.window.activeTextEditor={document:{uri:URI.file(path.join(root,'ui.txt'))}};
+    const originalPick=vscode.window.showQuickPick;
+    vscode.window.showQuickPick=async choices=>choices.find(item=>item.label==='.') || choices[0];
+    await commands.get('devkit.sftp.download.folder')();assert.deepEqual(errors,[]);
+    vscode.window.showQuickPick=originalPick;
+    vscode.window.showInputBox=async()=> 'menu-created.txt';
+    await commands.get('devkit.sftp.create.file')();assert.deepEqual(errors,[]);
+    assert.equal(fs.existsSync(path.join(dir,'remote','menu-created.txt')),true);
     assert.equal(watchers.length,1);
     await commands.get('devkit.sftp.setProfile')('prod');
     assert.equal(watchers[0].disposed,true,'same-context profile switch disposes old watcher');

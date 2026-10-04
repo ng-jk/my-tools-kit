@@ -15,7 +15,7 @@ function configIngoreFilterCreator(config: any) {
   return (file: { fsPath: string }) => !config.ignore(file.fsPath);
 }
 
-function createFileSelector(filterCreator?: (config: any) => ((file: any) => boolean) | undefined) {
+function createFileSelector(filterCreator?: (config: any) => ((file: any) => boolean) | undefined, type?: FileType) {
   return async (): Promise<Uri | undefined> => {
     const remoteItems = getAllFileService().map((fileService, index) => {
       const config = fileService.getConfig();
@@ -32,7 +32,7 @@ function createFileSelector(filterCreator?: (config: any) => ((file: any) => boo
       };
     });
 
-    const selected = await listFiles(remoteItems);
+    const selected = await listFiles(remoteItems, {type});
 
     if (!selected) {
       return;
@@ -117,7 +117,7 @@ export function getActiveFolder() {
 }
 
 // selected file or activeTarget or configContext
-export function uriFromExplorerContextOrEditorContext(item: any, items: any): undefined | Uri | Uri[] {
+export async function uriFromExplorerContextOrEditorContext(item?: any, items?: any): Promise<undefined | Uri | Uri[]> {
   // from explorer or editor context
   if ((item && typeof item.scheme === 'string' && typeof item.fsPath === 'string')) {
     if (Array.isArray(items) && (items[0] && typeof items[0].scheme === 'string' && typeof items[0].fsPath === 'string')) {
@@ -126,9 +126,9 @@ export function uriFromExplorerContextOrEditorContext(item: any, items: any): un
     } else {
       return item;
     }
-  } else if ((item as ExplorerItem).resource) {
+  } else if (item && (item as ExplorerItem).resource) {
     // from remote explorer
-    if (Array.isArray(items) && (items[0] as ExplorerItem).resource) {
+    if (Array.isArray(items) && items[0] && (items[0] as ExplorerItem).resource) {
       // multi-select in remote explorer
       return items.map((_: any) => _.resource.uri);
     } else {
@@ -136,7 +136,15 @@ export function uriFromExplorerContextOrEditorContext(item: any, items: any): un
     }
   }
 
-  return;
+  const active = getActiveDocumentUri();
+  if (active && (active.scheme === 'file' || active.scheme === 'devkit-sftp')) return active;
+  return window.showOpenDialog({canSelectFiles: true, canSelectFolders: true, canSelectMany: true,
+    openLabel: 'Select SFTP target'});
+}
+
+export async function selectRemoteTarget(item?: any, items?: any): Promise<undefined | Uri | Uri[]> {
+  if (item || getActiveDocumentUri()) return uriFromExplorerContextOrEditorContext(item, items);
+  return selectFileFromAll();
 }
 
 // selected folder or configContext
@@ -150,7 +158,7 @@ export function selectFolderFallbackToConfigContext(item: any, items: any): Prom
       } else {
         return Promise.resolve(item);
       }
-    } else if ((item as ExplorerItem).resource) {
+    } else if (item && (item as ExplorerItem).resource) {
       // from remote explorer
       return Promise.resolve(item.resource.uri);
     }
@@ -164,3 +172,13 @@ export const selectFileFromAll = createFileSelector();
 
 // selected file from remote files expect ignored
 export const selectFile = createFileSelector(configIngoreFilterCreator);
+
+export async function selectLocalFolder(item?: any, items?: any): Promise<undefined | Uri | Uri[]> {
+  if (item) return uriFromExplorerContextOrEditorContext(item, items);
+  return window.showOpenDialog({canSelectFiles: false, canSelectFolders: true, canSelectMany: true, openLabel: 'Select folder to upload'});
+}
+export async function selectRemoteFolder(item?: any, items?: any): Promise<undefined | Uri | Uri[]> {
+  if (item) return uriFromExplorerContextOrEditorContext(item, items);
+  return createFileSelector(undefined, FileType.Directory)();
+}
+export const selectRemoteFileOnly = createFileSelector(undefined, FileType.File);
