@@ -229,3 +229,5 @@ Detect filename case behavior from the actual local directory rather than the op
 Preserve incoming SSH tunnel sockets and already-resolved private keys through intermediate jump-host connections; the nested connection regression covers every hop without replacing connect().
 
 SFTP menu file actions now resolve an active editor or offer target selection without Explorer arguments. Remote actions can browse remote files, creation prompts for a destination context, and cancelled selection leaves files unchanged.
+
+Jump-host destinations use the shared authentication resolver, including UI/terminal password prompts and cancellation when final-hop credentials are omitted.

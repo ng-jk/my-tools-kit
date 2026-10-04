@@ -91,7 +91,7 @@ export default class SSHClient extends RemoteClient {
       lastOption.privateKey = buffer.toString();
     }
 
-    await this._connectSSHClient(this._client, { ...lastOption, sock }, config);
+    await this._connectSSHClient(this._client, await this.resolveAuthentication({ ...lastOption, sock }, config), config);
     this.sftp = await this._getSftp(this._client);
 
     if (lastOption.limitOpenFilesOnRemote) {

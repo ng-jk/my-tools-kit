@@ -489,7 +489,7 @@ test('SSH final jump destination receives default port without mutating configur
   proto.connect=async()=>{};
   client._makeHopping=async(previous,host,port)=>{forwarded.push({host,port});return {};};
   client._connectSSHClient=async()=>{};client._getSftp=async()=>({});
-  const hop=[{host:'middle'},{host:'final'}];
+  const hop=[{host:'middle',password:'fixture'},{host:'final',password:'fixture'}];
   try {await client._doConnect({host:'first',hop},{});assert.deepEqual(forwarded,[{host:'middle',port:22},{host:'final',port:22}]);assert.equal(hop[1].port,undefined);}
   finally {proto.connect=connect;client.end();}
 });
@@ -584,7 +584,7 @@ test('Git SCM reconciles staged modifications, deletions and renames against cur
   assert.deepEqual(engine.planGitTransfers(recreatedOrigin,context),[{kind:'upload',path:'/root/a'},{kind:'upload',path:'/root/b'}]);
 });
 
-test('nested SSH connect preserves each tunnel and reads intermediate keys only on the preceding host',async()=>{
+test('nested SSH connect preserves tunnels, resolves intermediate keys and prompts for final credentials',async()=>{
   const client=new engine.SFTPFileSystem(path.posix,{client:{}})._createClient({});
   const proto=Object.getPrototypeOf(client),connect=proto._connectSSHClient,getSftp=proto._getSftp,hop=proto._makeHopping;
   const read=engine.SFTPFileSystem.prototype.readFile;const calls=[],reads=[],sockets=[];
@@ -592,9 +592,11 @@ test('nested SSH connect preserves each tunnel and reads intermediate keys only 
   proto._getSftp=async()=>({});
   proto._makeHopping=async(previous,host,port)=>{const socket={host,port,previous:previous._option.host};sockets.push(socket);return socket;};
   engine.SFTPFileSystem.prototype.readFile=async function(name){reads.push(name);return Buffer.from('resolved-remote-key');};
-  const options={host:'first',password:'fixture',hop:[{host:'middle',privateKeyPath:'/only-on-first/id_key'},{host:'final',password:'fixture'}]};
+  const options={host:'first',password:'fixture',hop:[{host:'middle',privateKeyPath:'/only-on-first/id_key'},{host:'final'}]};
+  const prompts=[];
   try {
-    await client.connect(options,{askForPasswd:async()=>{throw new Error('resolved key must not prompt');}});
+    await client.connect(options,{askForPasswd:async message=>{prompts.push(message);return 'destination-password';}});
+    assert.deepEqual(prompts,['[final]: Enter your password']);assert.equal(calls[2].password,'destination-password');
     assert.deepEqual(calls.map(value=>value.host),['first','middle','final']);
     assert.equal(calls[0].sock,undefined);assert.equal(calls[1].sock,sockets[0]);assert.equal(calls[2].sock,sockets[1]);
     assert.equal(calls[1].privateKey,'resolved-remote-key');assert.deepEqual(reads,['/only-on-first/id_key']);

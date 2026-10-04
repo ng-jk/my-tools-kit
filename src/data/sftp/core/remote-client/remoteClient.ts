@@ -50,9 +50,11 @@ export default abstract class RemoteClient {
   protected abstract _initClient(): any;
 
   async connect(connectOption: ConnectOption, config: Config) {
-    if (this._hasProvideAuth(connectOption)) {
-      return this._doConnect(connectOption, config);
-    }
+    return this._doConnect(await this.resolveAuthentication(connectOption, config), config);
+  }
+
+  protected async resolveAuthentication(connectOption: ConnectOption, config: Config): Promise<ConnectOption> {
+    if (this._hasProvideAuth(connectOption)) return connectOption;
 
     const password = await config.askForPasswd(`[${connectOption.host}]: Enter your password`);
 
@@ -61,7 +63,7 @@ export default abstract class RemoteClient {
       throw new CustomError(ErrorCode.CONNECT_CANCELLED, 'cancelled');
     }
 
-    return this._doConnect({ ...connectOption, password }, config);
+    return { ...connectOption, password };
   }
 
   onDisconnected(cb: (reason: string) => void) {
