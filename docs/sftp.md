@@ -22,6 +22,10 @@ Open your local project and choose **SFTP / FTP → Config**. Edit `.vscode/sftp
 }
 ```
 
+## SSH host identity
+
+SSH transfers verify every server, including jump hosts, before authentication. Use an existing trusted `~/.ssh/known_hosts` entry (plain or hashed hostnames), set `knownHostsPath` to another OpenSSH file, or set `hostFingerprint` to a server-admin-verified `SHA256:...` fingerprint. Unknown, changed or revoked keys fail closed. Pins may be a list for an intentional key rotation. This is a deliberate security improvement over upstream automatic acceptance. An error reports the observed public fingerprint; verify it through an independent trusted channel before pinning it.
+
 ## Feature inventory
 
 | Area | Included upstream behavior |
@@ -69,7 +73,7 @@ Paths are relative to the selected profile's local context. Use `--context NAME`
 
 Automated tests cover local file workflows, ignore rules, profile contexts, temporary uploads, sync deletion, permission failures, failed transfers, path rejection, terminal exit codes, real local SSH/SFTP and passive FTP exchanges, and command/sidebar registration through a host adapter. These are not claims of user acceptance or tests against your production server. FTPS, agent authentication, jump hosts, all server variants and the native VS Code host still require environment-specific acceptance.
 
-The fork also corrects upstream SSH event registration, waits for deletion failures, propagates scheduler errors, avoids treating permission errors as empty sync directories, masks nested configuration credentials in logs, and isolates connection-cache identities. It retains the original MIT notices.
+The fork also verifies SSH host keys, corrects reverse filesystem selection in bidirectional sync and SSH terminal argument ordering, blocks normalized root deletion aliases, corrects upstream SSH event registration, waits for deletion failures, propagates scheduler errors, avoids treating permission errors as empty sync directories, masks nested configuration credentials in logs, and isolates connection-cache identities. It retains the original MIT notices.
 
 ## Complete upstream command list
 

@@ -53,6 +53,28 @@ test('failed scheduled transfer rejects and path traversal cannot escape context
   try {await assert.rejects(engine.operate(session,'upload','a.txt'),/network disconnected/);} finally {target.put=original;}
   await assert.rejects(engine.operate(session,'upload','../outside'),/relative/);
   await assert.rejects(engine.operate(session,'delete','.' ,{yes:true}),/non-root/);
+  for (const name of ['./','./.','folder/..','']) {
+    await assert.rejects(engine.operate(session,'delete',name,{yes:true}),/non-root/);
+    await assert.rejects(engine.operate(session,'rename',name,{to:'new'}),/non-root/);
+  }
+});
+test('host keys reject unknown/changed/revoked keys and support pins and hashed known_hosts',t=>{
+  const {dir}=fixture(t);const crypto=require('node:crypto');
+  const key=Buffer.from('public-host-key'),changed=Buffer.from('changed-key'),file=path.join(dir,'known_hosts');
+  const config={host:'example.test',port:2222,knownHostsPath:file};
+  assert.equal(engine.verifyHostKey(config,key),false);
+  assert.equal(engine.verifyHostKey({...config,hostFingerprint:engine.fingerprint(key)},key),true);
+  assert.equal(engine.verifyHostKey({...config,hostFingerprint:engine.fingerprint(key)},changed),false);
+  fs.writeFileSync(file,'[example.test]:2222 ssh-ed25519 '+key.toString('base64')+'\n');
+  assert.equal(engine.verifyHostKey(config,key),true);assert.equal(engine.verifyHostKey(config,changed),false);
+  fs.appendFileSync(file,'@revoked [example.test]:2222 ssh-ed25519 '+key.toString('base64')+'\n');assert.equal(engine.verifyHostKey(config,key),false);
+  const salt=crypto.randomBytes(20),hash=crypto.createHmac('sha1',salt).update('[example.test]:2222').digest('base64');
+  fs.writeFileSync(file,'|1|'+salt.toString('base64')+'|'+hash+' ssh-ed25519 '+key.toString('base64')+'\n');
+  assert.equal(engine.verifyHostKey(config,key),true);
+});
+test('SSH terminal puts options before the host and remote commands after it without a local shell',()=>{
+  const args=engine.sshArguments({protocol:'sftp',host:'example.test',username:'deploy',port:22,remotePath:'/project',sshCustomParams:'-o ServerAliveInterval=30 "cd ${remotePath}; exec bash"'});
+  assert.deepEqual(args,['-t','-p','22','-o','ServerAliveInterval=30','--','deploy@example.test','cd /project; exec bash']);
 });
 test('Git mirror snapshots remote content before upload and bidirectional sync copies both sides',async t=>{
   const {dir,local,remote,raw}=fixture(t);

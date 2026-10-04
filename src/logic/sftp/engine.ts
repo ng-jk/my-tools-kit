@@ -6,6 +6,7 @@ import { mergedDefault, validateConfig } from './config';
 import { resolveProfileContext } from './core/profileContext';
 export { configurePorts } from '../../data/sftp/ports';
 export { sshArguments } from './ssh-arguments';
+export { verifyHostKey, fingerprint } from '../../data/sftp/host-keys';
 export { FileService, FileType, TransferTask, TransferDirection, Scheduler } from './core';
 export { transfer, sync } from './fileHandlers/transfer/transfer';
 export { LocalFileSystem, SFTPFileSystem, FTPFileSystem } from '../../data/sftp/core/fs';
@@ -26,7 +27,7 @@ function createSession(workspace: string, raw: any, profile?: string) {
   return { service, config: resolved, profile: selected };
 }
 function resolveTarget(session: any, relative: string) {
-  const normalized = relative.replace(/\\/g, '/');
+  const normalized = path.posix.normalize(relative.replace(/\\/g, '/'));
   if (path.posix.isAbsolute(normalized) || /^[a-z]:/i.test(normalized) || normalized.split('/').includes('..')) throw new Error('Path must be relative to the configured context');
   return { local: path.resolve(session.service.baseDir, normalized), remote: path.posix.join(session.config.remotePath, normalized) };
 }
@@ -41,11 +42,13 @@ async function operate(session: any, action: string, relative = '.', flags: any 
   if (action === 'mkdir') { await remoteFs.ensureDir(remote); return { passed: true }; }
   if (action === 'create') { await fileOperations.createFile(remote, remoteFs); return { passed: true }; }
   if (action === 'rename') {
-    if (!flags.to || relative === '.') throw new Error('Rename requires a non-root path and --to');
-    await remoteFs.rename(remote, resolveTarget(session, flags.to).remote); return { passed: true };
+    if (!flags.to || path.posix.resolve('/', remote) === path.posix.resolve('/', config.remotePath)) throw new Error('Rename requires a non-root path and --to');
+    const destination = resolveTarget(session, flags.to).remote;
+    if (path.posix.resolve('/', destination) === path.posix.resolve('/', config.remotePath)) throw new Error('Rename destination must be a non-root path');
+    await remoteFs.rename(remote, destination); return { passed: true };
   }
   if (action === 'delete') {
-    if (!flags.yes || relative === '.') throw new Error('Delete requires --yes and a non-root path');
+    if (!flags.yes || path.posix.resolve('/', remote) === path.posix.resolve('/', config.remotePath)) throw new Error('Delete requires --yes and a non-root path');
     const stat = await remoteFs.lstat(remote);
     if (stat.type === FileType.Directory) await remoteFs.rmdir(remote, true); else await remoteFs.unlink(remote);
     return { passed: true };

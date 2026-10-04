@@ -6,6 +6,7 @@ import localFs from '../localFs';
 import { FileSystem, RemoteFileSystem, SFTPFileSystem } from '../fs/index';
 import { logger } from '../../ports';
 import CustomError from '../customError';
+import { verifyHostKey } from '../../host-keys';
 
 let MAX_OPEN_FD_NUM = 222;
 
@@ -317,6 +318,8 @@ export default class SSHClient extends RemoteClient {
             // ? Math.max(10800 * 1000, connectTimeout || 0) // 180 mins
             : connectTimeout,
           ...option,
+          hostHash: undefined,
+          hostVerifier: (key: Buffer) => verifyHostKey(option, key),
           tryKeyboard: !!interactiveAuth,
         });
     });

@@ -11,10 +11,11 @@ test('SFTP wire: password authentication, list, upload, temp rename, download an
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-ssh-'));
   const local=path.join(root,'local'),remote=path.join(root,'remote');fs.mkdirSync(local);fs.mkdirSync(remote);
   const hostKey=crypto.generateKeyPairSync('rsa',{modulusLength:2048}).privateKey.export({type:'pkcs1',format:'pem'});
+  let authentications=0;
   const clients=new Set();const {STATUS_CODE,OPEN_MODE}=utils.sftp;
   const server=new Server({hostKeys:[hostKey]},client=>{
     clients.add(client);client.on('close',()=>clients.delete(client));client.on('error',()=>{});
-    client.on('authentication',ctx=>ctx.method==='password' && ctx.username==='fixture' && ctx.password==='test-password'?ctx.accept():ctx.reject());
+    client.on('authentication',ctx=>{authentications++;return ctx.method==='password' && ctx.username==='fixture' && ctx.password==='test-password'?ctx.accept():ctx.reject();});
     client.on('ready',()=>client.on('session',accept=>accept().on('sftp',accept=>{
       const sftp=accept(),handles=new Map();let id=0;
       const resolve=p=>{const target=path.resolve(remote,'.'+p);if(!target.startsWith(remote+path.sep)&&target!==remote)throw new Error('outside fixture');return target;};
@@ -41,11 +42,18 @@ test('SFTP wire: password authentication, list, upload, temp rename, download an
     })));
   });
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
-  const session=engine.createSession(local,{host:'127.0.0.1',port:server.address().port,username:'fixture',password:'test-password',remotePath:'/',useTempFile:true});
+  const session=engine.createSession(local,{host:'127.0.0.1',port:server.address().port,username:'fixture',password:'test-password',remotePath:'/',useTempFile:true,hostFingerprint:engine.fingerprint(utils.parseKey(hostKey).getPublicSSH())});
   t.after(async()=>{session.service.dispose();for(const client of clients)client.end();await new Promise(resolve=>server.close(resolve));fs.rmSync(root,{recursive:true,force:true});});
+  const bad=engine.createSession(local,{host:'127.0.0.1',port:server.address().port,username:'fixture',password:'test-password',remotePath:'/',hostFingerprint:'SHA256:wrong',connectTimeout:1000});
+  try {await assert.rejects(engine.operate(bad,'list'),/verification|host key/i);assert.equal(authentications,0);} finally {bad.service.dispose();}
   fs.writeFileSync(path.join(local,'wire.txt'),'over SSH');
   await engine.operate(session,'upload','wire.txt');assert.equal(fs.readFileSync(path.join(remote,'wire.txt'),'utf8'),'over SSH');
   assert.equal((await engine.operate(session,'list')).some(item=>item.name==='wire.txt'),true);
   fs.writeFileSync(path.join(remote,'wire.txt'),'server change');await engine.operate(session,'download','wire.txt');assert.equal(fs.readFileSync(path.join(local,'wire.txt'),'utf8'),'server change');
+  fs.mkdirSync(path.join(remote,'nested'));fs.writeFileSync(path.join(remote,'nested','remote-only.txt'),'nested from server');
+  fs.writeFileSync(path.join(remote,'remote-only.txt'),'from server');
+  await engine.operate(session,'sync-both');
+  assert.equal(fs.readFileSync(path.join(local,'remote-only.txt'),'utf8'),'from server');
+  assert.equal(fs.readFileSync(path.join(local,'nested','remote-only.txt'),'utf8'),'nested from server');
   await engine.operate(session,'delete','wire.txt',{yes:true});assert.equal(fs.existsSync(path.join(remote,'wire.txt')),false);
 });

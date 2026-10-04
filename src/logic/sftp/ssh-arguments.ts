@@ -25,7 +25,17 @@ export function sshArguments(config: any) {
   if (config.sshConfigPath) args.push('-F', config.sshConfigPath);
   if (target.privateKeyPath && !target.agent) args.push('-i',target.privateKeyPath);
   if (chain.length > 1) args.push('-J',chain.slice(0,-1).map(entry=>destination(entry)+':'+(entry.port || 22)).join(','));
-  if (config.sshCustomParams) args.push(...words(config.sshCustomParams.replace(/\$\{remotePath\}/g, config.remotePath)));
+  const custom = config.sshCustomParams ? words(config.sshCustomParams.replace(/\$\{remotePath\}/g, config.remotePath)) : [];
+  while (custom.length && custom[0].startsWith('-')) {
+    const option = custom.shift()!;
+    if (option === '--') break;
+    args.push(option);
+    if (/^-[BbcDEeFIiJLlmOopQRSWw]$/.test(option)) {
+      if (!custom.length) throw new Error('Missing SSH option argument: ' + option);
+      args.push(custom.shift()!);
+    }
+  }
   args.push('--',destination(target));
+  args.push(...custom);
   return args;
 }

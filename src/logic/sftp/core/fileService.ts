@@ -334,6 +334,9 @@ function getCompleteConfig(
   if (mergedConfig.ignoreFile) {
     mergedConfig.ignoreFile = resolvePath(workspace, mergedConfig.ignoreFile);
   }
+  if ((mergedConfig as any).knownHostsPath) {
+    (mergedConfig as any).knownHostsPath = resolvePath(workspace, (mergedConfig as any).knownHostsPath);
+  }
 
   // Resolve the git-mirror folder relative to the workspace (like ignoreFile).
   if (mergedConfig.mirror && mergedConfig.mirror.enabled && mergedConfig.mirror.path) {
