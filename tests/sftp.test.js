@@ -84,7 +84,10 @@ test('host keys reject unknown/changed/revoked keys and support pins and hashed 
 });
 test('SSH terminal puts options before the host and remote commands after it without a local shell',()=>{
   const args=engine.sshArguments({protocol:'sftp',host:'example.test',username:'deploy',port:22,remotePath:'/project',sshCustomParams:'-o ServerAliveInterval=30 "cd ${remotePath}; exec bash"'});
-  assert.deepEqual(args,['-t','-p','22','-o','ServerAliveInterval=30','--','deploy@example.test','cd /project; exec bash']);
+  assert.deepEqual(args,['-t','-p','22','-o','StrictHostKeyChecking=yes','-o','ServerAliveInterval=30','--','deploy@example.test','cd /project; exec bash']);
+  assert.throws(()=>engine.sshArguments({protocol:'sftp',host:'example.test',hostFingerprint:'SHA256:x'}),/cannot enforce/);
+  assert.throws(()=>engine.sshArguments({protocol:'sftp',hop:{host:'jump'}}),/hop trust/);
+  assert.ok(engine.sshArguments({protocol:'sftp',host:'example.test',username:'deploy',knownHostsPath:'C:/My Keys/known_hosts'}).includes('UserKnownHostsFile="C:/My Keys/known_hosts"'));
 });
 test('malicious directory entries cannot schedule writes outside the destination',async()=>{
   for (const name of ['../../outside.txt','../escape','nested/file','nested\\file','C:stream','.. ']) {
@@ -167,6 +170,11 @@ test('shared Git selection includes root commits and CLI uses the same selection
   assert.equal(result.status,0,result.stderr);assert.equal(fs.readFileSync(path.join(remote,'root.txt'),'utf8'),'root commit');
   fs.writeFileSync(path.join(local,'root.txt'),'modified');fs.writeFileSync(path.join(local,'new.txt'),'new');
   const selected=await engine.getUncommittedChangedFiles(local);assert.ok(selected.includes('root.txt'));assert.ok(selected.includes('new.txt'));
+  fs.unlinkSync(path.join(local,'root.txt'));
+  const cli=(...args)=>spawnSync(process.execPath,[path.resolve('cli.js'),'sftp','upload-changed',local,...args],{encoding:'utf8',timeout:20000});
+  assert.equal(cli().status,1,'deletions require explicit CLI acknowledgement');
+  const changed=cli('--yes');assert.equal(changed.status,0,changed.stderr);
+  assert.equal(fs.existsSync(path.join(remote,'root.txt')),false);assert.equal(fs.readFileSync(path.join(remote,'new.txt'),'utf8'),'new');
 });
 test('sync deletion keeps ignored descendants and their parent directories in both directions',async t=>{
   const {local,remote,session}=fixture(t,{ignore:['**/keep.txt'],syncOption:{delete:true}});

@@ -81,6 +81,15 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
       await new Promise(resolve=>setTimeout(resolve,850));
       assert.equal(fs.existsSync(path.join(dir,'remote','ui.txt')),false,'a real user deletion still propagates');
     } finally {native.close();}
+    await commands.get('devkit.sftp.setProfile')('other');await views.get('devkit.remoteExplorer').getChildren();
+    fs.mkdirSync(path.join(dir,'private'));fs.writeFileSync(path.join(dir,'private','secret.txt'),'unrelated remote content');
+    const incoming=URI.file(path.join(root,'nested','incoming.txt'));
+    fs.writeFileSync(incoming.fsPath,'moved into context');
+    repository.state.indexChanges=[{status:3,originalUri:URI.file(path.join(root,'private','secret.txt')),renameUri:incoming,uri:incoming}];
+    await commands.get('devkit.sftp.upload.changedFiles')();
+    assert.deepEqual(errors,[]);
+    assert.equal(fs.readFileSync(path.join(dir,'private','secret.txt'),'utf8'),'unrelated remote content');
+    assert.equal(fs.readFileSync(path.join(dir,'remote-other','incoming.txt'),'utf8'),'moved into context');
 
   } finally {extension?.deactivate();context.subscriptions.forEach(item=>item.dispose());Module._load=original;}
 });

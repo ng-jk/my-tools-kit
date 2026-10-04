@@ -26,6 +26,7 @@ Extension: **0.5.0**. Pipeline plugin: **0.3.1**.
 - Preserve symlink identity during sync, upload edited rename destinations, resolve all-profile transfers from each profile context, share Git change selection across UI/CLI (including root commits), and stop queued CLI work on cancellation.
 - Stage file transfers before replacement, retain/restore the previous destination on replacement failure, close handles after failed reads, replace changed symlinks correctly, and explicitly reject unsupported FTP symlink creation.
 - Suppress download-generated watcher events (including delayed replacement events), exclude staging/recovery files, share safe configuration defaults across UI/CLI, and preserve restrictive/executable destination permissions.
+- Bound remote rename mapping to its local context, share Git-change transfer planning and mirror policies in logic, and enforce or explicitly reject SSH-terminal trust configurations.
 - Document the complete SFTP command inventory and explain pipeline prerequisites and branch flow.
 
 ## 0.4.0 — 2026-10-04

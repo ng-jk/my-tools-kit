@@ -2,7 +2,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
-const { createSession, operate, configurePorts, sshArguments, watchPolicy, getCommitChangedFiles, getUncommittedChangedFiles, isOwnLocalChange, initialConfig } = require('../../build/sftp/engine');
+const { createSession, operate, configurePorts, sshArguments, watchPolicy, getCommitChangedFiles, getUncommittedChangedFiles, getUncommittedTransfers, planGitTransfers, executeGitTransfers, isOwnLocalChange, initialConfig } = require('../../build/sftp/engine');
 function expand(value) {
   if (typeof value === 'string') return value.replace(/\$\{env:([A-Za-z_][A-Za-z0-9_]*)\}/g, (_, key) => {
     if (process.env[key] === undefined) throw new Error('Missing environment variable: ' + key);
@@ -64,15 +64,16 @@ paths and JSON output here. Transfer, profile and sync logic is shared.`);
     process.once('SIGINT', cancel);
     try {
       if (action === 'upload-changed' || action === 'upload-commit') {
-        const files = action === 'upload-commit' ? await getCommitChangedFiles(root, flags.commit || 'HEAD') : await getUncommittedChangedFiles(root);
-        const transfers = [];
-        for (const file of new Set(files)) {
-          if (cancelled) break;
-          const local = path.relative(session.service.baseDir,path.resolve(root,file));
-          if (local === '..' || local.startsWith('..'+path.sep) || path.isAbsolute(local)) continue;
-          transfers.push(await operate(session,'upload',local,flags));
-        }
-        results.push({profile:session.profile,files:transfers.length});
+        const changes = action === 'upload-commit' ? (await getCommitChangedFiles(root,flags.commit || 'HEAD')).map(file=>({kind:'upload',path:file})) : await getUncommittedTransfers(root);
+        const plan = planGitTransfers(changes.map(change=>({...change,path:path.resolve(root,change.path)})), file => {
+          const relative=path.relative(session.service.baseDir,file);
+          return relative !== '..' && !relative.startsWith('..'+path.sep) && !path.isAbsolute(relative) && (flags.force || !session.config.ignore?.(file)) ? session.service.baseDir : undefined;
+        });
+        if (plan.some(operation=>operation.kind==='delete') && !flags.yes) throw new Error('Git changes include remote deletions; inspect changes and pass --yes');
+        const relative = file => path.relative(session.service.baseDir,file);
+        const run = (action,file,extra={}) => { if(cancelled) throw new Error('Transfer cancelled'); return operate(session,action,relative(file),{...flags,...extra}); };
+        await executeGitTransfers(plan,{upload:file=>run('upload',file),delete:file=>run('delete',file),rename:(from,to)=>run('rename',from,{to:relative(to)})});
+        results.push({profile:session.profile,operations:plan});
       } else if (action === 'watch') {
         if (profiles.length !== 1) throw new Error('Watch requires one profile');
         const watcherConfig = watchPolicy(session.config, flags.yes);

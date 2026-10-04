@@ -7,7 +7,7 @@ import { uploadFile, renameRemote, removeRemote } from '../fileHandlers/index';
 import { getGitService, GitAPI, Repository, Status, Change } from '../modules/git/index';
 import { checkCommand } from './abstract/createCommand';
 import logger from '../logger';
-import { simplifyPath } from '../helper/index';
+import {planGitTransfers, executeGitTransfers, GitChange} from '../../../logic/sftp/git-transfer';
 
 export default checkCommand({
   id: COMMAND_UPLOAD_CHANGEDFILES,
@@ -15,19 +15,7 @@ export default checkCommand({
   async handleCommand(hint: any) {
     return handleCommand(hint);
 
-    // resourceGroup.resourceStates.forEach(resourceState => {
-    //   resourceState.
-    //   console.log(resourceState.decorations);
-    // });
 
-    // try {
-    //   await uploadFile(ctx, { ignore: null });
-    // } catch (error) {
-    //   // ignore error when try to upload a deleted file
-    //   if (error.code !== 'ENOENT') {
-    //     throw error;
-    //   }
-    // }
   },
 });
 
@@ -66,61 +54,24 @@ async function handleCommand(hint: any) {
     changes = repository.state.indexChanges.concat(repository.state.workingTreeChanges);
   }
 
-  const creates: Change[] = [];
-  const uploads: Change[] = [];
-  const renames: Change[] = [];
-  const deletes: Change[] = [];
-  for (const change of changes) {
-    if (!getFileService(change.uri)) {
-      continue;
-    }
-
-    switch (change.status) {
-      case Status.INDEX_MODIFIED:
-      case Status.MODIFIED:
-        uploads.push(change);
-        break;
-      case Status.INDEX_ADDED:
-      case Status.UNTRACKED:
-        creates.push(change);
-        break;
-      case Status.INDEX_RENAMED:
-        renames.push(change);
-        break;
-      case Status.INDEX_DELETED:
-      case Status.DELETED:
-        deletes.push(change);
-        break;
-      default:
-        break;
-    }
-  }
-
-  await Promise.all(renames.map(change => renameRemote(change.renameUri || change.uri, { originPath: change.originalUri.fsPath })));
-  const destinations = new Map(creates.concat(uploads, renames).map(change => { const uri = change.renameUri || change.uri; return [uri.toString(), uri]; }));
-  await Promise.all(Array.from(destinations.values()).map(uri => uploadFile(uri)));
-  await Promise.all(deletes.map(change => removeRemote(change.uri)));
-
-  logger.log('');
+  const normalized: GitChange[] = changes.flatMap(change => {
+    const destination = (change.renameUri || change.uri).fsPath;
+    if (change.status === Status.INDEX_RENAMED) return [{kind:'rename' as const,path:destination,oldPath:change.originalUri.fsPath}];
+    if ([Status.INDEX_DELETED,Status.DELETED].includes(change.status)) return [{kind:'delete' as const,path:destination}];
+    if ([Status.INDEX_MODIFIED,Status.MODIFIED,Status.INDEX_ADDED,Status.UNTRACKED].includes(change.status)) return [{kind:'upload' as const,path:destination}];
+    return [];
+  });
+  const plan = planGitTransfers(normalized, file => {
+    const service = getFileService(vscode.Uri.file(file));
+    return service && !service.getConfig().ignore?.(file) ? service.baseDir : undefined;
+  });
+  await executeGitTransfers(plan, {
+    upload: file => uploadFile(vscode.Uri.file(file)),
+    rename: (from,to) => renameRemote(vscode.Uri.file(to),{originPath:from}),
+    delete: file => removeRemote(vscode.Uri.file(file)),
+  });
   logger.log('------ Upload Changed Files Result ------');
-  outputGroup('create', creates, c => simplifyPath(c.uri.fsPath));
-  outputGroup('upload', uploads, c => simplifyPath(c.uri.fsPath));
-  outputGroup(
-    'renamed',
-    renames,
-    c => `${simplifyPath(c.originalUri.fsPath)} ➞ ${simplifyPath(c.renameUri!.fsPath)}`
-  );
-  outputGroup('deleted', deletes, c => simplifyPath(c.uri.fsPath));
-}
-
-function outputGroup<T>(label: string, items: T[], formatItem: (x: T) => string) {
-  if (items.length <= 0) {
-    return;
-  }
-
-  logger.log(`${label.toUpperCase()}:`);
-  logger.log(items.map(i => formatItem(i)).join('\n'));
-  logger.log('');
+  plan.forEach(operation => logger.log(`${operation.kind}: ${operation.path}`));
 }
 
 async function getRepository(git: GitAPI): Promise<Repository | undefined> {

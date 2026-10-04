@@ -11,3 +11,7 @@ export async function getCommitChangedFiles(dir: string, revision: string): Prom
 export async function getUncommittedChangedFiles(dir: string): Promise<string[]> {
   return (await readStatus(dir)).filter(row => row[2] === 2).map(row => row[0]);
 }
+export async function getUncommittedTransfers(dir: string) {
+  return (await readStatus(dir)).filter(row => row[2] === 2 || (row[1] !== 0 && row[2] === 0))
+    .map(row => ({kind: row[2] === 0 ? 'delete' as const : 'upload' as const, path:row[0]}));
+}

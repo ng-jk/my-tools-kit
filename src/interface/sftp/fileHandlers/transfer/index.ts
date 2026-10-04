@@ -4,7 +4,6 @@ import { refreshRemoteExplorer } from '../shared';
 import createFileHandler, { FileHandlerContext } from '../createFileHandler';
 import { transfer, sync, TransferOption, SyncOption, TransferDirection } from '../../../../logic/sftp/fileHandlers/transfer/transfer';
 import { FileSystem, FileType, TransferTask } from '../../../../logic/sftp/core/index';
-import { getMirrorService, MirrorTarget } from '../../../../data/sftp/core/mirror';
 import { showWarningMessage } from '../../host';
 import logger from '../../logger';
 

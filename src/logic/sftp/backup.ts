@@ -1,6 +1,6 @@
 import * as path from 'path';
 import { TransferTask, TransferDirection, FileType, FileSystem } from './core';
-import { getMirrorService, MirrorTarget } from '../../data/sftp/core/mirror';
+import { getMirrorService, MirrorTarget } from './mirror';
 import { logger } from '../../data/sftp/ports';
 // Show the "mirror failed" warning at most once per session — a failing backup
 // must never block uploads, but the user should know the safety net is down.

@@ -6,6 +6,8 @@ export const existsSync = fs.existsSync;
 export function replaceHomePath(value: string) { return value.startsWith('~/') ? path.join(os.homedir(), value.slice(2)) : value; }
 export function resolvePath(base: string, value: string) { return path.resolve(base, replaceHomePath(value)); }
 export function toRemotePath(local: string, base: string, remote: string) {
-  return path.posix.join(remote, path.relative(base, local).split(path.sep).join('/'));
+  const relative = path.relative(base, local);
+  if (relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative)) throw new Error('Local path is outside the configured context');
+  return path.posix.join(remote, relative.split(path.sep).join('/'));
 }
 export function toLocalPath(remote: string, base: string, local: string) { return path.join(local, path.posix.relative(base, remote)); }
