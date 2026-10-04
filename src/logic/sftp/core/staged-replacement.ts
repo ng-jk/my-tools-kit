@@ -2,10 +2,12 @@ import {randomUUID} from 'crypto';
 import {FileSystem, FileType} from '../../../data/sftp/core/fs';
 export function stagingPath(target: string) { return target + '.devkit-' + randomUUID(); }
 export function isTransferArtifact(value: string) { return /\.devkit-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:\.backup)?$/i.test(value); }
+export const filesystemIdentity = Symbol("filesystemIdentity");
 const locks = new WeakMap<FileSystem, Map<string, Promise<void>>>();
 export async function replaceStaged(fs: FileSystem, staged: string, target: string, atomic = false) {
-  let targets = locks.get(fs);
-  if (!targets) { targets = new Map(); locks.set(fs, targets); }
+  const identity = (fs as any)[filesystemIdentity] || fs;
+  let targets = locks.get(identity);
+  if (!targets) { targets = new Map(); locks.set(identity, targets); }
   const previous = targets.get(target) || Promise.resolve();
   let release: () => void;
   const current = new Promise<void>(resolve => { release = resolve; });

@@ -12,7 +12,7 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
   fs.mkdirSync(path.join(root,'nested'));fs.mkdirSync(path.join(dir,'remote-other'));
   fs.writeFileSync(path.join(root,'nested','ui.txt'),'from other context');
   fs.writeFileSync(path.join(root,'ui.txt'),'uploaded from the UI adapter');
-  fs.writeFileSync(path.join(root,'.vscode','sftp.json'),JSON.stringify({name:'fixture',protocol:'local',host:'fixture',username:'fixture',remotePath:path.join(dir,'remote').replaceAll('\\','/'),defaultProfile:'dev',profiles:{dev:{watcher:{files:'**/*',autoUpload:true,autoDelete:true}},prod:{watcher:{files:false}},other:{context:'nested',remotePath:path.join(dir,'remote-other').replaceAll('\\','/')}}}));
+  fs.writeFileSync(path.join(root,'.vscode','sftp.json'),JSON.stringify({name:'fixture',protocol:'local',host:'fixture',username:'fixture',remotePath:path.join(dir,'remote').replaceAll('\\','/'),syncOption:{delete:true},defaultProfile:'dev',profiles:{dev:{watcher:{files:'**/*',autoUpload:true,autoDelete:true}},prod:{watcher:{files:false}},other:{context:'nested',remotePath:path.join(dir,'remote-other').replaceAll('\\','/')}}}));
   const commands=new Map(),views=new Map(),errors=[],watchers=[];const disposable=()=>({dispose(){}});
   const repository={rootUri:URI.file(root),ui:{selected:true},state:{indexChanges:[],workingTreeChanges:[]}};
   const vscode={Uri:URI,StatusBarAlignment:{Left:1},TreeItemCollapsibleState:{None:0,Collapsed:1,Expanded:2},
@@ -27,6 +27,8 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
       createTreeView:(id,options)=>{views.set(id,options.treeDataProvider);return {selection:[],reveal:async()=>{},dispose(){}}}}
   };
   const original=Module._load;let extension;
+  const nativeReaddir=fs.readdir;let readHook;
+  fs.readdir=(...args)=>readHook?readHook(...args):nativeReaddir(...args);
   const context={subscriptions:[],extension:{packageJSON:require('../package.json')}};
   try {
     Module._load=function(id,...args){return id==='vscode'?vscode:original.call(this,id,...args);};
@@ -101,5 +103,47 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     assert.equal(fs.existsSync(path.join(dir,'remote-other')),true);
     assert.equal(fs.readFileSync(path.join(dir,'remote-other','ui.txt'),'utf8'),'from other context');
 
-  } finally {extension?.deactivate();context.subscriptions.forEach(item=>item.dispose());Module._load=original;}
+    errors.length=0;
+    fs.writeFileSync(path.join(dir,'remote-other','keep-on-cancel.txt'),'keep');
+    const originalRead=nativeReaddir;
+    let cancellationCount=0;
+    readHook=function(directory,callback){
+      return originalRead.call(this,directory,(...args)=>{
+        if (path.resolve(directory).toLowerCase()===path.join(root,'nested').toLowerCase()) {
+          cancellationCount++;
+          commands.get('devkit.sftp.cancelAllTransfer')().then(()=>callback(...args),callback);
+        } else callback(...args);
+      });
+    };
+    try {await commands.get('devkit.sftp.sync.localToRemote')([path.join(root,'nested')]);}
+    finally {readHook=undefined;}
+    assert.ok(cancellationCount>0,JSON.stringify(errors));
+    assert.equal(fs.readFileSync(path.join(dir,'remote-other','keep-on-cancel.txt'),'utf8'),'keep');
+    assert.ok(errors.some(message=>/cancelled/.test(message)));
+    errors.length=0;
+    await commands.get('devkit.sftp.setProfile')('prod');await views.get('devkit.remoteExplorer').getChildren();
+    fs.mkdirSync(path.join(root,'batch'));fs.writeFileSync(path.join(root,'batch','payload.txt'),'do not upload');
+    fs.mkdirSync(path.join(root,'nested','batch'));fs.writeFileSync(path.join(root,'nested','batch','payload.txt'),'do not upload');
+    let release;const blocked=new Promise(resolve=>release=resolve);
+    const delayed=[];
+    readHook=function(directory,callback){
+      if (path.basename(directory)==='batch') {
+        delayed.push(()=>originalRead.call(this,directory,callback));
+        if(delayed.length===3)release();
+        return;
+      }
+      return originalRead.call(this,directory,callback);
+    };
+    try {
+      const uploading=commands.get('devkit.sftp.upload.folder.to.allProfiles')(URI.file(path.join(root,'batch')));
+      await Promise.race([blocked,new Promise((_,reject)=>setTimeout(()=>reject(new Error('profile planning did not start')),2000))]);
+      await commands.get('devkit.sftp.cancelAllTransfer')();
+      delayed.forEach(resume=>resume());
+      await uploading;
+    } finally {readHook=undefined;}
+    assert.equal(fs.existsSync(path.join(dir,'remote','batch','payload.txt')),false);
+    assert.equal(fs.existsSync(path.join(dir,'remote-other','batch','payload.txt')),false);
+    assert.ok(errors.some(message=>/cancelled/.test(message)));
+
+  } finally {extension?.deactivate();context.subscriptions.forEach(item=>item.dispose());Module._load=original;fs.readdir=nativeReaddir;}
 });

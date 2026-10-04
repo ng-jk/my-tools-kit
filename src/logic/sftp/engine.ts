@@ -1,7 +1,8 @@
 import * as path from 'path';
 import { FileService, FileType, TransferDirection, fileOperations } from './core';
 import { transfer, sync } from './fileHandlers/transfer/transfer';
-import { backupBeforeUpload } from './backup';
+import {executeTransfer} from './transfer-operation';
+export {cancelActiveTransfers} from './transfer-operation';
 import { mergedDefault, validateConfig } from './config';
 import { resolveProfileContext } from './core/profileContext';
 import {removeRemotePath,renameRemotePath} from './remote-operations';
@@ -42,6 +43,16 @@ async function operate(session: any, action: string, relative = '.', flags: any 
   const checkCancelled = service.cancellationCheck();
   checkCancelled();
   const { local, remote } = resolveTarget(session, relative);
+  if (['upload','download','sync-up','sync-down','sync-both'].includes(action)) {
+  const down = action === 'download' || action === 'sync-down';
+  const direction = down ? TransferDirection.REMOTE_TO_LOCAL : TransferDirection.LOCAL_TO_REMOTE;
+  const options = { ...(action.startsWith('sync-') ? config.syncOption : {}),
+    perserveTargetMode: !down && config.protocol === 'sftp' && !config.filePerm && !config.dirPerm,
+    useTempFile: !down && config.useTempFile, openSsh: config.openSsh,
+    ignore: flags.force ? null : config.ignore, bothDiretions: action === 'sync-both', filePerm: config.filePerm, dirPerm: config.dirPerm };
+  if (options.delete && !flags.yes) throw new Error('syncOption.delete requires --yes');
+  return executeTransfer(service, config, local, remote, down, options, action.startsWith('sync-'));
+  }
   let planning = true;
   const guard = (fs: any) => new Proxy(fs, {get(target, key) {
     const value = Reflect.get(target, key);
@@ -67,28 +78,5 @@ async function operate(session: any, action: string, relative = '.', flags: any 
     await removeRemotePath(remoteFs, remote, config.remotePath);
     return { passed: true };
   }
-  if (!['upload','download','sync-up','sync-down','sync-both'].includes(action)) throw new Error('Unknown SFTP operation: ' + action);
-  const down = action === 'download' || action === 'sync-down';
-  const direction = down ? TransferDirection.REMOTE_TO_LOCAL : TransferDirection.LOCAL_TO_REMOTE;
-  const options = { ...(action.startsWith('sync-') ? config.syncOption : {}),
-    perserveTargetMode: !down && config.protocol === 'sftp' && !config.filePerm && !config.dirPerm,
-    useTempFile: !down && config.useTempFile, openSsh: config.openSsh,
-    ignore: flags.force ? null : config.ignore, bothDiretions: action === 'sync-both', filePerm: config.filePerm, dirPerm: config.dirPerm };
-  if (options.delete && !flags.yes) throw new Error('syncOption.delete requires --yes');
-  const tasks: any[] = [];
-  const operation = action.startsWith('sync-') ? sync : transfer;
-  const scheduler = service.createTransferScheduler(config.concurrency);
-  try {
-  const deleted = await operation({ srcFsPath: down ? remote : local, targetFsPath: down ? local : remote,
-    srcFs: down ? remoteFs : localFs, targetFs: down ? localFs : remoteFs, transferDirection: direction,
-    transferOption: options, filePerm: config.filePerm, dirPerm: config.dirPerm }, task => { checkCancelled(); tasks.push(task); });
-  checkCancelled();
-  if (!down) await backupBeforeUpload({config, fileService: service}, tasks, remoteFs);
-  checkCancelled();
-  planning = false;
-  tasks.forEach(task => scheduler.add(task));
-  await scheduler.run();
-  checkCancelled();
-  return { passed: true, transferred: tasks.length, deleted: deleted || [] };
-  } finally { scheduler.stop(); }
+  throw new Error('Unknown SFTP operation: ' + action);
 }
