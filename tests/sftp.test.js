@@ -142,6 +142,29 @@ test('default project uploads exclude credentials and repository metadata',async
   fs.writeFileSync(path.join(local,'.env'),'SECRET=private');fs.writeFileSync(path.join(local,'.env.local'),'SECRET=private');fs.writeFileSync(path.join(local,'public.txt'),'public');
   await engine.operate(session,'upload');assert.deepEqual(fs.readdirSync(remote),['public.txt']);
 });
+test('recursive transfers retain each child permission mode in both directions',async()=>{
+  for(const direction of [engine.TransferDirection.LOCAL_TO_REMOTE,engine.TransferDirection.REMOTE_TO_LOCAL]) {
+    const created=[];
+    const source={pathResolver:path.posix,lstat:async()=>({type:engine.FileType.Directory,mode:0o755}),list:async()=>[
+      {name:'private',fspath:'/source/private',type:engine.FileType.File,mode:0o600},
+      {name:'executable',fspath:'/source/executable',type:engine.FileType.File,mode:0o755}],get:async()=>require('node:stream').Readable.from('content')};
+    const target={pathResolver:path.posix,ensureDir:async()=>{},lstat:async()=>{throw Object.assign(new Error('missing'),{code:2});},open:async(name,flags,mode)=>{created.push(mode);return 1;},put:async input=>{for await(const chunk of input){}},close:async()=>{},rename:async()=>{},unlink:async()=>{}};
+    const tasks=[];
+    await engine.transfer({srcFsPath:'/source',targetFsPath:'/destination',srcFs:source,targetFs:target,transferDirection:direction,transferOption:{}},task=>tasks.push(task));
+    for(const task of tasks)await task.run();assert.deepEqual(created.sort(),[0o600,0o755]);
+  }
+});
+test('sync compares equal-length symlink targets even with identical timestamps',async()=>{
+  const entry=(fspath,type=engine.FileType.SymbolicLink)=>({name:'link',fspath,type,size:3,mtime:1000,atime:1000});
+  let reads=0;
+  const source={pathResolver:path.posix,list:async()=>[entry('/source/link')],readlink:async()=>{reads++;return 'one';}};
+  const target={pathResolver:path.posix,ensureDir:async()=>{},list:async()=>[entry('/destination/link')],readlink:async()=>{reads++;return 'two';}};
+  let tasks=[];
+  await engine.sync({srcFsPath:'/source',targetFsPath:'/destination',srcFs:source,targetFs:target,transferDirection:engine.TransferDirection.LOCAL_TO_REMOTE,transferOption:{}},task=>tasks.push(task));
+  assert.equal(tasks.length,1);assert.equal(reads,2);
+  target.list=async()=>[entry('/destination/link',engine.FileType.File)];tasks=[];
+  await engine.sync({srcFsPath:'/source',targetFsPath:'/destination',srcFs:source,targetFs:target,transferDirection:engine.TransferDirection.LOCAL_TO_REMOTE,transferOption:{}},task=>tasks.push(task));assert.equal(tasks.length,1);
+});
 test('staged downloads preserve restrictive and executable modes, with source fallback for new files',async()=>{
   for(const [existing,fallback,expected] of [[0o600,0o644,0o600],[0o755,0o644,0o755],[undefined,0o640,0o640]]) {
     let createdMode;
@@ -217,6 +240,17 @@ test('terminal uses the same engine and reports errors with nonzero exit',async 
   const uploaded=run('upload',local,'cli.txt');assert.equal(uploaded.status,0,uploaded.stderr);assert.equal(JSON.parse(uploaded.stdout).passed,true);assert.equal(fs.readFileSync(path.join(remote,'cli.txt'),'utf8'),'from CLI');
   assert.equal(run('upload',local,'missing').status,1);
   const profiles=run('profiles',local);assert.equal(profiles.status,0,profiles.stderr);assert.equal(profiles.stdout.includes('password'),false);
+});
+test('shared configuration persistence creates safe defaults without overwriting existing settings',async t=>{
+  const {local}=fixture(t);
+  const adapter=require('../src/data/sftp-config');const file=path.join(local,'.vscode','sftp.json');
+  await adapter.ensureConfiguration(file,engine.initialConfig());
+  const initial=await adapter.readConfiguration(file);assert.ok(initial.ignore.includes('.vscode'));assert.ok(initial.ignore.includes('.env.*'));
+  fs.writeFileSync(file,JSON.stringify({...initial,host:'${env:SERVER}'}));
+  await adapter.ensureConfiguration(file,engine.initialConfig());
+  const resolved=engine.normalizeConfigurations(await adapter.readConfiguration(file),{SERVER:'example.test'});
+  assert.equal(resolved[0].host,'example.test');
+  assert.throws(()=>engine.normalizeConfigurations({host:'${env:MISSING}'},{}),/Missing environment/);
 });
 test('sidebar contributes a toolkit entry and all upstream public SFTP commands',()=>{
   const manifest=require('../package.json'),upstream=require('../vendor/sftp/package.json');

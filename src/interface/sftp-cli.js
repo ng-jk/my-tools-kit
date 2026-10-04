@@ -1,17 +1,8 @@
 'use strict';
-const fs = require('node:fs');
+const {readConfiguration,ensureConfiguration}=require('../data/sftp-config');
+const {watchLocalDirectory,runSsh}=require('../data/sftp-terminal');
 const path = require('node:path');
-const { spawn } = require('node:child_process');
-const { createSession, operate, configurePorts, sshArguments, watchPolicy, getCommitChangedFiles, getUncommittedChangedFiles, getUncommittedTransfers, planGitTransfers, executeGitTransfers, isOwnLocalChange, initialConfig } = require('../../build/sftp/engine');
-function expand(value) {
-  if (typeof value === 'string') return value.replace(/\$\{env:([A-Za-z_][A-Za-z0-9_]*)\}/g, (_, key) => {
-    if (process.env[key] === undefined) throw new Error('Missing environment variable: ' + key);
-    return process.env[key];
-  });
-  if (Array.isArray(value)) return value.map(expand);
-  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, expand(item)]));
-  return value;
-}
+const { createSession, operate, configurePorts, sshArguments, watchPolicy, getCommitChangedFiles, getUncommittedChangedFiles, getUncommittedTransfers, planGitTransfers, executeGitTransfers, isOwnLocalChange, localEntryExists, initialConfig, normalizeConfigurations } = require('../../build/sftp/engine');
 async function main(args) {
   if (!args.length || args.includes('--help')) {
     console.log(`devkit sftp <action> <workspace> [relative-path] [options]
@@ -37,12 +28,10 @@ paths and JSON output here. Transfer, profile and sync logic is shared.`);
   }
   const configPath = flags.config ? path.resolve(flags.config) : path.join(root,'.vscode','sftp.json');
   if (action === 'config') {
-    fs.mkdirSync(path.dirname(configPath), {recursive:true});
-    if (!fs.existsSync(configPath)) fs.writeFileSync(configPath, JSON.stringify(initialConfig(),null,2)+'\n', {flag:'wx'});
+    await ensureConfiguration(configPath,initialConfig());
     console.log(JSON.stringify({passed:true,config:configPath})); return;
   }
-  const value = expand(JSON.parse(fs.readFileSync(configPath,'utf8')));
-  const configs = Array.isArray(value) ? value : [value];
+  const configs = normalizeConfigurations(await readConfiguration(configPath),process.env);
   if (action === 'profiles') {
     console.log(JSON.stringify(configs.map(config => ({name:config.name,context:config.context || '.',profiles:Object.keys(config.profiles || {}),defaultProfile:config.defaultProfile})),null,2)); return;
   }
@@ -81,14 +70,14 @@ paths and JSON output here. Transfer, profile and sync logic is shared.`);
         await new Promise((resolve,reject) => {
           let queue = Promise.resolve();
           let stopped = false;
-          const watcher = fs.watch(session.service.baseDir,{recursive:true},(_,name) => {
+          const watcher = watchLocalDirectory(session.service.baseDir,(_,name) => {
             if (!name || stopped || cancelled) return;
             const matches = watcherConfig.files !== false && (!watcherConfig.files || minimatch(name.replaceAll('\\','/'),watcherConfig.files,{dot:true}));
             const full = path.join(session.service.baseDir,name);
             if (session.config.ignore?.(full) || isOwnLocalChange(full)) return;
             queue = queue.then(async () => {
               if (stopped || cancelled || isOwnLocalChange(full)) return;
-              if (fs.existsSync(full)) {
+              if (localEntryExists(full)) {
                 if (watcherConfig.uploadOnSave || (matches && watcherConfig.autoUpload)) await operate(session,'upload',name,flags);
               } else if (matches && watcherConfig.autoDelete) await operate(session,'delete',name,flags);
             }).catch(error => { finish(error); });
@@ -101,7 +90,7 @@ paths and JSON output here. Transfer, profile and sync logic is shared.`);
         });
       } else if (action === 'ssh') {
         const argv = sshArguments(session.config);
-        await new Promise((resolve,reject) => { const child=spawn('ssh',argv,{stdio:'inherit',shell:false}); child.once('error',reject); child.once('exit',code => code===0?resolve():reject(new Error('ssh exited '+code))); });
+        await runSsh(argv);
       } else results.push({profile:session.profile,result:await operate(session,action,relative,flags)});
     } finally { process.removeListener('SIGINT',cancel); session.service.dispose(); }
   }

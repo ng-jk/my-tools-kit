@@ -128,6 +128,18 @@ export function initialConfig() {
   return {name:'My Server', host:'localhost', protocol:'sftp', port:22, username:'username', remotePath:'/project',
     uploadOnSave:false, useTempFile:false, openSsh:false, ignore:[...defaultConfig.ignore]};
 }
+export function normalizeConfigurations(value: any, environment: {[key:string]:string|undefined}) {
+  function expand(item: any): any {
+    if(typeof item==='string') return item.replace(/\$\{env:([A-Za-z_][A-Za-z0-9_]*)\}/g,(_,key)=>{
+      if(environment[key]===undefined)throw new Error('Missing environment variable: '+key);
+      return environment[key];
+    });
+    if(Array.isArray(item))return item.map(expand);
+    if(item && typeof item==='object')return Object.fromEntries(Object.entries(item).map(([key,nested])=>[key,expand(nested)]));
+    return item;
+  }
+  return (Array.isArray(value)?value:[value]).map(config=>mergedDefault(expand(config)));
+}
 
 export function validateConfig(config: any) {
   const { error } = Joi.validate(config, configScheme, {

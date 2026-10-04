@@ -59,7 +59,9 @@ function getAltDirection(direction: TransferDirection) {
     : TransferDirection.LOCAL_TO_REMOTE;
 }
 
-function isFileModified(a: FileEntry, b: FileEntry): boolean {
+async function isFileModified(a: FileEntry, b: FileEntry, fromFs: FileSystem, toFs: FileSystem): Promise<boolean> {
+  if (a.type !== b.type) return true;
+  if (a.type === FileType.SymbolicLink) return (await fromFs.readlink(a.fspath)) !== (await toFs.readlink(b.fspath));
   // compare time at seconds
   return Math.floor(a.mtime / 1000) !== Math.floor(b.mtime / 1000) || a.size !== b.size;
 }
@@ -99,6 +101,7 @@ async function transferFolder(
           ...config,
           transferOption: {
             ...config.transferOption,
+            fallbackMode: file.mode,
             mtime: file.mtime,
             atime: file.atime,
           },
@@ -242,7 +245,7 @@ async function _sync(
     const fileMissed: string[] = [];
     const dirMissed: string[] = [];
 
-    Object.keys(srcFileTable).forEach(id => {
+    await Promise.all(Object.keys(srcFileTable).map(async id => {
       const srcFile = srcFileTable[id];
       const desFile = desFileTable[id];
       delete desFileTable[id];
@@ -278,7 +281,7 @@ async function _sync(
             }
 
             // only transfer changed files
-            if (isFileModified(from, to)) {
+            if (await isFileModified(from, to, direction === transferDirection ? srcFs : targetFs, direction === transferDirection ? targetFs : srcFs)) {
               file2trans.push([
                 from.fspath,
                 to.fspath,
@@ -327,7 +330,7 @@ async function _sync(
         default:
         // do not process
       }
-    });
+    }));
 
     // files exist only on target
     if (transferOption.bothDiretions) {

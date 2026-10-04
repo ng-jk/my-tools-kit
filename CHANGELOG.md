@@ -27,6 +27,7 @@ Extension: **0.5.0**. Pipeline plugin: **0.3.1**.
 - Stage file transfers before replacement, retain/restore the previous destination on replacement failure, close handles after failed reads, replace changed symlinks correctly, and explicitly reject unsupported FTP symlink creation.
 - Suppress download-generated watcher events (including delayed replacement events), exclude staging/recovery files, share safe configuration defaults across UI/CLI, and preserve restrictive/executable destination permissions.
 - Bound remote rename mapping to its local context, share Git-change transfer planning and mirror policies in logic, and enforce or explicitly reject SSH-terminal trust configurations.
+- Preserve each child file mode during recursive transfers, compare symlink targets during sync, and share configuration persistence/environment expansion across UI and terminal adapters.
 - Document the complete SFTP command inventory and explain pipeline prerequisites and branch flow.
 
 ## 0.4.0 — 2026-10-04
