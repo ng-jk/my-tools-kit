@@ -524,3 +524,22 @@ test('Git commit and working changes resolve linked worktrees',async t=>{
   assert.deepEqual(await engine.getCommitChangedFiles(linked,'HEAD'),['root.txt']);
   fs.writeFileSync(path.join(linked,'new.txt'),'linked file');assert.ok((await engine.getUncommittedChangedFiles(linked)).includes('new.txt'));
 });
+
+test('sync matches cross-side casing before update, ignoreExisting and bidirectional policies',async()=>{
+  for(const policy of [{delete:true,update:true},{delete:true,ignoreExisting:true},{bothDiretions:true,update:true}]) {
+    const source={pathResolver:path.posix,list:async()=>[{name:'report.txt',fspath:'/source/report.txt',type:engine.FileType.File,size:3,mtime:1000}],lstat:async()=>({type:engine.FileType.Directory})};
+    let deletes=0;const target={pathResolver:path.posix,pathIdentity:name=>name.toLowerCase(),ensureDir:async()=>{},lstat:async()=>({type:engine.FileType.Directory}),list:async()=>[{name:'REPORT.txt',fspath:'/dest/REPORT.txt',type:engine.FileType.File,size:5,mtime:2000}],unlink:async()=>deletes++};
+    const tasks=[];
+    await engine.sync({srcFsPath:'/source',targetFsPath:'/dest',srcFs:source,targetFs:target,transferDirection:engine.TransferDirection.REMOTE_TO_LOCAL,transferOption:policy},task=>tasks.push(task));
+    assert.equal(deletes,0);
+    if(policy.bothDiretions){assert.equal(tasks.length,1);assert.equal(tasks[0].srcFsPath,'/dest/REPORT.txt');assert.equal(tasks[0].targetFsPath,'/source/report.txt');}
+    else assert.equal(tasks.length,0);
+  }
+});
+test('real local adapter replaces destination symlinks without following their leaf',async t=>{
+  const {dir,local,remote,session}=fixture(t);const outside=path.join(dir,'outside.txt');fs.writeFileSync(outside,'untouched');fs.writeFileSync(path.join(remote,'file.txt'),'replacement');
+  try {fs.symlinkSync(outside,path.join(local,'file.txt'),'file');}
+  catch(error){if(error.code==='EPERM'){t.skip('Creating file symlinks requires Windows developer mode or privilege');return;}throw error;}
+  await engine.operate(session,'download','file.txt');
+  assert.equal(fs.lstatSync(path.join(local,'file.txt')).isSymbolicLink(),false);assert.equal(fs.readFileSync(path.join(local,'file.txt'),'utf8'),'replacement');assert.equal(fs.readFileSync(outside,'utf8'),'untouched');
+});

@@ -245,14 +245,18 @@ async function _sync(
   const syncFiles = async (srcFileEntries: FileEntry[], desFileEntries: FileEntry[]) => {
     checkedEntries(srcFs, srcFsPath, srcFileEntries);
     checkedEntries(targetFs, targetFsPath, desFileEntries);
+    const sourceIgnoresCase=srcFs.pathIdentity && srcFs.pathIdentity(srcFs.pathResolver.join(srcFsPath,'a'))===srcFs.pathIdentity(srcFs.pathResolver.join(srcFsPath,'A'));
+    const matchingFs=transferOption.bothDiretions && sourceIgnoresCase ? srcFs : targetFs;
+    const matchingRoot=matchingFs===srcFs ? srcFsPath : targetFsPath;
+    const matchName=(name:string) => {const pathname=matchingFs.pathResolver.join(matchingRoot,name);return matchingFs.pathIdentity ? matchingFs.pathIdentity(pathname) : matchingFs.pathResolver.normalize(pathname);};
     const srcFileTable = toHash(srcFileEntries, 'id', fileEntry => ({
       ...fileEntry,
-      id: fileEntry.name,
+      id: matchName(fileEntry.name),
     }));
 
     const desFileTable = toHash(desFileEntries, 'id', fileEntry => ({
       ...fileEntry,
-      id: fileEntry.name,
+      id: matchName(fileEntry.name),
     }));
 
     const file2trans: [string, string, TransferDirection, FileType, InternalTransferOption][] = [];

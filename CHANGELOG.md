@@ -6,6 +6,8 @@ This file records implemented functionality and its verification limits. Extensi
 
 Extension: **0.5.0**. Pipeline plugin: **0.3.1**.
 
+- Match sync entries across both sides using destination filesystem identity so case-only aliases cannot bypass update or ignoreExisting, including bidirectional sync. Replace local symlink leaves without following them or copying permissions from their targets.
+
 - Reject source names that collide on the destination filesystem before transfer/sync mutations, and use destination-aware replacement/directory lock keys. Resolve Git log, status and commit changes through the Git process adapter so linked worktrees use their common object database.
 
 - Apply ignore rules to every descendant during remote deletion, including watcher autoDelete and terminal deletion; preserve ancestors containing ignored remote-only files.
