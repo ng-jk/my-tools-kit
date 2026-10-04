@@ -1,5 +1,5 @@
 export function assertEntryName(name: string) {
-  if (typeof name !== 'string' || !name || name === '.' || name === '..' || /[\\/\x00:]/.test(name)
+  if (typeof name !== 'string' || !name || name === '.' || name === '..' || /[\\/\x00-\x1f\x7f:]/.test(name)
       || /[. ]$/.test(name) || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(name)) {
     throw new Error('Unsafe remote directory entry name: ' + JSON.stringify(name));
   }

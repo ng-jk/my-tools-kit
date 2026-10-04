@@ -13,6 +13,7 @@ import { flatten } from '../../utils';
 import { logger } from '../../../../data/sftp/ports';
 import { getOpenTextDocuments } from '../../../../data/sftp/ports';
 import { checkedEntries } from '../../../../data/sftp/path-safety';
+import {transferPermissions} from '../../transfer-permissions';
 
 interface InternalTransferOption extends FileHandleOption, TransferTaskTransferOption {}
 
@@ -88,7 +89,7 @@ async function transferFolder(
   await targetFs.ensureDir(targetFsPath);
 
   // If dirPerm is configured, we chmod the remote directory after creation.
-  if(config.transferOption.dirPerm) {
+  if(transferPermissions(config.transferOption, config.transferDirection === TransferDirection.LOCAL_TO_REMOTE).dirPerm) {
     logger.info("chmod remote directory as configured by dirPerm, dirPerm is: ", config.transferOption.dirPerm)
     await targetFs.chmod(targetFsPath, parseInt(String(config.transferOption.dirPerm), 8))
   }
@@ -163,7 +164,7 @@ async function transferWithType(
         const { targetFs, targetFsPath } = config;
         await targetFs.ensureDir(targetFs.pathResolver.dirname(targetFsPath));
         // If dirPerm is configured, we chmod the remote directory after creation.
-        if(config.transferOption.dirPerm) {
+        if(transferPermissions(config.transferOption, config.transferDirection === TransferDirection.LOCAL_TO_REMOTE).dirPerm) {
           logger.info("Running chmod on remote directory with perm: ", config.transferOption.dirPerm)
           await targetFs.chmod(targetFs.pathResolver.dirname(targetFsPath), parseInt(String(config.transferOption.dirPerm), 8));
         }
@@ -289,7 +290,8 @@ async function _sync(
                 from.type,
                 {
                   ...transferOption,
-                  mode: to.mode, // prefer target mode
+                  mode: to.type === FileType.File ? to.mode : undefined,
+                  fallbackMode: from.mode,
                   mtime: from.mtime,
                   atime: from.atime,
                 },

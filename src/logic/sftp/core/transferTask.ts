@@ -2,6 +2,7 @@
 import { Readable } from 'stream';
 import {stagingPath, replaceStaged} from './staged-replacement';
 import {beginLocalChange} from '../../../data/sftp/local-events';
+import {transferPermissions} from '../transfer-permissions';
 import { FileSystem, FileType } from '../../../data/sftp/core/fs/index';
 import { Task } from './scheduler';
 import { logger } from '../../../data/sftp/ports';
@@ -118,7 +119,8 @@ export default class TransferTask implements Task {
 
   private async _transferFile() {
     const srcFs = this._srcFs, targetFs = this._targetFs, target = this._targetFsPath;
-    const {perserveTargetMode, openSsh, fallbackMode, atime, mtime, filePerm} = this._TransferOption;
+    const {openSsh, fallbackMode, atime, mtime} = this._TransferOption;
+    const {filePerm} = transferPermissions(this._TransferOption, this._transferDirection === TransferDirection.LOCAL_TO_REMOTE);
     let mode = filePerm ? parseInt(String(filePerm), 8) : this._TransferOption.mode;
     const staged = stagingPath(target);
     let fd: any;

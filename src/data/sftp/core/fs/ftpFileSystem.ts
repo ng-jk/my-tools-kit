@@ -5,7 +5,7 @@ import { logger } from '../../ports';
 import { FileEntry, FileType, FileStats, FileOption } from './fileSystem';
 import RemoteFileSystem from './remoteFileSystem';
 import { FTPClient } from '../remote-client/index';
-import { assertEntryName } from '../../path-safety';
+import { assertEntryName, checkedEntries } from '../../path-safety';
 
 interface FtpFileHandle {
   path: string;
@@ -268,7 +268,14 @@ export default class FTPFileSystem extends RemoteFileSystem {
   }
 
   async rmdir(path: string, recursive: boolean): Promise<void> {
-    return await this.atomicRemoveDir(path, recursive);
+    if (recursive) {
+      const entries = checkedEntries(this, path, await this.list(path));
+      for (const entry of entries) {
+        if (entry.type === FileType.Directory) await this.rmdir(entry.fspath, true);
+        else await this.unlink(entry.fspath);
+      }
+    }
+    return await this.atomicRemoveDir(path, false);
   }
 
   async rename(srcPath: string, destPath: string): Promise<void> {

@@ -90,13 +90,30 @@ test('SSH terminal puts options before the host and remote commands after it wit
   assert.ok(engine.sshArguments({protocol:'sftp',host:'example.test',username:'deploy',knownHostsPath:'C:/My Keys/known_hosts'}).includes('UserKnownHostsFile="C:/My Keys/known_hosts"'));
 });
 test('malicious directory entries cannot schedule writes outside the destination',async()=>{
-  for (const name of ['../../outside.txt','../escape','nested/file','nested\\file','C:stream','.. ']) {
+  for (const name of ['../../outside.txt','../escape','nested/file','nested\\file','C:stream','.. ','bad\r\nDELE victim','bad\nname']) {
     const source={pathResolver:path.posix,lstat:async()=>({type:engine.FileType.Directory}),list:async()=>[{name,fspath:'/server/'+name,type:engine.FileType.File}]};
     const target={pathResolver:path.posix,ensureDir:async()=>{}};
     const tasks=[];
     await assert.rejects(engine.transfer({srcFsPath:'/server',targetFsPath:'/workspace/project',srcFs:source,targetFs:target,transferDirection:engine.TransferDirection.REMOTE_TO_LOCAL,transferOption:{}},task=>tasks.push(task)),/Unsafe|escapes/);
     assert.equal(tasks.length,0);
   }
+});
+test('FTP recursive removal rejects malicious listings before deleting anything',async()=>{
+  for(const name of ['../../victim.txt','/outside.txt','bad\r\nDELE victim']) {
+    const removed=[];
+    const ftp={list:(_,cb)=>cb(null,[{name,type:'-',date:new Date(),size:1}]),delete:(name,cb)=>{removed.push(name);cb();},rmdir:(name,recursive,cb)=>{removed.push(name);cb();}};
+    const adapter=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>ftp}});
+    await assert.rejects(adapter.rmdir('/project/folder',true),/Unsafe|escapes/);assert.deepEqual(removed,[]);
+  }
+});
+test('downloads ignore configured upload file and directory permission overrides',async t=>{
+  const {local,remote,session}=fixture(t,{filePerm:644,dirPerm:755});
+  fs.writeFileSync(path.join(local,'private.txt'),'original');fs.writeFileSync(path.join(remote,'private.txt'),'remote');
+  const adapter=session.service.getLocalFileSystem(),lstat=adapter.lstat,open=adapter.open,chmod=adapter.chmod;const modes=[];let chmods=0;
+  adapter.lstat=async name=>({...await lstat.call(adapter,name),mode:0o600});
+  adapter.open=async(name,flags,mode)=>{modes.push(mode);return open.call(adapter,name,flags,mode);};adapter.chmod=async()=>{chmods++;};
+  try {await engine.operate(session,'download');assert.ok(modes.includes(0o600));assert.equal(modes.includes(0o644),false);assert.equal(chmods,0);}
+  finally{adapter.lstat=lstat;adapter.open=open;adapter.chmod=chmod;}
 });
 test('sync preserves symbolic link identity without reading linked file contents',async()=>{
   const source={pathResolver:path.posix,list:async()=>[{name:'link',fspath:'/local/link',type:engine.FileType.SymbolicLink,mtime:1,atime:1}],readlink:async()=>'../../private/key',get:async()=>{throw new Error('must not dereference');}};
@@ -164,6 +181,14 @@ test('sync compares equal-length symlink targets even with identical timestamps'
   assert.equal(tasks.length,1);assert.equal(reads,2);
   target.list=async()=>[entry('/destination/link',engine.FileType.File)];tasks=[];
   await engine.sync({srcFsPath:'/source',targetFsPath:'/destination',srcFs:source,targetFs:target,transferDirection:engine.TransferDirection.LOCAL_TO_REMOTE,transferOption:{}},task=>tasks.push(task));assert.equal(tasks.length,1);
+});
+test('sync replacing a symlink with a file uses source permissions rather than link permissions',async()=>{
+  let createdMode;
+  const source={pathResolver:path.posix,list:async()=>[{name:'private',fspath:'/source/private',type:engine.FileType.File,mode:0o600,size:3,mtime:1}],get:async()=>require('node:stream').Readable.from('secret')};
+  const target={pathResolver:path.posix,ensureDir:async()=>{},list:async()=>[{name:'private',fspath:'/destination/private',type:engine.FileType.SymbolicLink,mode:0o777,size:3,mtime:1}],lstat:async()=>({type:engine.FileType.SymbolicLink,mode:0o777}),open:async(_,flags,mode)=>{createdMode=mode;return 1;},put:async input=>{for await(const chunk of input){}},close:async()=>{},rename:async()=>{},unlink:async()=>{}};
+  const tasks=[];
+  await engine.sync({srcFsPath:'/source',targetFsPath:'/destination',srcFs:source,targetFs:target,transferDirection:engine.TransferDirection.REMOTE_TO_LOCAL,transferOption:{}},task=>tasks.push(task));
+  assert.equal(tasks.length,1);await tasks[0].run();assert.equal(createdMode,0o600);
 });
 test('staged downloads preserve restrictive and executable modes, with source fallback for new files',async()=>{
   for(const [existing,fallback,expected] of [[0o600,0o644,0o600],[0o755,0o644,0o755],[undefined,0o640,0o640]]) {

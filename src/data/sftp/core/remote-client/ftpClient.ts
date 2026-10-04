@@ -4,6 +4,11 @@ import RemoteClient, { ConnectOption } from './remoteClient';
 
 // tslint:disable
 Client.prototype._send = function(cmd: string, cb: (err: Error) => void, promote: boolean) {
+  if (cmd !== undefined && /[\r\n\x00]/.test(cmd)) {
+    const error = new Error('FTP command contains a prohibited control character');
+    if (typeof cb === 'function') queueMicrotask(() => cb(error)); else this.emit('error', error);
+    return;
+  }
   clearTimeout(this._keepalive);
   if (cmd !== undefined) {
     if (promote) this._queue.unshift({ cmd: cmd, cb: cb });
