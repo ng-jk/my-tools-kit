@@ -39,6 +39,8 @@ function toNumMode(rightObj: any) {
 
 export default class FTPFileSystem extends RemoteFileSystem {
   supportsExclusiveCreate = false;
+  // LIST cannot prove completeness: servers may silently omit dotfiles.
+  supportsCompleteDirectoryListing = false;
   private _supportMFMT: boolean = true;
 
   static getFileType(type: string) {

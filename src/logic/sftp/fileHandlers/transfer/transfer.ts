@@ -222,6 +222,9 @@ async function _sync(
 ) {
 
   const { srcFsPath, targetFsPath, srcFs, targetFs, transferOption, transferDirection } = config;
+  if (transferOption.delete && !transferOption.bothDiretions && srcFs.supportsCompleteDirectoryListing === false) {
+    throw new Error('Destructive sync requires a complete source directory listing; FTP LIST cannot guarantee hidden entries. Use SFTP or disable syncOption.delete.');
+  }
   if (transferOption.ignore && transferOption.ignore(srcFsPath)) {
     return;
   }

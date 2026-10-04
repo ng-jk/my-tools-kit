@@ -476,7 +476,7 @@ test('Create File does not truncate a concurrent creator',async t=>{
 
 test('unparseable FTP listings cannot cause sync to delete local files',async t=>{
   for(const invalid of ['unparsed server line',{},null]) {
-    const {local,session}=fixture(t,{syncOption:{delete:true}});fs.writeFileSync(path.join(local,'keep.txt'),'must survive');
+    const {local,session}=fixture(t);fs.writeFileSync(path.join(local,'keep.txt'),'must survive');
     const ftp=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({list:(_,cb)=>cb(null,[invalid])})}});
     session.service.getRemoteFileSystem=async()=>ftp;
     await assert.rejects(engine.operate(session,'sync-down','.',{yes:true}),/unparseable/);
@@ -492,4 +492,12 @@ test('SSH final jump destination receives default port without mutating configur
   const hop=[{host:'middle'},{host:'final'}];
   try {await client._doConnect({host:'first',hop},{});assert.deepEqual(forwarded,[{host:'middle',port:22},{host:'final',port:22}]);assert.equal(hop[1].port,undefined);}
   finally {proto.connect=connect;client.end();}
+});
+
+test('incomplete FTP listing semantics cannot delete omitted local dotfiles',async t=>{
+  const {local,session}=fixture(t,{syncOption:{delete:true}});fs.writeFileSync(path.join(local,'.htaccess'),'keep');
+  const ftp=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({list:(_,cb)=>cb(null,[])})}});
+  session.service.getRemoteFileSystem=async()=>ftp;
+  await assert.rejects(engine.operate(session,'sync-down','.',{yes:true}),/complete source directory listing/);
+  assert.equal(fs.readFileSync(path.join(local,'.htaccess'),'utf8'),'keep');
 });

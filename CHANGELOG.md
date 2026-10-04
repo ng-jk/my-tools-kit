@@ -6,6 +6,8 @@ This file records implemented functionality and its verification limits. Extensi
 
 Extension: **0.5.0**. Pipeline plugin: **0.3.1**.
 
+- Block deletion-based FTP sync-down because LIST cannot guarantee hidden-entry completeness; an omitted dotfile must never be interpreted as permission to delete its local counterpart. Use SFTP for destructive remote-to-local synchronization.
+
 - Reject unparseable FTP listing records before sync can infer deletions. Normalize the SSH port for every jump destination, including the final hop, without mutating configuration.
 
 - Create files exclusively with `wx` so concurrent creation cannot truncate another file. FTP Create File fails explicitly because FTP cannot guarantee exclusive creation of a specified path.
