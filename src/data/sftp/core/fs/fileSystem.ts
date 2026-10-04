@@ -79,6 +79,11 @@ export default abstract class FileSystem {
   abstract mkdir(dir: string): Promise<void>;
   abstract ensureDir(dir: string): Promise<void>;
   abstract chmod(path: string, mode: number): Promise<void>;
+  async establishDirectoryMode(path: string, mode: number): Promise<void> {
+    await this.chmod(path, mode);
+    const actual = await this.lstat(path);
+    if (typeof actual.mode !== 'number' || (actual.mode & 0o777) !== (mode & 0o777)) throw new Error('Cannot establish required directory permissions: ' + path);
+  }
   abstract list(dir: string, option?: { showHiddenFiles?: boolean }): Promise<FileEntry[]>;
   abstract lstat(path: string): Promise<FileStats>;
   abstract readlink(path: string): Promise<string>;

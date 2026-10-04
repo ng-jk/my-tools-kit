@@ -379,13 +379,13 @@ test('new private directories establish permissions before payloads in both dire
     fs.mkdirSync(path.join(sourceDir,'private'));fs.writeFileSync(path.join(sourceDir,'private','data.txt'),'private by parent');
     const source=down?await session.service.getRemoteFileSystem(session.config):session.service.getLocalFileSystem();
     const target=down?session.service.getLocalFileSystem():await session.service.getRemoteFileSystem(session.config);
-    const sourceStat=source.lstat,targetStat=target.lstat,chmod=target.chmod,put=target.put;const modes=new Map();let payloads=0;
+    const sourceStat=source.lstat,targetStat=target.lstat,chmod=target.chmod,put=target.put,establish=target.establishDirectoryMode;const modes=new Map();let payloads=0;
     source.lstat=async name=>{const stat=await sourceStat.call(source,name);return {...stat,mode:stat.type===engine.FileType.Directory?0o700:0o644};};
     target.lstat=async name=>({...await targetStat.call(target,name),...(modes.has(name)?{mode:modes.get(name)}:{})});
-    target.chmod=async(name,mode)=>{modes.set(name,mode);};
+    target.establishDirectoryMode=async(name,mode)=>{modes.set(name,mode);};
     target.put=async function(...args){assert.equal(modes.get(path.join(destination,'private')),0o700);payloads++;return put.apply(this,args);};
     try {await engine.operate(session,action);assert.equal(payloads,1);assert.equal(fs.readFileSync(path.join(destination,'private','data.txt'),'utf8'),'private by parent');}
-    finally {source.lstat=sourceStat;target.lstat=targetStat;target.chmod=chmod;target.put=put;}
+    finally {source.lstat=sourceStat;target.lstat=targetStat;target.chmod=chmod;target.put=put;target.establishDirectoryMode=establish;}
   }
 });
 test('ignoreExisting recurses into matching directories to copy new files',async t=>{
@@ -403,8 +403,22 @@ test('ignoreExisting recurses into matching directories to copy new files',async
 test('unverified private directory permissions stop before transferring payloads',async t=>{
   const {local,remote,session}=fixture(t);fs.mkdirSync(path.join(local,'private'));fs.writeFileSync(path.join(local,'private','data.txt'),'secret');
   const source=session.service.getLocalFileSystem(),target=await session.service.getRemoteFileSystem(session.config);
-  const stat=source.lstat,chmod=target.chmod,put=target.put;let writes=0;
-  source.lstat=async name=>({...await stat.call(source,name),mode:0o700});target.chmod=async()=>{};target.put=async()=>{writes++;};
+  const stat=source.lstat,chmod=target.chmod,put=target.put,establish=target.establishDirectoryMode;let writes=0;
+  source.lstat=async name=>({...await stat.call(source,name),mode:0o700});target.establishDirectoryMode=async()=>{throw new Error('Cannot establish required directory permissions');};target.put=async()=>{writes++;};
   try {await assert.rejects(engine.operate(session,'upload'),/required directory permissions/);assert.equal(writes,0);assert.equal(fs.existsSync(path.join(remote,'private')),false);}
-  finally {source.lstat=stat;target.chmod=chmod;target.put=put;}
+  finally {source.lstat=stat;target.chmod=chmod;target.put=put;target.establishDirectoryMode=establish;}
+});
+
+test('Windows downloads accept Unix directory modes with protected native ACLs',{skip:process.platform!=='win32'},async t=>{
+  for(const mode of [0o755,0o700]) {
+    const {local,remote,session}=fixture(t);fs.mkdirSync(path.join(remote,'unix'));fs.writeFileSync(path.join(remote,'unix','file.txt'),'from Unix');
+    const source=await session.service.getRemoteFileSystem(session.config),stat=source.lstat;
+    source.lstat=async name=>{const value=await stat.call(source,name);return {...value,mode:value.type===engine.FileType.Directory?mode:value.mode};};
+    try {await engine.operate(session,'download');assert.equal(fs.readFileSync(path.join(local,'unix','file.txt'),'utf8'),'from Unix');}
+    finally {source.lstat=stat;}
+    // Independent read of the native ACL, not a mocked chmod/stat conversion.
+    const script="$a=[System.IO.Directory]::GetAccessControl($env:DEVKIT_TEST_DIRECTORY); if(-not $a.AreAccessRulesProtected){exit 1}; $s=[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value; foreach($r in $a.GetAccessRules($true,$true,[System.Security.Principal.SecurityIdentifier])){if($r.IdentityReference.Value -notin @($s,'S-1-5-18')){exit 2}}";
+    const result=spawnSync('powershell.exe',['-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(script,'utf16le').toString('base64')],{windowsHide:true,env:{...process.env,DEVKIT_TEST_DIRECTORY:path.join(local,'unix')},encoding:'utf8'});
+    assert.equal(result.status,0,result.stderr);
+  }
 });

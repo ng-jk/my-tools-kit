@@ -6,6 +6,8 @@ This file records implemented functionality and its verification limits. Extensi
 
 Extension: **0.5.0**. Pipeline plugin: **0.3.1**.
 
+- Windows downloads protect newly created directories with verified ACLs for the current user and SYSTEM instead of comparing unrepresentable POSIX modes. Other users do not inherit access to those new directories; existing destination directories retain their ACLs. Unix/remote targets continue using verified mode bits.
+
 - Establish and verify source directory modes (or explicit upload overrides) on new destination directories before payloads, including missing parents. Serialize creation and clean up failed permission setup. Recurse through matching directories with ignoreExisting so new nested files are still copied.
 
 - Reserve remote descriptor slots before issuing open requests and release failed requests, preventing repeated errors or concurrent opens from exhausting the optional limiter.

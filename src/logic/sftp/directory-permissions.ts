@@ -23,8 +23,6 @@ async function ensure(source: FileSystem, target: FileSystem, from: string, to: 
   if (typeof mode !== 'number') throw new Error('Source directory permissions are unavailable: ' + from);
   await target.ensureDir(to);
   try {
-  await target.chmod(to, mode);
-  const actual = await target.lstat(to);
-  if (typeof actual.mode !== 'number' || (actual.mode & 0o777) !== (mode & 0o777)) throw new Error('Cannot establish required directory permissions: ' + to);
+  await target.establishDirectoryMode(to, mode);
   } catch (error) { await target.rmdir(to, false).catch(() => {}); throw error; }
 }

@@ -1,5 +1,6 @@
 // Adapted from ng-jk/vscode-sftp (MIT); see THIRD-PARTY-NOTICES.md.
 import * as fs from 'fs';
+import {protectWindowsDirectory} from '../../windows-directory-permissions';
 import * as fse from 'fs-extra';
 import * as paths from 'path';
 import {trackLocalChanges, rememberLocalState} from '../../local-events';
@@ -8,6 +9,12 @@ import FileSystem, { FileEntry, FileStats, FileOption } from './fileSystem';
 export default class LocalFileSystem extends FileSystem {
   constructor(pathResolver: any, private root?: string) {
     super(pathResolver);
+  }
+
+  async establishDirectoryMode(path: string, mode: number): Promise<void> {
+    this.assertWritable(path);
+    if (process.platform === 'win32') { await protectWindowsDirectory(path); return; }
+    await super.establishDirectoryMode(path, mode);
   }
 
   private assertWritable(target: string, includeLeaf = true) {
