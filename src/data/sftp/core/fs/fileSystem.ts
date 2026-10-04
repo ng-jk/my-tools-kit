@@ -53,6 +53,7 @@ export default abstract class FileSystem {
     }
   }
 
+  supportsExclusiveCreate = true;
   pathResolver: any;
 
   constructor(pathResolver: any) {

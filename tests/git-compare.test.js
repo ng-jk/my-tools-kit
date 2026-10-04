@@ -49,3 +49,13 @@ test('Git comparisons read commit, index and working-tree snapshots without chan
     await assert.rejects(compare.resolveRevision(root, 'invalid-revision'), /Git:/);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+test('comparison does not implicitly trust foreign-owned repositories',()=>{
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-untrusted-'));
+  try {
+    assert.equal(spawnSync('git',['init','-q',root],{encoding:'utf8'}).status,0);
+    const script="require('./src/data/git').git(process.argv[1],['status','--porcelain']).then(()=>process.exit(2),error=>{console.log(error.message);process.exit(/dubious ownership/.test(error.message)?0:3)});";
+    const result=spawnSync(process.execPath,['-e',script,root],{cwd:path.resolve(__dirname,'..'),encoding:'utf8',env:{...process.env,GIT_TEST_ASSUME_DIFFERENT_OWNER:'1',GIT_CONFIG_GLOBAL:path.join(root,'empty-config'),GIT_CONFIG_NOSYSTEM:'1',GIT_CONFIG_COUNT:'0'}});
+    assert.equal(result.status,0,result.stdout+result.stderr);assert.match(result.stdout,/dubious ownership/);
+  } finally {fs.rmSync(root,{recursive:true,force:true});}
+});

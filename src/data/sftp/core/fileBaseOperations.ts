@@ -41,10 +41,9 @@ export async function createFile(path: string, fs: FileSystem, option?: FileOpti
     if (![2, 'ENOENT', 550].includes(error.code)) throw error;
   }
   if (exists) throw new Error('File already exists: ' + path);
+  if (!fs.supportsExclusiveCreate) throw new Error('This protocol cannot guarantee exclusive file creation; use SFTP Create File.');
 
-  const targetFd = await fs.open(path, 'w');
-  const s = new Readable();
-  s._read = () => { };
-  s.push(null);
-  return fs.put(s, path, { fd: targetFd });
+  const targetFd = await fs.open(path, 'wx', option?.mode ?? 0o600);
+  try { await fs.prepareStagedFile(path, '', option?.mode ?? 0o600, targetFd); }
+  finally { await fs.close(targetFd); }
 }

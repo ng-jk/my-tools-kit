@@ -464,3 +464,12 @@ test('Unix staging restores destination permissions masked by umask',{skip:proce
   try {await engine.operate(session,'download','a.txt');assert.equal(fs.statSync(path.join(local,'a.txt')).mode & 0o777,0o664);}
   finally {process.umask(mask);}
 });
+
+test('Create File does not truncate a concurrent creator',async t=>{
+  const {remote,session}=fixture(t);const target=await session.service.getRemoteFileSystem(session.config),stat=target.lstat;
+  const file=path.join(remote,'race.txt');let injected=false;
+  target.lstat=async function(name){if(path.resolve(name)===file&&!injected){injected=true;fs.writeFileSync(file,'other client');throw Object.assign(new Error('initially absent'),{code:'ENOENT'});}return stat.call(this,name);};
+  try {await assert.rejects(engine.operate(session,'create','race.txt'),/EEXIST|exists/);assert.equal(fs.readFileSync(file,'utf8'),'other client');}
+  finally {target.lstat=stat;}
+  assert.equal(new engine.FTPFileSystem(path.posix,{client:{}}).supportsExclusiveCreate,false);
+});

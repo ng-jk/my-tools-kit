@@ -6,6 +6,8 @@ This file records implemented functionality and its verification limits. Extensi
 
 Extension: **0.5.0**. Pipeline plugin: **0.3.1**.
 
+- Create files exclusively with `wx` so concurrent creation cannot truncate another file. FTP Create File fails explicitly because FTP cannot guarantee exclusive creation of a specified path.
+
 - Protect the entire Git mirror before initialization or backup, including existing object databases: private root mode on Unix and verified recursive private ACLs on Windows. Reject mirror links. Restore and verify Unix staging descriptor modes after open so umask cannot remove destination permission bits.
 
 - Protect Windows staging files before payload writes: new files receive a verified private ACL, and replacement files retain the existing destination DACL. Apply explicit upload directory permissions to all missing parent directories.
@@ -35,7 +37,7 @@ Extension: **0.5.0**. Pipeline plugin: **0.3.1**.
 - Require trusted SSH host keys or explicit SHA-256 pins for every hop; reject changed keys. Correct reverse filesystem selection during bidirectional sync, protect normalized root paths from deletion/rename, and preserve SSH remote-command argument order.
 - Correct upstream SSH event registration, sync deletion/error handling, scheduler failure propagation, FTP connection timer cleanup, nested credential logging and connection-cache identities.
 
-- Fix Git comparison across Windows ownership boundaries using a per-process safe.directory scoped to the selected repository.
+- Preserve Git ownership checks and disable filesystem monitor hooks in comparison subprocesses; foreign-owned repositories require explicit user-configured trust.
 
 - Permanently decode gzip Marketplace responses with bounded decompression; publication no longer needs the 0.4.0 transport workaround.
 

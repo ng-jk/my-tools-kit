@@ -90,7 +90,7 @@ export default class LocalFileSystem extends FileSystem {
   }
 
   async prepareStagedFile(path: string, destination: string, mode?: number, fd?: number): Promise<void> {
-    this.assertWritable(path); this.assertWritable(destination);
+    this.assertWritable(path); if (destination) this.assertWritable(destination);
     if (process.platform === "win32") await protectWindowsStagingFile(path, destination);
     else if (typeof mode === 'number' && fd !== undefined) {
       await fse.fchmod(fd, mode);

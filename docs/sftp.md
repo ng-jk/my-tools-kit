@@ -162,3 +162,5 @@ Windows downloads protect newly created directories with verified ACLs for the c
 Protect Windows staging files before payload writes: new files receive a verified private ACL, and replacement files retain the existing destination DACL. Apply explicit upload directory permissions to all missing parent directories.
 
 Protect the entire Git mirror before initialization or backup, including existing object databases: private root mode on Unix and verified recursive private ACLs on Windows. Reject mirror links. Restore and verify Unix staging descriptor modes after open so umask cannot remove destination permission bits.
+
+Create File uses exclusive creation on SFTP/local filesystems. FTP Create File reports an unsupported guarantee instead of risking truncation in a concurrent-creation race; regular FTP uploads remain supported.
