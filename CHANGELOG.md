@@ -29,6 +29,7 @@ Extension: **0.5.0**. Pipeline plugin: **0.3.1**.
 - Bound remote rename mapping to its local context, share Git-change transfer planning and mirror policies in logic, and enforce or explicitly reject SSH-terminal trust configurations.
 - Preserve each child file mode during recursive transfers, compare symlink targets during sync, and share configuration persistence/environment expansion across UI and terminal adapters.
 - Reject FTP control-command delimiters, validate every recursive FTP deletion entry, and apply upload permission overrides only to uploads through shared policy.
+- Enforce remote-root deletion/rename protection in shared logic and verify FTP staging permissions before appending payloads, failing when the server cannot honor them.
 - Document the complete SFTP command inventory and explain pipeline prerequisites and branch flow.
 
 ## 0.4.0 — 2026-10-04

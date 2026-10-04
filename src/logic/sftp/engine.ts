@@ -4,6 +4,7 @@ import { transfer, sync } from './fileHandlers/transfer/transfer';
 import { backupBeforeUpload } from './backup';
 import { mergedDefault, validateConfig } from './config';
 import { resolveProfileContext } from './core/profileContext';
+import {removeRemotePath,renameRemotePath} from './remote-operations';
 export { configurePorts } from '../../data/sftp/ports';
 export { sshArguments } from './ssh-arguments';
 export { watchPolicy } from './watch-policy';
@@ -50,12 +51,11 @@ async function operate(session: any, action: string, relative = '.', flags: any 
     if (!flags.to || path.posix.resolve('/', remote) === path.posix.resolve('/', config.remotePath)) throw new Error('Rename requires a non-root path and --to');
     const destination = resolveTarget(session, flags.to).remote;
     if (path.posix.resolve('/', destination) === path.posix.resolve('/', config.remotePath)) throw new Error('Rename destination must be a non-root path');
-    await remoteFs.rename(remote, destination); return { passed: true };
+    await renameRemotePath(remoteFs, remote, destination, config.remotePath); return { passed: true };
   }
   if (action === 'delete') {
     if (!flags.yes || path.posix.resolve('/', remote) === path.posix.resolve('/', config.remotePath)) throw new Error('Delete requires --yes and a non-root path');
-    const stat = await remoteFs.lstat(remote);
-    if (stat.type === FileType.Directory) await remoteFs.rmdir(remote, true); else await remoteFs.unlink(remote);
+    await removeRemotePath(remoteFs, remote, config.remotePath);
     return { passed: true };
   }
   if (!['upload','download','sync-up','sync-down','sync-both'].includes(action)) throw new Error('Unknown SFTP operation: ' + action);

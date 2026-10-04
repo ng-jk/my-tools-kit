@@ -11,6 +11,7 @@ interface FtpFileHandle {
   path: string;
   flags: string;
   mode?: number;
+  prepared?: boolean;
 }
 
 const numMap: { [char: string]: number } = {
@@ -106,12 +107,21 @@ export default class FTPFileSystem extends RemoteFileSystem {
     return fileStat;
   }
 
-  open(path: string, flags: string, mode?: number): Promise<FtpFileHandle> {
-    return Promise.resolve({
-      path,
-      flags,
-      mode,
-    });
+  async open(path: string, flags: string, mode?: number): Promise<FtpFileHandle> {
+    if (!/[wa+]/.test(flags)) return {path,flags,mode};
+    if (flags.includes('x')) {
+      try { await this.lstat(path); throw new Error('FTP staging path already exists'); }
+      catch(error) {if(error.code!=='ENOENT'&&error.code!==2)throw error;}
+    }
+    mode = mode === undefined ? 0o600 : mode;
+    await this.atomicPut(Readable.from([]),path);
+    await this.chmod(path,mode);
+    await this.verifyMode(path,mode);
+    return {path,flags,mode,prepared:true};
+  }
+
+  private async verifyMode(path:string,mode:number) {
+    if (((await this.lstat(path)).mode & 0o777) !== (mode & 0o777)) throw new Error('FTP server did not preserve required file permissions');
   }
 
   close(_fd: FtpFileHandle): Promise<void> {
@@ -146,7 +156,7 @@ export default class FTPFileSystem extends RemoteFileSystem {
     return await this.atomicSite(command);
   }
 
-  async put(input: Readable, path: string, _option?: FileOption): Promise<void> {
+  async put(input: Readable, path: string, option?: FileOption): Promise<void> {
     let inputError: Error | undefined;
     input.once('error', err => {
       inputError = err;
@@ -158,7 +168,11 @@ export default class FTPFileSystem extends RemoteFileSystem {
     });
 
     try {
-      await this.atomicPut(input, path);
+      const handle=option?.fd as FtpFileHandle | undefined;
+      const prepared=handle?.prepared ? handle : await this.open(path,'w',option?.mode);
+      await this.verifyMode(path,prepared.mode!);
+      await this.atomicAppend(input, path);
+      await this.verifyMode(path,prepared.mode!);
     } catch (error) {
       throw inputError || error;
     }
@@ -340,6 +354,12 @@ export default class FTPFileSystem extends RemoteFileSystem {
       });
 
     return this.queue.add(task);
+  }
+
+  private async atomicAppend(input: Readable, path: string): Promise<void> {
+    return this.queue.add(() => new Promise<void>((resolve,reject) => {
+      this.ftp.append(input,path,(error:any)=>error?reject(error):resolve());
+    }));
   }
 
   private async atomicDeleteFile(path: string): Promise<void> {

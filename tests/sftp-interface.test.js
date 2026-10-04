@@ -23,7 +23,7 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
       onDidSaveTextDocument:disposable,onDidOpenTextDocument:disposable,registerTextDocumentContentProvider:disposable},
     commands:{registerCommand:(id,fn,self)=>{assert.equal(commands.has(id),false,'duplicate '+id);commands.set(id,fn.bind(self));return disposable();},executeCommand:async()=>{}},
     window:{activeTextEditor:{document:{uri:URI.file(path.join(root,'ui.txt'))}},createStatusBarItem:()=>({show(){},hide(){},dispose(){}}),createOutputChannel:()=>({appendLine(){},show(){},hide(){},dispose(){}}),
-      showInformationMessage:async()=> 'Yes',showErrorMessage:async message=>{errors.push(message);},registerTreeDataProvider:(id,provider)=>{views.set(id,provider);return disposable();},
+      showInformationMessage:async(message,...choices)=>choices[0],showErrorMessage:async message=>{errors.push(message);},registerTreeDataProvider:(id,provider)=>{views.set(id,provider);return disposable();},
       createTreeView:(id,options)=>{views.set(id,options.treeDataProvider);return {selection:[],reveal:async()=>{},dispose(){}}}}
   };
   const original=Module._load;let extension;
@@ -90,6 +90,10 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     assert.deepEqual(errors,[]);
     assert.equal(fs.readFileSync(path.join(dir,'private','secret.txt'),'utf8'),'unrelated remote content');
     assert.equal(fs.readFileSync(path.join(dir,'remote-other','incoming.txt'),'utf8'),'moved into context');
+    await commands.get('devkit.sftp.delete.remote')(incoming,[URI.file(path.join(root,'nested')),incoming]);
+    assert.ok(errors.some(message=>/non-root/.test(message)),'mixed selection rejects remote root deletion');
+    assert.equal(fs.existsSync(path.join(dir,'remote-other')),true);
+    assert.equal(fs.readFileSync(path.join(dir,'remote-other','ui.txt'),'utf8'),'from other context');
 
   } finally {extension?.deactivate();context.subscriptions.forEach(item=>item.dispose());Module._load=original;}
 });

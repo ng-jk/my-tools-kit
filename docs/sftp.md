@@ -138,3 +138,5 @@ SSH terminal sessions enforce StrictHostKeyChecking and support a configured kno
 Recursive transfers use each child file’s permissions, rather than its parent directory’s mode. Sync compares symlink targets even when sizes/timestamps match. Configuration reads/creation are shared data adapters; environment substitution and defaults are shared logic available to both the terminal and VS Code.
 
 FTP rejects CR/LF/NUL command delimiters and validates recursive deletion listings before issuing deletion commands. Upload file/directory permission overrides are ignored for local downloads in both interfaces, including reverse tasks during bidirectional sync. Replacing a symlink with a regular file uses file permissions, not the link’s mode.
+
+Remote-root deletion and rename protections apply to UI, CLI and mixed explorer selections. FTP uploads create an empty staging file, apply and verify its mode, then append content and recheck permissions before replacement. FTP servers must support the required permission and append commands; unsupported or ignored permission changes fail before payload transfer.
