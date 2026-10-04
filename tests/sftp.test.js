@@ -658,3 +658,15 @@ test('creating a remote root never chmods its existing outside ancestor',async t
   try {await engine.operate(session,'upload');assert.equal(observed.get(root),0o700);assert.equal(observed.has(remote),false);assert.equal(fs.readFileSync(path.join(root,'file.txt'),'utf8'),'content');}
   finally {target.establishDirectoryMode=establish;}
 });
+
+test('overlapping local and remote root prefixes preserve ignored remote files during destructive sync and deletion',async t=>{
+  const {local,raw}=fixture(t);const remote=local+'-remote';fs.mkdirSync(remote);
+  const session=engine.createSession(local,{...raw,remotePath:remote.replaceAll('\\','/'),ignore:['.env'],syncOption:{delete:true}});t.after(()=>session.service.dispose());
+  fs.writeFileSync(path.join(remote,'.env'),'server secret');fs.writeFileSync(path.join(remote,'obsolete.txt'),'remove');
+  fs.mkdirSync(path.join(remote,'nested'));fs.writeFileSync(path.join(remote,'nested','.env'),'nested secret');fs.writeFileSync(path.join(remote,'nested','obsolete.txt'),'remove');
+  assert.equal(session.config.ignore(path.join(remote,'.env')),true);
+  await engine.operate(session,'sync-up','.',{yes:true});
+  assert.equal(fs.readFileSync(path.join(remote,'.env'),'utf8'),'server secret');assert.equal(fs.readFileSync(path.join(remote,'nested','.env'),'utf8'),'nested secret');assert.equal(fs.existsSync(path.join(remote,'obsolete.txt')),false);
+  fs.writeFileSync(path.join(remote,'nested','obsolete.txt'),'remove again');await engine.operate(session,'delete','nested',{yes:true});
+  assert.equal(fs.readFileSync(path.join(remote,'nested','.env'),'utf8'),'nested secret');assert.equal(fs.existsSync(path.join(remote,'nested','obsolete.txt')),false);
+});

@@ -235,3 +235,5 @@ Jump-host destinations use the shared authentication resolver, including UI/term
 Populate new directories with temporary owner write/search permission, then verify their final permissions after transfers settle, including failure cleanup and shared concurrent directory use. Save relevant dirty editors before upload/sync comparison and stop when saving fails.
 
 Directory permission overrides stop at existing ancestors during recursive creation; parent directories outside the selected destination retain their original access permissions.
+
+Resolve local ignore paths using directory containment rather than string prefixes, preserving ignored remote-only files during destructive sync when local and remote roots share a name prefix.

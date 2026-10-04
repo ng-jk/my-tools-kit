@@ -652,9 +652,11 @@ export default class FileService {
       // vscode will always return path with / as separator
       const normalizedPath = path.normalize(fsPath);
       let relativePath;
-      if (normalizedPath.indexOf(localContext) === 0) {
+      const localRelative = path.relative(localContext, normalizedPath);
+      const insideLocal = localRelative !== '..' && !localRelative.startsWith('..' + path.sep) && !path.isAbsolute(localRelative);
+      if (insideLocal) {
         // local path
-        relativePath = path.relative(localContext, fsPath);
+        relativePath = localRelative;
       } else {
         // remote path
         relativePath = upath.relative(remoteContext, fsPath);
