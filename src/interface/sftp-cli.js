@@ -2,7 +2,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
-const { createSession, operate, configurePorts, sshArguments } = require('../../build/sftp/engine');
+const { createSession, operate, configurePorts, sshArguments, watchPolicy } = require('../../build/sftp/engine');
 const { git } = require('../data/git');
 function expand(value) {
   if (typeof value === 'string') return value.replace(/\$\{env:([A-Za-z_][A-Za-z0-9_]*)\}/g, (_, key) => {
@@ -75,20 +75,19 @@ paths and JSON output here. Transfer, profile and sync logic is shared.`);
         results.push({profile:session.profile,files:transfers.length});
       } else if (action === 'watch') {
         if (profiles.length !== 1) throw new Error('Watch requires one profile');
-        const watcherConfig = raw.watcher || {};
-        if (!raw.uploadOnSave && !watcherConfig.autoUpload && !watcherConfig.autoDelete) throw new Error('Enable uploadOnSave or watcher.autoUpload/autoDelete first');
-        if (watcherConfig.autoDelete && !flags.yes) throw new Error('watcher.autoDelete requires --yes');
+        const watcherConfig = watchPolicy(session.config, flags.yes);
         const { minimatch } = require('../../build/sftp/watch-match');
         await new Promise((resolve,reject) => {
           let queue = Promise.resolve();
           const watcher = fs.watch(session.service.baseDir,{recursive:true},(_,name) => {
-            if (!name || (watcherConfig.files && !minimatch(name.replaceAll('\\','/'),watcherConfig.files,{dot:true}))) return;
+            if (!name) return;
+            const matches = watcherConfig.files !== false && (!watcherConfig.files || minimatch(name.replaceAll('\\','/'),watcherConfig.files,{dot:true}));
             const full = path.join(session.service.baseDir,name);
             if (session.config.ignore?.(full)) return;
             queue = queue.then(async () => {
               if (fs.existsSync(full)) {
-                if (raw.uploadOnSave || watcherConfig.autoUpload) await operate(session,'upload',name,flags);
-              } else if (watcherConfig.autoDelete) await operate(session,'delete',name,flags);
+                if (watcherConfig.uploadOnSave || (matches && watcherConfig.autoUpload)) await operate(session,'upload',name,flags);
+              } else if (matches && watcherConfig.autoDelete) await operate(session,'delete',name,flags);
             }).catch(error => { watcher.close(); reject(error); });
           });
           watcher.once('error',reject);

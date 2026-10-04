@@ -27,6 +27,7 @@ Extension: **0.5.0**. Pipeline plugin: **0.3.1**.
 
 - Permanently decode gzip Marketplace responses with bounded decompression; publication no longer needs the 0.4.0 transport workaround.
 
+- Reject unsafe remote listing paths, preserve ignored descendants during sync deletion, correct FTP file creation, and resolve watcher behavior from the selected profile.
 - Add local SFTP/FTP wire tests, shared-engine/CLI tests, and sidebar/command host-adapter diagnostics. Advanced server/authentication combinations and native UI acceptance remain environment-specific; no production credentials are needed for automated tests.
 
 - Document the complete SFTP command inventory and explain pipeline prerequisites and branch flow.

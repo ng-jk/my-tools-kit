@@ -8,6 +8,7 @@ import FileSystem, {
 } from './fileSystem';
 import RemoteFileSystem from './remoteFileSystem';
 import { SSHClient } from '../remote-client/index';
+import { assertEntryName } from '../../path-safety';
 
 type FileHandle = Buffer;
 
@@ -45,6 +46,7 @@ export default class SFTPFileSystem extends RemoteFileSystem {
   }
 
   toFileEntry(fullPath: string, item: any): FileEntry {
+    assertEntryName(item.filename);
     return {
       fspath: fullPath,
       name: item.filename,
@@ -323,10 +325,12 @@ export default class SFTPFileSystem extends RemoteFileSystem {
           return;
         }
 
-        const fileEntries = result.map((item: any) =>
-          this.toFileEntry(this.pathResolver.join(dir, item.filename), item)
-        );
-        resolve(fileEntries);
+        try {
+          const fileEntries = result.map((item: any) =>
+            this.toFileEntry(this.pathResolver.join(dir, item.filename), item)
+          );
+          resolve(fileEntries);
+        } catch (error) { reject(error); }
       });
     });
   }

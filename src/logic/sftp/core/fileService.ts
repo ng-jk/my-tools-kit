@@ -647,7 +647,7 @@ export default class FileService {
   }
 
   private _createWatcher() {
-    this._watcherService.create(this.baseDir, this._watcherConfig);
+    this._watcherService.create(this.baseDir, (this.getConfig() as any).watcher);
   }
 
   private _disposeWatcher() {

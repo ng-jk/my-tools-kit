@@ -12,6 +12,7 @@ import { FileHandleOption } from '../option';
 import { flatten } from '../../utils';
 import { logger } from '../../../../data/sftp/ports';
 import { getOpenTextDocuments } from '../../../../data/sftp/ports';
+import { checkedEntries } from '../../../../data/sftp/path-safety';
 
 interface InternalTransferOption extends FileHandleOption, TransferTaskTransferOption {}
 
@@ -68,7 +69,7 @@ function toHash<T, R = T>(items: T[], key: string, transform?: (a: T) => R): { [
     const transformedItem = transform ? transform(item) : (item as unknown as R);
     hash[(transformedItem as any)[key]] = transformedItem;
     return hash;
-  }, {} as { [key: string]: R });
+  }, Object.create(null) as { [key: string]: R });
 }
 
 async function transferFolder(
@@ -90,7 +91,7 @@ async function transferFolder(
     await targetFs.chmod(targetFsPath, parseInt(String(config.transferOption.dirPerm), 8))
   }
 
-  const fileEntries = await srcFs.list(srcFsPath);
+  const fileEntries = checkedEntries(srcFs, srcFsPath, await srcFs.list(srcFsPath));
   await Promise.all(
     fileEntries.map(file =>
       transferWithType(
@@ -191,7 +192,12 @@ async function removeFile(file: string, fs: FileSystem, fileType: FileType, opti
 
   switch (fileType) {
     case FileType.Directory:
-      await fileOperations.removeDir(file, fs, option);
+      for (const entry of checkedEntries(fs, file, await fs.list(file))) {
+        await removeFile(entry.fspath, fs, entry.type, option);
+      }
+      // Ignored descendants retain their ancestors; never recursively bypass ignore policy.
+      if ((await fs.list(file)).length) return;
+      await fs.rmdir(file, false);
       logger.info('folder removed.');
       break;
     case FileType.File:
@@ -217,6 +223,8 @@ async function _sync(
 
   const altDirection = getAltDirection(transferDirection);
   const syncFiles = async (srcFileEntries: FileEntry[], desFileEntries: FileEntry[]) => {
+    checkedEntries(srcFs, srcFsPath, srcFileEntries);
+    checkedEntries(targetFs, targetFsPath, desFileEntries);
     const srcFileTable = toHash(srcFileEntries, 'id', fileEntry => ({
       ...fileEntry,
       id: fileEntry.name,

@@ -5,6 +5,7 @@ import { logger } from '../../ports';
 import { FileEntry, FileType, FileStats, FileOption } from './fileSystem';
 import RemoteFileSystem from './remoteFileSystem';
 import { FTPClient } from '../remote-client/index';
+import { assertEntryName } from '../../path-safety';
 
 interface FtpFileHandle {
   path: string;
@@ -69,6 +70,7 @@ export default class FTPFileSystem extends RemoteFileSystem {
   }
 
   toFileEntry(fullPath: string, stat: any): FileEntry {
+    assertEntryName(stat.name);
     return {
       fspath: fullPath,
       name: stat.name,
@@ -98,7 +100,7 @@ export default class FTPFileSystem extends RemoteFileSystem {
     const fileStat = stats.find(ns => ns.name === nameIdentity);
 
     if (!fileStat) {
-      throw new Error('file not exist');
+      throw Object.assign(new Error('file not exist'), { code: 'ENOENT' });
     }
 
     return fileStat;

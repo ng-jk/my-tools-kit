@@ -76,6 +76,37 @@ test('SSH terminal puts options before the host and remote commands after it wit
   const args=engine.sshArguments({protocol:'sftp',host:'example.test',username:'deploy',port:22,remotePath:'/project',sshCustomParams:'-o ServerAliveInterval=30 "cd ${remotePath}; exec bash"'});
   assert.deepEqual(args,['-t','-p','22','-o','ServerAliveInterval=30','--','deploy@example.test','cd /project; exec bash']);
 });
+test('malicious directory entries cannot schedule writes outside the destination',async()=>{
+  for (const name of ['../../outside.txt','../escape','nested/file','nested\\file','C:stream','.. ']) {
+    const source={pathResolver:path.posix,lstat:async()=>({type:engine.FileType.Directory}),list:async()=>[{name,fspath:'/server/'+name,type:engine.FileType.File}]};
+    const target={pathResolver:path.posix,ensureDir:async()=>{}};
+    const tasks=[];
+    await assert.rejects(engine.transfer({srcFsPath:'/server',targetFsPath:'/workspace/project',srcFs:source,targetFs:target,transferDirection:engine.TransferDirection.REMOTE_TO_LOCAL,transferOption:{}},task=>tasks.push(task)),/Unsafe|escapes/);
+    assert.equal(tasks.length,0);
+  }
+});
+test('sync deletion keeps ignored descendants and their parent directories in both directions',async t=>{
+  const {local,remote,session}=fixture(t,{ignore:['**/keep.txt'],syncOption:{delete:true}});
+  for(const [target,action] of [[remote,'sync-up'],[local,'sync-down']]) {
+    fs.mkdirSync(path.join(target,'extra'),{recursive:true});fs.writeFileSync(path.join(target,'extra','keep.txt'),'protected');fs.writeFileSync(path.join(target,'extra','remove.txt'),'remove');
+    await engine.operate(session,action,'.',{yes:true});
+    assert.equal(fs.readFileSync(path.join(target,'extra','keep.txt'),'utf8'),'protected');
+    assert.equal(fs.existsSync(path.join(target,'extra','remove.txt')),false);
+    // Keep the opposite side empty for the next direction.
+    fs.rmSync(path.join(target,'extra'),{recursive:true});
+  }
+});
+test('watch policy follows resolved profiles and watcher.files=false',t=>{
+  const {local,raw}=fixture(t);
+  const base={...raw,uploadOnSave:false,watcher:{files:'**/*',autoUpload:true,autoDelete:true},profiles:{disabled:{watcher:{files:false,autoUpload:true,autoDelete:true}},save:{uploadOnSave:true,watcher:{files:false}},enabled:{uploadOnSave:true}}};
+  const disabled=engine.createSession(local,base,'disabled');t.after(()=>disabled.service.dispose());
+  assert.throws(()=>engine.watchPolicy(disabled.config,true),/Enable/);
+  const save=engine.createSession(local,base,'save');t.after(()=>save.service.dispose());
+  assert.deepEqual(engine.watchPolicy(save.config),{files:false,autoUpload:false,autoDelete:false,uploadOnSave:true});
+  const enabled=engine.createSession(local,base,'enabled');t.after(()=>enabled.service.dispose());
+  assert.throws(()=>engine.watchPolicy(enabled.config),/requires --yes/);
+  assert.equal(engine.watchPolicy(enabled.config,true).uploadOnSave,true);
+});
 test('Git mirror snapshots remote content before upload and bidirectional sync copies both sides',async t=>{
   const {dir,local,remote,raw}=fixture(t);
   const mirror=path.join(dir,'mirror');

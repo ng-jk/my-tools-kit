@@ -49,5 +49,7 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
   t.after(async()=>{session.service.dispose();for(const socket of sockets)socket.destroy();for(const data of servers)if(data.listening)data.close();await new Promise(resolve=>server.close(resolve));fs.rmSync(root,{recursive:true,force:true});});
   await engine.operate(session,'upload','local.txt');assert.equal(files.get('/local.txt').toString(),'ftp payload');
   const list=await engine.operate(session,'list');assert.ok(list.some(item=>item.name==='local.txt'));
+  await engine.operate(session,'create','new.txt');assert.equal(files.get('/new.txt').length,0);
+  await assert.rejects(engine.operate(session,'create','local.txt'),/exists/);
   files.set('/local.txt',Buffer.from('ftp server edit'));await engine.operate(session,'download','local.txt');assert.equal(fs.readFileSync(path.join(root,'local.txt'),'utf8'),'ftp server edit');
 });

@@ -120,3 +120,5 @@ The fork also verifies SSH host keys, corrects reverse filesystem selection in b
 | View Content | `devkit.sftp.viewContent` |
 | Refresh | `devkit.sftp.remoteExplorer.refresh` |
 | Refresh Active Remote File | `devkit.sftp.remoteExplorer.refreshActiveFile` |
+
+Remote directory entries are validated before transfer: traversal, embedded separators, Windows device names and other unsafe cross-platform names are rejected. Sync deletion walks directories and retains ignored descendants. FTP creation recognizes missing files consistently. Watch settings come from the selected profile; `watcher.files: false` disables watcher actions while separately configured upload-on-save remains available.
