@@ -543,3 +543,18 @@ test('real local adapter replaces destination symlinks without following their l
   await engine.operate(session,'download','file.txt');
   assert.equal(fs.lstatSync(path.join(local,'file.txt')).isSymbolicLink(),false);assert.equal(fs.readFileSync(path.join(local,'file.txt'),'utf8'),'replacement');assert.equal(fs.readFileSync(outside,'utf8'),'untouched');
 });
+
+test('nested Git workspace maps commits and working changes only into its SFTP context',async t=>{
+  const {local,remote,raw}=fixture(t);const workspace=path.join(local,'app');fs.mkdirSync(workspace);
+  const git=(...args)=>{const result=spawnSync('git',['-c','user.name=Fixture','-c','user.email=fixture@example.test',...args],{cwd:local,encoding:'utf8'});assert.equal(result.status,0,result.stderr);};
+  git('init');fs.writeFileSync(path.join(workspace,'file.txt'),'initial');fs.writeFileSync(path.join(local,'outside.txt'),'outside');git('add','.');git('commit','-m','initial');
+  fs.mkdirSync(path.join(workspace,'.vscode'));fs.writeFileSync(path.join(workspace,'.vscode','sftp.json'),JSON.stringify({...raw,ignore:['.vscode/**']}));
+  fs.mkdirSync(path.join(remote,'app'));fs.writeFileSync(path.join(remote,'app','file.txt'),'unrelated');
+  const cli=(action,...args)=>{const result=spawnSync(process.execPath,[path.resolve('cli.js'),'sftp',action,workspace,...args],{encoding:'utf8',timeout:20000});assert.equal(result.status,0,result.stderr);return JSON.parse(result.stdout);};
+  cli('upload-commit','--commit','HEAD');assert.equal(fs.readFileSync(path.join(remote,'file.txt'),'utf8'),'initial');assert.equal(fs.existsSync(path.join(remote,'outside.txt')),false);
+  fs.writeFileSync(path.join(workspace,'file.txt'),'modified');fs.unlinkSync(path.join(local,'outside.txt'));
+  const changes=await engine.getUncommittedTransfers(workspace);assert.ok(changes.some(change=>change.path==='app/file.txt'&&change.kind==='upload'));
+  const result=cli('upload-changed','--yes');assert.equal(result.results[0].operations.length,1);
+  assert.equal(fs.readFileSync(path.join(remote,'file.txt'),'utf8'),'modified');assert.equal(fs.readFileSync(path.join(remote,'app','file.txt'),'utf8'),'unrelated');
+  fs.unlinkSync(path.join(workspace,'file.txt'));cli('upload-changed','--yes');assert.equal(fs.existsSync(path.join(remote,'file.txt')),false);assert.equal(fs.readFileSync(path.join(remote,'app','file.txt'),'utf8'),'unrelated');
+});

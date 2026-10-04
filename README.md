@@ -221,3 +221,5 @@ For the exact reviewed revisions, check out the commit IDs recorded in `docs/rep
 - [SFTP plus](https://github.com/ng-jk/vscode-sftp): requested repository, checked out at version 1.16.3.
 
 Architecture and acceptance details are in `api-debugger/README.md`, `pipeline-configurator/README.md`, and `docs/roadmap.md`.
+
+Resolve Git change paths against the repository root before mapping into the selected SFTP context. Nested workspaces exclude outside-context changes and cannot mistake modified files for remote deletions.

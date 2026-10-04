@@ -9,7 +9,7 @@ import {removeRemotePath,renameRemotePath} from './remote-operations';
 export { configurePorts } from '../../data/sftp/ports';
 export { sshArguments } from './ssh-arguments';
 export { watchPolicy } from './watch-policy';
-export {getCommitChangedFiles, getUncommittedChangedFiles, getUncommittedTransfers} from './git-changes';
+export {findGitRoot, getCommitChangedFiles, getUncommittedChangedFiles, getUncommittedTransfers} from './git-changes';
 export {planGitTransfers, executeGitTransfers} from './git-transfer';
 export {isOwnLocalChange, localEntryExists} from '../../data/sftp/local-events';
 export {initialConfig, normalizeConfigurations} from './config';

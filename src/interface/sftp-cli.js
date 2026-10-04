@@ -2,7 +2,7 @@
 const {readConfiguration,ensureConfiguration}=require('../data/sftp-config');
 const {watchLocalDirectory,runSsh}=require('../data/sftp-terminal');
 const path = require('node:path');
-const { createSession, operate, configurePorts, sshArguments, watchPolicy, getCommitChangedFiles, getUncommittedChangedFiles, getUncommittedTransfers, planGitTransfers, executeGitTransfers, isOwnLocalChange, localEntryExists, initialConfig, normalizeConfigurations } = require('../../build/sftp/engine');
+const { createSession, operate, configurePorts, sshArguments, watchPolicy, findGitRoot, getCommitChangedFiles, getUncommittedChangedFiles, getUncommittedTransfers, planGitTransfers, executeGitTransfers, isOwnLocalChange, localEntryExists, initialConfig, normalizeConfigurations } = require('../../build/sftp/engine');
 async function main(args) {
   if (!args.length || args.includes('--help')) {
     console.log(`devkit sftp <action> <workspace> [relative-path] [options]
@@ -53,8 +53,10 @@ paths and JSON output here. Transfer, profile and sync logic is shared.`);
     process.once('SIGINT', cancel);
     try {
       if (action === 'upload-changed' || action === 'upload-commit') {
-        const changes = action === 'upload-commit' ? (await getCommitChangedFiles(root,flags.commit || 'HEAD')).map(file=>({kind:'upload',path:file})) : await getUncommittedTransfers(root);
-        const plan = planGitTransfers(changes.map(change=>({...change,path:path.resolve(root,change.path)})), file => {
+        const gitRoot = await findGitRoot(root);
+        if (!gitRoot) throw new Error('No Git repository found for this workspace');
+        const changes = action === 'upload-commit' ? (await getCommitChangedFiles(gitRoot,flags.commit || 'HEAD')).map(file=>({kind:'upload',path:file})) : await getUncommittedTransfers(gitRoot);
+        const plan = planGitTransfers(changes.map(change=>({...change,path:path.resolve(gitRoot,change.path)})), file => {
           const relative=path.relative(session.service.baseDir,file);
           return relative !== '..' && !relative.startsWith('..'+path.sep) && !path.isAbsolute(relative) && (flags.force || !session.config.ignore?.(file)) ? session.service.baseDir : undefined;
         });

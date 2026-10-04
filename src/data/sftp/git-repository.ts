@@ -19,12 +19,13 @@ export async function readLog(dir: string, depth: number) {
   return entries;
 }
 export async function readStatus(dir: string) {
+  const root = (await runGit(dir, ['rev-parse', '--show-toplevel'])).toString('utf8').trim();
   const output=(await runGit(dir,['status','--porcelain=v1','-z','--untracked-files=all','--no-renames'])).toString('utf8');
   const rows=new Map<string,any[]>();
   for(const record of output.split('\0').filter(Boolean)) {
     const name=record.slice(3),tracked=record.slice(0,2)!=='??';
     let present=true;
-    try {fs.lstatSync(path.join(dir,name));} catch(error) {if(error.code!=='ENOENT')throw error;present=false;}
+    try {fs.lstatSync(path.join(root,name));} catch(error) {if(error.code!=='ENOENT')throw error;present=false;}
     rows.set(name,[name,tracked?1:0,present?2:0,0]);
   }
   return [...rows.values()];

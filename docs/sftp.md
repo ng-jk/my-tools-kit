@@ -174,3 +174,5 @@ Apply ignore rules to every descendant during remote deletion, including watcher
 Reject source names that collide on the destination filesystem before transfer/sync mutations, and use destination-aware replacement/directory lock keys. Resolve Git log, status and commit changes through the Git process adapter so linked worktrees use their common object database. Git-upload commands require Git on PATH and retain its ownership checks.
 
 Match sync entries across both sides using destination filesystem identity so case-only aliases cannot bypass update or ignoreExisting, including bidirectional sync. Replace local symlink leaves without following them or copying permissions from their targets.
+
+Resolve Git change paths against the repository root before mapping into the selected SFTP context. Nested workspaces exclude outside-context changes and cannot mistake modified files for remote deletions.
