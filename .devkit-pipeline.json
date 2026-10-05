@@ -127,5 +127,6 @@
         "dist/development-tools-kit.vsix"
       ]
     ]
-  }
+  },
+  "autoPublishAfterUat": true
 }

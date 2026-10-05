@@ -24,6 +24,7 @@ class Pipeline:
     def status(self):
         return {"passed": True, "branches": {key: self.git.ref(value) for key, value in BRANCHES.items()},
                 "reviewer": self.config["reviewer"], "evidence": str(self.store.root),
+                "autoPublishAfterUat": self.config.get("autoPublishAfterUat", False),
                 "marketplace": self.config.get("marketplace"),
                 "flow": "developement -> test -> human interface UAT -> deployment -> configured Marketplace upload -> main"}
 
@@ -106,13 +107,20 @@ class Pipeline:
             evidence = {"approved": True, "candidate": sha, "test_report": digest(report),
                         "reviewer": reviewer, "note": note, "created": datetime.now(timezone.utc).isoformat()}
             self.store.save(f"uat-{sha}.json", evidence)
-            return {"passed": True, **evidence}
+        result = {"passed": True, **evidence}
+        if self.config.get("autoPublishAfterUat", False):
+            self.progress("Interface approval recorded; automatically starting publication for " + sha)
+            result["publication"] = self.publish(expected_candidate=sha)
+            result["passed"] = result["publication"].get("passed") is True
+        return result
 
-    def publish(self):
+    def publish(self, expected_candidate=None):
         with self.store.lock():
             self.git.clean()
             self.git.fetch(self.config["remote"])
             sha, base = self.git.sha("test"), self.git.sha("main")
+            if expected_candidate is not None and sha != expected_candidate:
+                raise ValueError("Candidate changed after interface approval; automatic publication stopped")
             if self.git.sha("developement") != sha:
                 raise ValueError("developement changed since test; test and accept UAT again")
             remote_main = self.git.remote_ref(self.config["remote"], "main")

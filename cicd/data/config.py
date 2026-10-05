@@ -19,6 +19,8 @@ def read(root):
                 raise ValueError(f"{name} commands must be nonempty argument arrays, never shell strings")
     if value.get("reviewer") not in ("codex", "claude"):
         raise ValueError("reviewer must be codex or claude")
+    if not isinstance(value.get("autoPublishAfterUat", False), bool):
+        raise ValueError("autoPublishAfterUat must be a boolean")
     artifacts = value.get("artifacts", [])
     if not isinstance(artifacts, list) or any(not isinstance(item, str) or not item or Path(item).is_absolute() or ".." in Path(item).parts for item in artifacts):
         raise ValueError("artifacts must be relative file paths inside the project")

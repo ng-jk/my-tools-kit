@@ -135,3 +135,56 @@ class PromotionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Branch changed during Marketplace"):
             self.pipeline.publish()
         self.assertEqual(self.refs["main"], "base")
+
+    def enable_auto_publish(self):
+        self.pipeline.config['autoPublishAfterUat'] = True
+        self.report['configuration'] = digest(self.pipeline.config)
+        self.store.save('test-candidate.json', self.report)
+
+    def test_uat_automatically_publishes_verified_package_before_main(self):
+        self.enable_auto_publish()
+        self.pipeline._gates = Mock(return_value=self.report)
+        self.pipeline.marketplace = Mock()
+        def upload(report):
+            self.assertTrue(self.store.load('uat-candidate.json')['approved'])
+            self.assertEqual(self.refs['main'], 'base')
+            return {'state': 'verified'}
+        self.pipeline.marketplace.publish.side_effect = upload
+        result = self.pipeline.accept_uat('candidate', 'Fixture human', 'Actual fixture acceptance')
+        self.assertTrue(result['passed'])
+        self.assertEqual(result['publication']['marketplace']['state'], 'verified')
+        self.assertEqual(self.refs['main'], 'candidate')
+        self.pipeline.marketplace.publish.assert_called_once_with(self.report)
+
+    def test_auto_publish_failed_deployment_preserves_uat_and_stops_main(self):
+        self.enable_auto_publish()
+        self.pipeline._gates = Mock(return_value={'passed': False, 'error': 'Review unavailable'})
+        self.pipeline.marketplace = Mock()
+        result = self.pipeline.accept_uat('candidate', 'Fixture human', 'Actual fixture acceptance')
+        self.assertFalse(result['passed'])
+        self.assertTrue(self.store.load('uat-candidate.json')['approved'])
+        self.assertEqual(self.refs['main'], 'base')
+        self.pipeline.marketplace.publish.assert_not_called()
+
+    def test_auto_publish_cannot_bypass_missing_test_review(self):
+        self.enable_auto_publish()
+        self.report['passed'] = False
+        self.report['gates']['ai_review'] = False
+        self.store.save('test-candidate.json', self.report)
+        self.pipeline.publish = Mock()
+        with self.assertRaises(ValueError):
+            self.pipeline.accept_uat('candidate', 'Fixture human', 'Acceptance')
+        self.pipeline.publish.assert_not_called()
+        self.assertIsNone(self.store.optional('uat-candidate.json'))
+
+    def test_automatic_publication_rejects_a_different_candidate(self):
+        with self.assertRaisesRegex(ValueError, 'Candidate changed'):
+            self.pipeline.publish(expected_candidate='previously-approved')
+        self.git.push.assert_not_called()
+
+    def test_auto_publish_configuration_requires_boolean(self):
+        from cicd.data.config import read
+        self.config['autoPublishAfterUat'] = 'false'
+        (self.root / '.devkit-pipeline.json').write_text(json.dumps(self.config))
+        with self.assertRaisesRegex(ValueError, 'must be a boolean'):
+            read(self.root)

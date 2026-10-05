@@ -115,7 +115,7 @@ python pipeline.py check
 python pipeline.py test --push
 # Only after personally completing interface acceptance for that exact commit:
 python pipeline.py accept-uat --commit <sha> --reviewer "Your name" --note "Actual UAT checks completed"
-# When ready to publish:
+# Automatic publication follows UAT in this repo. Retry a failed publication with:
 python pipeline.py publish
 ```
 
@@ -239,3 +239,7 @@ Directory permission overrides stop at existing ancestors during recursive creat
 Resolve local ignore paths using directory containment rather than string prefixes, preserving ignored remote-only files during destructive sync when local and remote roots share a name prefix.
 
 Ignore evaluation now receives the filesystem side explicitly, so anchored patterns also protect remote files when local and remote pathnames are identical or nested. Remote Explorer all-profile uploads translate their URI into the local selection before resolving each profile context.
+
+### Automatic publishing after interface acceptance
+
+This repository sets `autoPublishAfterUat: true` in `.devkit-pipeline.json`. After the test gate passes, **CI/CD Pipeline → Approve interface and finish release** (or CLI `accept-uat`) records your real acceptance and automatically runs the final release phase: deployment checks and AI review, local Entra-enabled vsce publication, public package verification, then main promotion. No separate publish command is needed. Failed checks, unavailable AI review or missing acceptance block publication. A failed upload can be retried with `publish`; credentials remain outside Git. Commit each new package version before testing it. VS Code clients need extension auto-updates enabled to receive Marketplace updates automatically.
