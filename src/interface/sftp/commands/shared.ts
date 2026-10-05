@@ -1,11 +1,11 @@
 // Adapted from ng-jk/vscode-sftp (MIT); see THIRD-PARTY-NOTICES.md.
 import * as path from 'path';
 import { Uri, window } from 'vscode';
-import { FileType } from '../../../logic/sftp/core/index';
+import { FileType, UResource } from '../../../logic/sftp/core/index';
 import { getAllFileService } from '../modules/serviceManager/index';
 import { ExplorerItem } from '../modules/remoteExplorer/index';
 import { getActiveTextEditor } from '../host';
-import { listFiles, toLocalPath, simplifyPath } from '../helper/index';
+import { listFiles, simplifyPath } from '../helper/index';
 
 function configIngoreFilterCreator(config: any) {
   if (!config || !config.ignore) {
@@ -29,6 +29,8 @@ function createFileSelector(filterCreator?: (config: any) => ((file: any) => boo
         index,
         remoteBaseDir: config.remotePath,
         baseDir: fileService.baseDir,
+        serviceId: fileService.id,
+        remote: {host:config.host,port:config.port},
       };
     });
 
@@ -39,9 +41,7 @@ function createFileSelector(filterCreator?: (config: any) => ((file: any) => boo
     }
 
     const rootItem = remoteItems[selected.index];
-    const localTarget = toLocalPath(selected.fsPath, rootItem.remoteBaseDir, rootItem.baseDir);
-
-    return Uri.file(localTarget);
+    return UResource.makeResource({fsPath:selected.fsPath, remoteId:rootItem.serviceId, remote:rootItem.remote}).uri;
   };
 }
 

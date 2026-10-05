@@ -223,6 +223,22 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     vscode.window.showQuickPick=async()=>undefined;
     const before=documentText;await commands.get('devkit.sftp.selectContext')();assert.equal(documentText,before,'cancel preserves context');
 
+    extension.deactivate();commands.clear();views.clear();errors.length=0;
+    const nestedA=path.join(dir,'remote','nested');fs.mkdirSync(nestedA,{recursive:true});
+    fs.writeFileSync(path.join(nestedA,'wrong-server.txt'),'delete only A');fs.writeFileSync(path.join(dir,'remote-other','wrong-server.txt'),'preserve B');
+    fs.writeFileSync(contextFile,JSON.stringify([
+      {name:'Server A',context:'.',protocol:'local',host:'server-a',username:'alice',remotePath:path.join(dir,'remote').replaceAll('\\','/')},
+      {name:'Server B',context:'nested',protocol:'local',host:'server-b',username:'bob',remotePath:path.join(dir,'remote-other').replaceAll('\\','/')}
+    ]));
+    await extension.activate(context);
+    vscode.window.activeTextEditor=undefined;
+    const picks=['Server A','nested/','wrong-server.txt'];
+    vscode.window.showQuickPick=async choices=>{const label=picks.shift();const item=choices.find(c=>c.label===label);assert.ok(item,'Missing '+label);return item;};
+    // Do not expand the explorer first: command routing must also work when its roots are lazy.
+    await commands.get('devkit.sftp.delete.remote')();assert.deepEqual(errors,[]);assert.equal(picks.length,0);
+    assert.equal(fs.existsSync(path.join(nestedA,'wrong-server.txt')),false,'delete targets the selected server despite nested local context');
+    assert.equal(fs.readFileSync(path.join(dir,'remote-other','wrong-server.txt'),'utf8'),'preserve B');
+
   } finally {extension?.deactivate();context.subscriptions.forEach(item=>item.dispose());Module._load=original;fs.readdir=nativeReaddir;}
 });
 

@@ -7,6 +7,7 @@
 - Resolve environment credentials only for the selected context; inactive contexts need no secrets. Named contexts do not use the CLI's shared password fallback.
 - Rewrote the Marketplace README as task-based instructions for each tool and moved maintainer details to docs/development.md.
 - Corrected FTP schema references for FTPS options.
+- Preserved server identity through remote picker commands so nested legacy local contexts cannot redirect a selected remote delete to another server.
 
 This file records implemented functionality and its verification limits. Extension and pipeline-plugin versions are independent.
 

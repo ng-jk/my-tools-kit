@@ -210,7 +210,7 @@ export default class RemoteTreeData
 
   findRoot(uri: vscode.Uri): ExplorerRoot | null | undefined {
     if (!this._rootsMap) {
-      return null;
+      this._getRoots();
     }
 
     const rootId = UResource.makeResource(uri).remoteId;
