@@ -1,6 +1,7 @@
 // Adapted from ng-jk/vscode-sftp; static imports replace webpack require.context.
 import { registerCommand } from './host';
 import { createCommand, createFileCommand, createFileMultiCommand } from './commands/abstract/createCommand';
+import selectContext from './commands/commandSelectContext';
 import command0 from './commands/commandCancelAllTransfer';
 import command1 from './commands/commandConfig';
 import command2 from './commands/commandListActiveFolder';
@@ -48,6 +49,7 @@ function register(option: any, creator: any, context: any) {
  registerCommand(context, option.id, instance.run, instance);
 }
 export default function init(context: any) {
+  register(selectContext, createCommand, context);
   register(command0, createCommand, context);
   register(command1, createCommand, context);
   register(command2, createCommand, context);

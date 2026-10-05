@@ -14,14 +14,14 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
   fs.writeFileSync(path.join(root,'nested','ui.txt'),'from other context');
   fs.writeFileSync(path.join(root,'ui.txt'),'uploaded from the UI adapter');
   fs.writeFileSync(path.join(root,'.vscode','sftp.json'),JSON.stringify({name:'fixture',protocol:'local',host:'fixture',username:'fixture',remotePath:path.join(dir,'remote').replaceAll('\\','/'),syncOption:{delete:true},defaultProfile:'dev',profiles:{dev:{watcher:{files:'**/*',autoUpload:true,autoDelete:true}},prod:{watcher:{files:false}},other:{context:'nested',remotePath:path.join(dir,'remote-other').replaceAll('\\','/')}}}));
-  const commands=new Map(),views=new Map(),errors=[],watchers=[];const disposable=()=>({dispose(){}});
+  let savedDocument; const commands=new Map(),views=new Map(),errors=[],watchers=[];const disposable=()=>({dispose(){}});
   const repository={rootUri:URI.file(root),ui:{selected:true},state:{indexChanges:[],workingTreeChanges:[]}};
-  const vscode={Uri:URI,StatusBarAlignment:{Left:1},TreeItemCollapsibleState:{None:0,Collapsed:1,Expanded:2},
+  const vscode={WorkspaceEdit:class{replace(uri,range,text){this.text=text;}},Range:class{},Uri:URI,StatusBarAlignment:{Left:1},TreeItemCollapsibleState:{None:0,Collapsed:1,Expanded:2},
     EventEmitter:class{event=()=>disposable();fire(){}dispose(){}},ThemeIcon:class{constructor(id){this.id=id;}},RelativePattern:class{},
     extensions:{getExtension:()=>({exports:{getAPI:()=>({repositories:[repository]})}})},
     workspace:{isTrusted:true,asRelativePath:value=>path.relative(root,value),workspaceFolders:[{uri:URI.file(root)}],textDocuments:[],getConfiguration:()=>({get:()=>undefined}),
       createFileSystemWatcher:()=>{const watcher={disposed:false,handlers:{},onDidCreate(fn){this.handlers.create=fn;return disposable();},onDidChange(fn){this.handlers.change=fn;return disposable();},onDidDelete(fn){this.handlers.delete=fn;return disposable();},dispose(){this.disposed=true;}};watchers.push(watcher);return watcher;},
-      onDidSaveTextDocument:disposable,onDidOpenTextDocument:disposable,registerTextDocumentContentProvider:disposable},
+      onDidSaveTextDocument:fn=>{savedDocument=fn;return disposable();},onDidOpenTextDocument:disposable,registerTextDocumentContentProvider:disposable},
     commands:{registerCommand:(id,fn,self)=>{assert.equal(commands.has(id),false,'duplicate '+id);commands.set(id,fn.bind(self));return disposable();},executeCommand:async(id,...args)=>commands.has(id)?commands.get(id)(...args):undefined},
     window:{activeTextEditor:{document:{uri:URI.file(path.join(root,'ui.txt'))}},createStatusBarItem:()=>({show(){},hide(){},dispose(){}}),createOutputChannel:()=>({appendLine(){},show(){},hide(){},dispose(){}}),
       showQuickPick:async choices=>choices.find(item=>item.command==='devkit.sftp.upload.file') || choices[0],
@@ -199,6 +199,29 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     assert.equal(fs.readFileSync(path.join(root,'dest-second-prod','profile.txt'),'utf8'),'second prod');
     assert.equal(fs.existsSync(path.join(root,'dest-first-prod','profile.txt')),false);
     assert.equal(fs.existsSync(path.join(root,'dest-second-dev','profile.txt')),false);
+
+    extension.deactivate();commands.clear();views.clear();errors.length=0;
+    const contextFile=path.join(root,'.vscode','sftp.json');
+    const isolated={activeContext:'alpha',contexts:{alpha:{protocol:'local',host:'alpha-host',username:'alice',password:'alpha-secret',context:'.',remotePath:path.join(dir,'remote').replaceAll('\\','/'),watcher:{files:'**/*',autoUpload:true}},beta:{protocol:'local',host:'beta-host',username:'bob',password:'beta-secret',context:'.',remotePath:path.join(dir,'remote-other').replaceAll('\\','/')}}};
+    fs.writeFileSync(contextFile,JSON.stringify(isolated));
+    await extension.activate(context);
+    let roots=await views.get('devkit.remoteExplorer').getChildren();assert.equal(roots.length,1);assert.equal(roots[0].explorerContext.config.host,'alpha-host');
+    const alphaWatcher=watchers.at(-1);
+    let documentText=fs.readFileSync(contextFile,'utf8');
+    const document={uri:URI.file(contextFile),isDirty:false,getText:()=>documentText,positionAt:n=>n,save:async()=>{fs.writeFileSync(contextFile,documentText);await savedDocument(document);return true;}};
+    vscode.workspace.openTextDocument=async()=>document;
+    vscode.workspace.getWorkspaceFolder=()=>({uri:URI.file(root)});
+    vscode.workspace.applyEdit=async edit=>{documentText=edit.text;return true;};
+    vscode.window.showQuickPick=async choices=>choices.find(item=>item.name==='beta');
+    await commands.get('devkit.sftp.selectContext')();assert.deepEqual(errors,[]);
+    assert.equal(alphaWatcher.disposed,true);
+    roots=await views.get('devkit.remoteExplorer').getChildren();assert.equal(roots.length,1);assert.equal(roots[0].explorerContext.config.host,'beta-host');assert.equal(roots[0].explorerContext.config.password,'beta-secret');
+    assert.deepEqual(JSON.parse(documentText).contexts,isolated.contexts,'switching must preserve both independent configurations');
+    fs.writeFileSync(path.join(root,'context-switch.txt'),'only beta');
+    await commands.get('devkit.sftp.upload.file')(URI.file(path.join(root,'context-switch.txt')));assert.deepEqual(errors,[]);
+    assert.equal(fs.existsSync(path.join(dir,'remote','context-switch.txt')),false);assert.equal(fs.readFileSync(path.join(dir,'remote-other','context-switch.txt'),'utf8'),'only beta');
+    vscode.window.showQuickPick=async()=>undefined;
+    const before=documentText;await commands.get('devkit.sftp.selectContext')();assert.equal(documentText,before,'cancel preserves context');
 
   } finally {extension?.deactivate();context.subscriptions.forEach(item=>item.dispose());Module._load=original;fs.readdir=nativeReaddir;}
 });

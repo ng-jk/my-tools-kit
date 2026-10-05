@@ -2,7 +2,7 @@
 const {readConfiguration,ensureConfiguration}=require('../data/sftp-config');
 const {watchLocalDirectory,runSsh}=require('../data/sftp-terminal');
 const path = require('node:path');
-const { createSession, operate, configurePorts, sshArguments, watchPolicy, findGitRoot, getCommitChangedFiles, getUncommittedChangedFiles, getUncommittedTransfers, planGitTransfers, executeGitTransfers, isOwnLocalChange, localEntryExists, initialConfig, normalizeConfigurations } = require('../../build/sftp/engine');
+const { createSession, operate, configurePorts, sshArguments, watchPolicy, findGitRoot, getCommitChangedFiles, getUncommittedChangedFiles, getUncommittedTransfers, planGitTransfers, executeGitTransfers, isOwnLocalChange, localEntryExists, initialContexts, contextNames, normalizeConfigurations } = require('../../build/sftp/engine');
 async function main(args) {
   if (!args.length || args.includes('--help')) {
     console.log(`devkit sftp <action> <workspace> [relative-path] [options]
@@ -11,7 +11,8 @@ sync-both, mkdir, create, rename, delete, upload-changed, upload-commit, watch, 
 Options: --config FILE --profile NAME --context NAME --all-profiles --force --yes
          --to RELATIVE-PATH --commit REVISION
 Reads .vscode/sftp.json. Paths are relative to the chosen profile context.
-Use SSH agent/key or DEVKIT_SFTP_PASSWORD; config supports \${env:NAME}.
+Use per-context SSH agent/key or password: \${env:NAME}.
+DEVKIT_SFTP_PASSWORD is a fallback for legacy configurations only.
 watch uploads changed files when watcher.autoUpload or uploadOnSave is enabled;
 watcher.autoDelete requires --yes. Ctrl+C cancels transfers and disconnects.
 UI-only actions (editor selection, clipboard, reveal and native diff) use explicit
@@ -28,19 +29,25 @@ paths and JSON output here. Transfer, profile and sync logic is shared.`);
   }
   const configPath = flags.config ? path.resolve(flags.config) : path.join(root,'.vscode','sftp.json');
   if (action === 'config') {
-    await ensureConfiguration(configPath,initialConfig());
+    await ensureConfiguration(configPath,initialContexts());
     console.log(JSON.stringify({passed:true,config:configPath})); return;
   }
-  const configs = normalizeConfigurations(await readConfiguration(configPath),process.env);
+  const input = await readConfiguration(configPath);
+  const names = contextNames(input);
+  if (action === 'profiles' && names.length) {
+    console.log(JSON.stringify(names.map(name => ({name,active:name===input.activeContext,context:input.contexts[name].context || '.',profiles:Object.keys(input.contexts[name].profiles || {})})),null,2)); return;
+  }
+  const configs = normalizeConfigurations(input,process.env,flags.context);
   if (action === 'profiles') {
     console.log(JSON.stringify(configs.map(config => ({name:config.name,context:config.context || '.',profiles:Object.keys(config.profiles || {}),defaultProfile:config.defaultProfile})),null,2)); return;
   }
-  const choices = flags.context ? configs.filter(c => c.name === flags.context || c.context === flags.context) : configs;
+  const choices = configs;
   if (choices.length !== 1) throw new Error('Choose exactly one configuration with --context NAME');
   const raw = choices[0];
   const profiles = flags['all-profiles'] ? Object.keys(raw.profiles || {}) : [flags.profile];
   if (!profiles.length) throw new Error('No profiles configured');
   configurePorts({password:async () => {
+    if (names.length) throw new Error('Set password or a context-specific ${env:NAME} reference inside the selected context, or configure its SSH key/agent');
     if (process.env.DEVKIT_SFTP_PASSWORD === undefined) throw new Error('Set DEVKIT_SFTP_PASSWORD or configure SSH key/agent authentication');
     return process.env.DEVKIT_SFTP_PASSWORD;
   }});

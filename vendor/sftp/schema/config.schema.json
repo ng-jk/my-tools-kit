@@ -7,7 +7,42 @@
       }
     },
     {
-      "$ref": "simple-config.schema.json"
+      "allOf": [
+        {
+          "$ref": "simple-config.schema.json"
+        },
+        {
+          "not": {
+            "required": [
+              "contexts"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "required": [
+        "contexts",
+        "activeContext"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "activeContext": {
+          "type": "string",
+          "description": "Named context used in VS Code. Switch with SFTP: Select Context."
+        },
+        "contexts": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "$ref": "simple-config.schema.json"
+          }
+        },
+        "$schema": {
+          "type": "string"
+        }
+      }
     }
   ]
 }

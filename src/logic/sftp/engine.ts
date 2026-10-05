@@ -12,7 +12,7 @@ export { watchPolicy } from './watch-policy';
 export {findGitRoot, getCommitChangedFiles, getUncommittedChangedFiles, getUncommittedTransfers} from './git-changes';
 export {reconcileGitChanges, planGitTransfers, executeGitTransfers} from './git-transfer';
 export {isOwnLocalChange, localEntryExists} from '../../data/sftp/local-events';
-export {initialConfig, normalizeConfigurations} from './config';
+export {initialConfig, initialContexts, contextNames, selectContext, normalizeConfigurations} from './config';
 export { verifyHostKey, fingerprint } from '../../data/sftp/host-keys';
 export { FileService, FileType, TransferTask, TransferDirection, Scheduler } from './core';
 export { transfer, sync } from './fileHandlers/transfer/transfer';

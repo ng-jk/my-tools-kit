@@ -343,6 +343,10 @@
       {
         "command": "devkit.sftp.menu",
         "title": "Development Tools Kit: SFTP / FTP Functions"
+      },
+      {
+        "command": "devkit.sftp.selectContext",
+        "title": "SFTP: Select Context"
       }
     ],
     "menus": {

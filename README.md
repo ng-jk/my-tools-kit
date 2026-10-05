@@ -1,247 +1,234 @@
-# Development Tools Kit
+# Development Tools Kit — user guide
 
-An integrated SFTP/FTP client, API debugger, JSON formatter, text/file/Git comparer, and Python terminal CI/CD pipeline, packaged as a VS Code extension with a shared Codex / Claude Code plugin. Extension version 0.5.0; pipeline plugin version 0.3.1. No GitHub Actions are used.
+Open the **Development Tools Kit** toolbox icon in VS Code’s Activity Bar, then choose a tool. This guide shows how to configure and use each function.
 
-[Release notes](CHANGELOG.md) · [Source repository](https://github.com/ng-jk/my-tools-kit) · [Issue tracker](https://github.com/ng-jk/my-tools-kit/issues)
+[Release notes](CHANGELOG.md) · [Report a problem](https://github.com/ng-jk/my-tools-kit/issues) · [Source code](https://github.com/ng-jk/my-tools-kit)
 
-Licensed under [MIT](LICENSE). Marketplace publisher ID: `NGJUNKAI`. The Python release pipeline publishes through `vsce --azure-credential` using Microsoft Entra ID. Credentials belong in the local Azure login cache, outside this repository. Upstream database/SFTP projects retain their own licenses.
+## Install and open
 
-## What's included
+1. In VS Code, open **Extensions** and search for **Development Tools Kit** by **NGJUNKAI**. Install the available Marketplace version.
+2. To test a newer local build, use **Extensions → … → Install from VSIX…**, choose `development-tools-kit.vsix`, then reload VS Code.
+3. Click the toolbox icon in the Activity Bar. The Tools list contains **API Debugger**, **JSON Formatter**, **Compare Text / Files**, **Compare Git Revisions**, **SFTP / FTP**, and **CI/CD Pipeline**.
+4. Alternatively, press **Ctrl+Shift+P** (macOS: **Cmd+Shift+P**) and search for **Development Tools Kit** or **SFTP**.
 
-| Component | Current delivery |
+Requires VS Code 1.96+. FTP/SFTP dependencies are bundled. Git comparisons require Git. CI/CD requires Python 3.11+ and the test/build CLIs configured for your project. Trust your workspace to enable the extension. The context features below belong to the 0.5.0 candidate; an older installed version may not contain them.
+
+## Separate FTP/SFTP contexts
+
+A context is one complete connection configuration. Give development, staging, production, or different customers their own contexts. Each has its own IP/hostname, protocol, port, username, password/key, local folder, remote path, host verification, ignore rules, watcher and sync settings. Contexts do not inherit settings or credentials from one another.
+
+1. Open your project folder.
+2. Choose **SFTP / FTP → Config**. This opens `.vscode/sftp.json`; a new file starts with a `development` context.
+3. Replace the example values with your own. Add another entry under `contexts` for each independent connection:
+
+```json
+{
+  "activeContext": "development",
+  "contexts": {
+    "development": {
+      "context": ".",
+      "protocol": "sftp",
+      "host": "192.0.2.10",
+      "port": 22,
+      "username": "dev-user",
+      "privateKeyPath": "~/.ssh/dev_key",
+      "knownHostsPath": "~/.ssh/known_hosts",
+      "remotePath": "/srv/development",
+      "uploadOnSave": false,
+      "ignore": [".git", ".vscode", ".env", ".env.*", "node_modules"]
+    },
+    "staging": {
+      "context": ".",
+      "protocol": "ftp",
+      "host": "192.0.2.20",
+      "port": 21,
+      "username": "staging-user",
+      "password": "${env:STAGING_FTP_PASSWORD}",
+      "secure": true,
+      "remotePath": "/public_html/staging",
+      "uploadOnSave": false,
+      "ignore": [".git", ".vscode", ".env", ".env.*", "node_modules"]
+    }
+  }
+}
+```
+
+4. Save the file. Choose **SFTP / FTP → Select Context** (or **SFTP: Select Context** in the Command Palette), then pick a context. Its name appears in **SFTP Remote Explorer**.
+5. Expand that server root to list files. Switching context cancels/disposes the previous service and its watchers, then loads the selected configuration. Only the active context receives automatic file operations.
+
+`context` inside each entry is the **local folder**, relative to your workspace (for example `frontend`); `remotePath` is the destination folder on that server. Both contexts may use the same local folder. The key under `contexts`, such as `staging`, is the selection name. To add, rename, edit or remove a context, edit `.vscode/sftp.json` and save; keep `activeContext` set to an existing key.
+
+For password authentication, omit `password` to use VS Code’s masked prompt, or give each context a separate `${env:VARIABLE}` reference. Start VS Code from an environment containing those variables; restart it after changing the environment. Inactive contexts’ variables are not resolved. Named contexts in the CLI require their own password reference or key/agent; they do not fall back to a shared `DEVKIT_SFTP_PASSWORD`.
+
+SFTP verifies host keys: use a trusted `knownHostsPath` or independently verified `hostFingerprint`. Keep `.vscode/sftp.json` out of Git if it contains credentials. Config can also use separate SSH keys, passphrases, agent settings and jump-host configuration per context. Existing single-object and array configurations still work; the named-context format above is recommended when connections share a local folder. Legacy `profiles` inherit their parent settings; use independent contexts when you need complete separation.
+
+### Transfer, edit and compare remote files
+
+| Task | How to use it |
 | --- | --- |
-| API debugger | VS Code editor and shared CLI runner |
-| JSON formatter | Format, minify, validate, and undo without rounding large numbers |
-| Comparer | Pasted text, two files, Git revisions, staged changes, and working-tree changes |
-| CI/CD pipeline | Python CLI and VS Code tasks: AI review, unit/function/integration tests, human UAT, branch promotion |
-| Agent integration | Codex and Claude Code plugin with a self-contained project configuration skill |
-| SFTP / FTP | Integrated upstream implementation, remote explorer, profiles, transfers, sync, watchers, Git uploads and shared terminal engine |
-| Database tools | Upstream reference and optional local checkout |
+| List remote files | Expand the selected context in **SFTP Remote Explorer**, or choose **List** in the SFTP menu. |
+| Upload | Select files/folders in VS Code Explorer, right-click and choose the SFTP upload action. Active-file and project upload actions are also in the SFTP menu. |
+| Download | Select a file/folder in Remote Explorer and choose **Download**. The local destination is inside that context’s local folder. |
+| Edit a remote file | Use **Edit in Local** in Remote Explorer, edit the downloaded file, then upload it. Enable `uploadOnSave` only if you want saving to upload automatically. |
+| View without editing | Use **View Content** from the remote file menu. |
+| Compare with remote | Choose the SFTP **Diff** action for a local file to open VS Code’s diff editor. |
+| Create or delete | Use **Create File**, **Create Folder**, or **Delete Remote** from the SFTP menu or remote context menu. Select the destination when prompted. |
+| Synchronize | Choose **Sync Local → Remote**, **Sync Remote → Local**, or **Sync Both Directions**. Set `syncOption` within the selected context. `delete: true` can remove destination-only files. |
+| Upload Git changes | Use **Upload Changed Files** for staged/working-tree changes, or **Upload File Changed** to select a commit’s changed files. Review deletions before confirming. |
+| Watch local changes | Set `watcher.files`, `watcher.autoUpload`, and optionally `watcher.autoDelete` inside the context. Saving its configuration recreates the watcher. |
+| Connect with SSH | Choose the SSH terminal action for the selected SFTP server; requires your system SSH client. |
+| Stop or troubleshoot | Choose **Cancel All Transfers**, **Show Output**, or Remote Explorer’s refresh button. |
 
-## Install the VS Code extension
+**Force Upload/Download** bypass ignore filtering. **Upload to All Profiles** addresses legacy profiles inside the active context; it never means all independent contexts. Use a disposable folder before enabling automatic deletion. FTP file creation and destructive FTP sync-down are blocked where FTP cannot provide the required safety guarantees; use SFTP for those operations. [Full command inventory and protocol limits](https://github.com/ng-jk/my-tools-kit/blob/developement/docs/sftp.md).
 
-Build with Node.js 20+, Python 3.11+, and Git:
+### FTP/SFTP from a terminal
 
-```sh
-git clone https://github.com/ng-jk/my-tools-kit.git
-cd my-tools-kit
-npm ci
-npm test
-npm run check
-python scripts/build.py
-npm run package
-code --install-extension dist/development-tools-kit.vsix
-```
-
-Or use **Extensions → Install from VSIX…** and select the file in `dist/`.
-
-VS Code 1.96 or newer is required. SFTP runtime dependencies are bundled into the extension; npm is used during development and packaging. Their license notices are included in the VSIX. Generated VSIX/ZIP files, dependency caches, local configuration state, and upstream checkouts are excluded from source control. Build packages locally; this repository push does not create a Marketplace listing or a GitHub Release.
-
-Click the **Development Tools Kit** toolbox icon in the Activity Bar to see the list of tools. Choose a tool there or use its command-palette entry. For development, open this toolkit folder directly and press F5 using the included launch configuration.
-
-## SFTP / FTP
-
-SFTP is now built into this extension from the requested `ng-jk/vscode-sftp` source. Choose **SFTP / FTP** in the toolkit sidebar to see its functions, and use **SFTP Remote Explorer** to browse servers. Existing `.vscode/sftp.json` files remain compatible. Use **Config** to enter your server details; passwords can be prompted and need not be stored in Git.
-
-See the [complete SFTP feature and command inventory](docs/sftp.md), configuration examples, CLI equivalents, and test limits. The original notices and attribution are retained in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
-
-## Text, file and Git comparison
-
-Run **Development Tools Kit: Compare Text / Open Text Tools**, or choose **Text & JSON tools** from the API workspace. No open project is needed for pasted text or JSON.
-
-- Paste into Original and Modified, or use each side's **Paste** / **Load file** buttons. The Paste button handles long clipboard contents directly. Counts show characters and lines.
-- Press **Compare texts** or **Ctrl/Cmd+Enter** to open immutable snapshots in VS Code's native diff editor. Use its change arrows, search, inline/side-by-side toggle, and unchanged-region controls. Return to the tools tab to edit or swap the inputs.
-- Optional normalization formats JSON, normalizes line endings, trims surrounding spaces, or ignores case. Source files remain unchanged. The native diff viewer also respects your VS Code diff settings; disable its Ignore Trim Whitespace option when inspecting whitespace-only changes.
-- **Compare Two Files** opens a file picker. You can also select two files in Explorer and use its Development Tools Kit comparison command. Text is compared as snapshots. Binary/non-UTF files show sizes, SHA-256 hashes, byte-for-byte identity and a hex excerpt around the first difference; this is not a structural PDF/image/Office-document comparison.
-- Right-click in an editor for **Compare Editor or Selection with Clipboard**.
-
-For Git, run **Compare Git Revisions** or open the **Git changes** tab:
-
-1. Select a workspace repository or browse to another repository.
-2. Set the original and modified revisions using commit hashes, branches, tags, or expressions such as `HEAD~1`. Recent commits are available in the input suggestions.
-3. Use `WORKTREE` on the right for tracked local changes plus untracked files, or `INDEX` for staged changes.
-4. Show changed files, filter the list, and select a file. Renames compare the old and new paths automatically; additions/deletions use an empty side.
-5. Expand **Compare specific files** to choose different paths independently at either revision, even if they are not in the changed-file list.
-
-Git ownership checks remain enabled. If Git reports dubious ownership, inspect the repository and explicitly configure Git trust for that exact path before comparing it. The toolkit never adds repositories to `safe.directory` automatically and disables filesystem monitor hooks for comparison subprocesses. Git reads local snapshots only: it does not fetch, checkout, stage, commit, or modify files. Git must be installed. Comparisons support up to 20 MiB per side; UTF-8 and BOM-tagged UTF-16 are decoded as text. Working-tree symlinks and submodule directories are not followed. Close older diff tabs to release snapshot memory. Pasted text and snapshots are session-local, are not logged or sent to a server, and are not restored after restarting VS Code.
-
-## JSON formatter
-
-Run **Open JSON Formatter** or select its tab. Paste/load JSON, choose two spaces, four spaces or tabs, then **Format**, **Minify**, or **Validate**. Copy, save, open the result in an editor, or send it to either comparison side. **Undo tool edit** restores the preceding tool result. Invalid input is retained with a syntax error message.
-
-Formatting preserves original number tokens (including integers beyond JavaScript's safe range), exponent notation, string escapes, key order, and duplicate keys. It changes whitespace only. It accepts strict JSON, not JSON-with-comments or trailing commas.
-
-**Format JSON Document or Selection** formats the active selection, or the whole editor if nothing is selected, as one undoable editor edit. The formatter supports input up to 20 MiB, output up to 40 MiB characters, and 256 nesting levels.
-
-## API debugger
-
-- HTTP/HTTPS requests with headers, query parameters, JSON, text, form, multipart, and binary bodies.
-- Basic, bearer, API-key, and OAuth 2 client-credentials authentication.
-- Environment files, nested variables, secret references, UUIDs and timestamps.
-- GUI-built assertions, trusted pre/post scripts, response extraction, and sequential collection runs.
-- Response status, timing, headers, JSON/text, test results, logs, and binary downloads.
-- Same-origin redirects, host-only cookies, TLS CA/client certificates, cancellation, timeouts, and response limits.
-- Native collection JSON, partial Postman/Thunder Client import, OpenAPI endpoint import, and a cURL template.
-- CLI runs with JSON and JUnit reports and nonzero exit codes on failures.
-
-Use **Store API Secret** to save a value in VS Code SecretStorage, then reference `{{secret.NAME}}`. The CLI uses `{{env.NAME}}` from process environment variables. Environment values can be loaded/saved separately; use `*.local.json` for credentials and keep those files out of Git. Collection variables are saved with the collection.
-
-Try the local demo in two terminals:
+The commands below run from a source checkout with Node.js 20+, `npm ci` and `npm run build:sftp`. VS Code uses the bundled version of the same engine.
 
 ```sh
-node examples/server.js
+node cli.js sftp config /path/to/project
+node cli.js sftp profiles /path/to/project
+node cli.js sftp list /path/to/project --context development
+node cli.js sftp upload /path/to/project src/app.js --context development
+node cli.js sftp download /path/to/project src/app.js --context staging
+node cli.js sftp sync-up /path/to/project --context development
+node cli.js sftp diff /path/to/project src/app.js --context development
+node cli.js sftp watch /path/to/project --context development
+node cli.js sftp --help
 ```
+
+Paths are relative to the context’s local/remote roots. `--context` selects only that invocation and leaves `activeContext` unchanged. Use `--yes` only for intended destructive operations; Ctrl+C cancels/disconnects.
+
+## API Debugger
+
+### Send your first request
+
+1. Choose **API Debugger** from the toolbox.
+2. Click **＋** to add a request; give it a name, select **GET**, and enter your endpoint URL.
+3. In **Headers & query**, enter JSON objects, for example headers `{"Accept":"application/json"}` and query `{"page":"1"}`.
+4. Click **Send**. Read status and duration above **Response**, then switch between **Body**, **Headers**, **Tests**, and **Logs**. Use **Cancel** to stop a pending request.
+5. Click **Save** under Collection to keep your requests. **Save response** writes the response to a file.
+
+### Bodies and authentication
+
+For POST/PUT/PATCH, open **Body**, choose **JSON**, and enter a JSON object. Other choices accept text/XML/GraphQL, URL-encoded form objects, multipart field arrays, or a project-relative binary file path. Choose **None** when no body is needed.
+
+Open **Auth**, select a method, and enter the JSON shown by its hint:
+
+| Method | Example fields |
+| --- | --- |
+| Bearer | `{"token":"{{secret.TOKEN}}"}` |
+| Basic | `{"username":"user","password":"{{secret.PASSWORD}}"}` |
+| API key | `{"name":"X-API-Key","value":"{{secret.KEY}}","in":"header"}` |
+| OAuth 2 client credentials | `{"tokenUrl":"https://example.com/token","clientId":"client","clientSecret":"{{secret.CLIENT_SECRET}}","scope":"read"}` |
+
+Click **Store secret securely** to save a named secret in VS Code SecretStorage. Use `{{secret.NAME}}` in the request. For reusable values, enter an environment JSON object such as `{"baseUrl":"https://example.com"}` and use `{{baseUrl}}` in URLs. **Load env / Save env** manage environment files; keep credential files local and out of Git.
+
+### Tests, collections and imports
+
+- Open **Tests** and add assertions with the controls, then send the request and inspect the **Tests** response tab.
+- Add multiple requests with **＋**, save the collection, and choose **Run collection** to run it sequentially. Use **Duplicate**, **Delete request**, and the request search to organize it.
+- Use **Import / Open** for native collections, supported Postman/Thunder Client data, or OpenAPI endpoints. Inspect import warnings; scripts/assertions may not migrate completely. **Export Postman** and **Copy cURL template** are partial exports.
+- In **Advanced**, set timeout, redirects, response extraction and TLS files as needed. Extraction entries such as `[{"variable":"id","path":"data.id"}]` make response values available to later requests.
+- **Scripts** supports trusted pre/post scripts when explicitly enabled. Scripts run with local process privileges; only enable your own trusted code.
+
+### Run the same request in a terminal
+
+Use **Save request for CLI**, then run from a toolkit source checkout:
 
 ```sh
-node cli.js run examples/collection.json --json dist/results.json --junit dist/results.xml
+node cli.js send request.json --env environment.local.json --out response.json
+node cli.js run collection.json --json results.json --junit results.xml
 ```
 
-Import `examples/collection.json` in the editor to use the same requests.
+CLI secrets can use `{{env.NAME}}`. Collection reports return a failing exit code for failed assertions. Saved single-request responses may contain sensitive data. Add `--allow-scripts` only when you intend to run trusted scripts.
 
-Use **Save request for CLI** in the editor to create a single request JSON object. `node cli.js send request.json --env environment.local.json --out response.json --download body.bin` exposes response headers, body, assertions, and timing from the same executor as the UI. Ctrl+C cancels execution. Single-request output intentionally includes the response and can contain secrets; keep saved debug output private. `node cli.js curl request.json` produces the same partial cURL template as the editor. **Export Postman** and `node cli.js export collection.json --out postman.json` use the same exporter and compatibility warnings.
+This is not full Thunder Client parity: interactive OAuth, Digest/NTLM/AWS auth, proxies, WebSockets/gRPC and complete script migration are not implemented.
 
-Trusted scripts require the editor checkbox or CLI `--allow-scripts`. They run in a time-limited worker with local process privileges, not a security sandbox. Only run scripts you trust. Reports omit response bodies, headers, variable values, raw errors and script logs to avoid copying credentials into CI artifacts.
+## JSON Formatter
 
-## CI/CD configurator
+1. Choose **JSON Formatter** from the toolbox.
+2. Paste JSON or load a file. Choose two spaces, four spaces, or tabs.
+3. Click **Format** for readable JSON, **Minify** for compact JSON, or **Validate** to check syntax.
+4. Copy/save the result, open it in an editor, or send it to either comparison side. **Undo tool edit** restores the preceding tool result.
 
-Run **Development Tools Kit: Configure CI/CD** in VS Code. Each menu action launches the same Python entry point as the terminal and exposes its output and exit status in a VS Code task. On Windows use `py -3` if `python` is unavailable; alternatively set `DEVKIT_PYTHON` or the VS Code `devkit.pythonPath` setting to your interpreter.
-
-```sh
-python pipeline.py init
-python pipeline.py status
-python pipeline.py marketplace-check
-python pipeline.py check
-# After committing changes to developement:
-python pipeline.py test --push
-# Only after personally completing interface acceptance for that exact commit:
-python pipeline.py accept-uat --commit <sha> --reviewer "Your name" --note "Actual UAT checks completed"
-# Automatic publication follows UAT in this repo. Retry a failed publication with:
-python pipeline.py publish
-```
-
-Branch flow is **developement → test → deployment → main**. `init` creates missing local branches from `main`; it never overwrites existing branches. `check` runs architecture, unit, function, integration, and package checks on current changes without producing release evidence. `test` pins the committed development SHA in a temporary detached worktree, installs locked dependencies, runs those gates plus AI review, and retains the report and build artifacts. `--push` also updates the remote test branch.
-
-Configuration is checked in as `.devkit-pipeline.json`. Commands are argument arrays, executed without a shell; `{python}` selects the interpreter running the pipeline. Required command groups are `prepare`, `architecture`, `unit`, `function`, `integration`, and `build`. Keep actual test commands in every group. The default AI reviewer is the authenticated Codex CLI; set `reviewer` to `claude` to use Claude Code. Both run from a normal terminal. AI review is real and required: missing authentication, missing executables, malformed results, rejection, and high/critical findings fail the gate.
-
-`publish` requires a clean checkout, matching local/remote main, a passing test report, and your UAT acceptance bound to that report and exact SHA. It pushes the candidate to `deployment`, reruns all gates, and only then fast-forwards `main`. Failure leaves main unchanged. No force pushes or gate-skipping options are provided. Development/test/deployment branches are retained; your current checkout remains on development. Git authentication retries use existing credentials for at most three attempts and verify the remote after an uncertain push.
-
-Reports, retained VSIX/ZIP artifacts with SHA-256 hashes, UAT records, and an operation lock live under the Git common directory's `devkit/` folder. `status` prints its location. Rerunning test invalidates prior UAT. Evidence is local and authenticated to detect edits; it is not a security boundary against the same OS user or direct Git pushes. Another machine must retest and record acceptance. If a process crashes, verify no pipeline is running before removing its stale `pipeline.lock`.
-
-Marketplace publication is configured for `NGJUNKAI.development-tools-kit`. After deployment gates pass, the pipeline uploads the exact VSIX retained from your UAT-approved test run, verifies the published version and its extension payload, and only then advances main. The separately built agent-plugin ZIP is not uploaded to the VS Code Marketplace. No GitHub Release or other hosting target is configured. The old generated Actions workflow has been removed; legacy inspect/plan/apply/rollback commands are no longer available.
-
-## Marketplace setup and recovery
-
-Install [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli-windows), then sign in locally with `az login --tenant <tenant-id> --allow-no-subscriptions`. Your Entra identity needs Contributor or Owner access on the Marketplace publisher. Run `npm ci` in the toolkit root to install its locked `vsce` dependency. `python pipeline.py marketplace-check` or **Verify Marketplace access** in VS Code checks authentication and publisher access without uploading. This check alone does not prove write permission; upload additionally requires Contributor/Owner. Microsoft may periodically require interactive login/MFA again. No PAT, client secret, or GitHub Actions is needed for this PC-based workflow.
-
-`.devkit-pipeline.json` contains only public Marketplace configuration: `publisher`, `tenantId`, and `artifact`. PAT environment overrides are removed for publishing subprocesses; Entra login caches stay outside Git. The standard Windows Azure CLI installation directory is discovered even when the desktop app has an older PATH. Do not put tokens or Azure configuration caches in the repository. The extension's version must be committed before testing; publish never bumps it or rebuilds the approved VSIX.
-
-Before upload, the pipeline checks for the exact Marketplace version. Matching extension files allow recovery without another upload; different contents block main promotion. Marketplace may add signatures to the outer VSIX container, so remote verification compares the complete `extension/` payload and identity rather than the whole ZIP hash. Local UAT evidence still checks the exact ZIP SHA-256. Verification is limited to 100 MiB compressed and unpacked packages.
-
-An authenticated local receipt is written before upload. If upload times out, or Microsoft scanning/indexing is pending, main stays unchanged. Run publish again to check the existing attempt; it will not blindly reupload. If the version remains absent, inspect **Manage Publishers → Extensions** for validation errors. Keep the receipt; either resolve the pending Marketplace operation or commit a new version and repeat test/UAT. Once Marketplace succeeds, a failed main push can be retried without duplicate publication. If the remote main push succeeded but the local update failed, publish can reconcile local main from its recorded deployment and UAT evidence. Publication cannot be rolled back automatically when Git fails afterward.
-
-Read [what each CI/CD action does and its project prerequisites](docs/pipeline-usage.md).
-
-## Shared layers and terminal tools
-
-| Layer | JavaScript product | Python pipeline |
-| --- | --- | --- |
-| Data | `src/data`: files, HTTP, Git subprocesses, script workers | `cicd/data`: Git, processes, configuration, evidence, AI CLI adapters |
-| Logic | `src/logic`: API execution, assertions, JSON and comparison behavior | `cicd/logic`: test, UAT, promotion policies and orchestration |
-| Interface | `src/interface`: VS Code and terminal adapters | `cicd/interface`: terminal parsing and JSON output |
-
-Logic never imports VS Code or the interface layer. Data never imports logic or interface. `python scripts/architecture.py` checks these boundaries. Root entry points and `lib/` modules are compatibility adapters. The core suites run without opening VS Code or a browser; interface UAT is performed by you.
+Invalid input is retained with an error. Formatting preserves large numbers, key order, duplicate keys and number spelling; it changes whitespace only. It accepts strict JSON, not comments or trailing commas. To format an existing editor, run **Format JSON Document or Selection** from the Command Palette. It formats the selection, or the entire document if nothing is selected.
 
 ```sh
 node cli.js json input.json --indent 4 --out formatted.json
 node cli.js json input.json --minify
 node cli.js json input.json --validate
-node cli.js compare original.txt modified.txt --line-endings
+```
+
+## Compare two long pastes or two files
+
+1. Choose **Compare Text / Files**.
+2. Paste text into **Original** and **Modified**, or use each side’s **Paste / Load file** buttons. Use **Swap** if the sides are reversed.
+3. Optionally normalize JSON/line endings or ignore case/outer whitespace.
+4. Click **Compare texts** or press **Ctrl/Cmd+Enter**. VS Code opens a native diff editor with immutable snapshots.
+5. Use the diff editor’s next/previous change arrows, search and inline/side-by-side controls. Return to the tools tab to change inputs and compare again.
+
+For files, run **Compare Two Files** and pick both files, or select two files in Explorer and use its comparison command. To compare a selected editor passage with your clipboard, right-click and choose **Compare Editor or Selection with Clipboard**. Source files stay unchanged. Pasted text is session-local and is not restored after restarting VS Code.
+
+Binary/non-UTF files display size, SHA-256 identity and a hex excerpt; this does not visually compare PDFs/images/Office files. Text comparison supports up to 20 MiB per side. Check the native diff editor’s **Ignore Trim Whitespace** setting when whitespace matters.
+
+```sh
+node cli.js compare before.txt after.txt
+node cli.js compare before.txt after.txt --ignore-case --line-endings
+```
+
+CLI comparison returns 0 for equal, 1 for different, and 2 for an execution error. `compare - -` accepts a JSON object with `left` and `right` strings on stdin for long pastes.
+
+## Compare any two Git revisions
+
+1. Choose **Compare Git Revisions**, then **Select repository…**.
+2. Enter a branch, tag, commit hash, or expression such as `HEAD~1` on each side. For example, original `HEAD~1`, modified `HEAD` compares the last commit.
+3. Use **WORKTREE** on the right for local tracked/untracked changes or **INDEX** for staged changes.
+4. Click **Show changed files**, filter the list, then click a file to see its diff. Renames use the old and new paths; additions/deletions have an empty side.
+5. Expand **Compare specific files** to compare different file paths from the two revisions.
+
+No checkout is needed. The tool does not fetch, stage, commit or modify your files. If Git reports dubious ownership, verify that you trust the repository and configure Git’s `safe.directory` for that exact path yourself.
+
+```sh
 node cli.js git-changes . HEAD~1 HEAD
-node cli.js git-history .
-node cli.js git-files . HEAD
 node cli.js git-compare . HEAD~1 HEAD old/path.txt new/path.txt
-node cli.js pipeline status .
+node cli.js git-compare . HEAD WORKTREE src/app.js src/app.js
 ```
 
-`json -` reads stdin. `compare - -` reads a JSON object with `left` and `right` strings from stdin, supporting two long pastes without command-line length limits. File comparison supports `--json`, `--ignore-case`, `--trim-whitespace`, and `--line-endings`. `git-compare` accepts `INDEX` or `WORKTREE` on the right and `-` for a missing file. Compare outputs include both snapshots and `identical`; exit 0 means equal, exit 1 means different, and exit 2 means execution failed. Other tools and pipeline commands use exit 0 for success and nonzero for failure. Clipboard buttons, undo, and native diff navigation are UI interactions around these same core functions.
+## CI/CD Pipeline
 
-For mixed input, `compare - file.txt` and `compare file.txt -` read raw text/bytes from stdin for the `-` side. Git comparison fails if neither selected path exists, so a path typo cannot appear as a successful equality result.
+1. Open the project you want to test/deploy. Choose **CI/CD Pipeline** from the toolbox.
+2. Set **Development Tools Kit: Python Path** (`devkit.pythonPath`) if Python is not discovered.
+3. Configure that project’s `.devkit-pipeline.json` with its actual architecture, unit, function, integration and build commands. Each project needs its own configuration; installing this extension does not automatically configure a website deployment.
+4. Use **Status** to inspect branches and evidence, then run the check/test actions. Each action opens a VS Code task showing the same Python CLI output and exit status as terminal execution.
+5. Commit development work before **Test**. After automated tests and AI review pass, install the retained build and perform your interface acceptance checks.
+6. Use **Approve interface and finish release** only after accepting that exact candidate. If `autoPublishAfterUat` is true, deployment checks and publication start automatically; otherwise invoke **Publish** separately.
 
-## Codex and Claude Code
-
-`plugins/pipeline-configurator` contains both host manifests and a self-contained `configure-pipeline` skill. `python scripts/build.py` synchronizes the Python runtime and shared skill and writes `dist/pipeline-configurator-0.3.1.zip`.
-
-Python is required to run the pipeline. The plugin includes no third-party Python dependencies. Its skill configures actual project CLI checks and project-local agent integration, preserves existing customizations, and never grants itself global permissions or fabricates UAT approval.
-
-For Claude Code local testing:
+The branch flow is **developement → test → deployment → main**. `test` records the candidate on the test branch and runs gates; a test branch alone is not evidence of a passing build. `publish` reruns deployment checks, uploads the approved artifact when Marketplace is configured, verifies it publicly, then promotes main. Failed gates leave main unchanged. AI review uses an installed/authenticated Codex or Claude CLI and blocks release if unavailable or rejected. The user performs interface acceptance; the pipeline never fabricates it.
 
 ```sh
-claude --plugin-dir ./plugins/pipeline-configurator
+python pipeline.py init
+python pipeline.py status
+python pipeline.py check
+python pipeline.py test --push
+python pipeline.py accept-uat --commit <tested-sha> --reviewer "Your name" --note "Actual checks completed"
+python pipeline.py publish
 ```
 
-For project-local discovery, copy `plugins/pipeline-configurator/skills/configure-pipeline` to `.agents/skills/configure-pipeline` for Codex or `.claude/skills/configure-pipeline` for Claude Code. Open a new agent session to discover it. The skill describes configuration migration and setup for another repository; the UI expects its `.devkit-pipeline.json` to exist.
+These examples run from the toolkit checkout; `node cli.js pipeline status /path/to/project` targets another configured project. The pipeline runs locally, uses Python orchestration and your project’s CLI tools, and requires the PC/terminal to remain running. It uses no GitHub Actions.
 
-The plugin has been statically validated; live Claude Code/Codex host loading has not been exercised. See the [Codex plugin packaging documentation](https://developers.openai.com/plugins/build/plugins) and [Claude Code plugin reference](https://code.claude.com/docs/en/plugins-reference) for host installation options.
+### Publishing this extension
 
-## Verification
+The repository is configured for publisher `NGJUNKAI`. Authenticate Azure CLI locally using your Entra tenant and a publisher Contributor/Owner identity. **Verify Marketplace access** (or `python pipeline.py marketplace-check`) checks access without uploading. Publication uses local `vsce --azure-credential`; credentials stay in the local Azure login cache, outside Git. VS Code clients receive Marketplace releases according to their extension auto-update settings.
 
-```sh
-npm test
-python -m unittest discover -s tests/pipeline -v
-python scripts/architecture.py
-npm run check
-python scripts/build.py
-npm run package
-```
+[Detailed build, release and recovery instructions](https://github.com/ng-jk/my-tools-kit/blob/developement/docs/development.md).
 
-`npm run test:interface` and `npm run test:ui` are optional developer diagnostics, excluded from release gates. `test:ui` uses Playwright with installed Microsoft Edge (or `DEVKIT_BROWSER=chrome`) and a simulated VS Code bridge; neither substitutes for your acceptance testing.
+### Codex / Claude Code pipeline plugin
 
-The automated suites cover API wire behavior, JSON precision, long pastes, Git snapshots, CLI exit codes, failed release gates, evidence tampering, stale UAT, and a complete branch-promotion simulation using an isolated local bare remote and a fixture reviewer. Fixture reviewers are only for isolated tests; production test/publish commands always invoke the configured real AI CLI.
+The separate `pipeline-configurator-0.3.1.zip` build contains the shared Python runtime and `configure-pipeline` skill; it is not installed by the VS Code extension. In a source checkout, `python scripts/build.py` builds it. For Claude Code local testing, run `claude --plugin-dir ./plugins/pipeline-configurator`. Project-local skill installation and verification limits are covered in the [development guide](https://github.com/ng-jk/my-tools-kit/blob/developement/docs/development.md). Ask the agent to configure your project’s actual CLI checks; the skill does not grant global permissions or approve UAT.
 
-## Compatibility and limits
+## Database tools and licensing
 
-This release is usable, but **does not yet provide complete Thunder Client parity**. Digest/NTLM/AWS authentication, interactive OAuth flows, proxy configuration, WebSockets/gRPC, full migration of scripts and assertions, cookie domain sharing, rich code generators, and MCP API tools are not implemented. Folder defaults execute in the CLI; the editor flattens imported folders and warns before saving. cURL and Postman export are partial and identify their limitations.
+Database Client is currently an upstream reference, not a bundled database UI. This extension does not yet provide database connections or query execution. SFTP is bundled from the MIT-licensed vscode-sftp source with the toolkit’s data/logic/interface separation.
 
-The pipeline is an explicitly invoked local CLI, not a continuously running server. Keep the terminal open until it completes. Live AI review needs installed/authenticated Codex or Claude Code; remote publication needs origin push access. Python orchestrates native project test/build CLIs; the VS Code product itself remains JavaScript.
-
-## Repository references
-
-Upstream revision references are recorded in `docs/repositories.json`. Optional original checkouts live in `repositories/vscode-database-client` and `repositories/vscode-sftp`, retain their own histories/remotes, and are ignored by this repository. SFTP source has now been imported into the toolkit layers and is bundled; its revision and mapping are in `vendor/sftp/provenance.json`. Database Client remains an unbundled reference.
-
-To restore the optional folders used by `development-tools-kit.code-workspace` after cloning:
-
-```sh
-git clone https://github.com/cweijan/vscode-database-client.git repositories/vscode-database-client
-git clone https://github.com/ng-jk/vscode-sftp.git repositories/vscode-sftp
-```
-
-For the exact reviewed revisions, check out the commit IDs recorded in `docs/repositories.json` inside the respective clones. You can also open the toolkit root directly without cloning either upstream repository.
-
-- [Database Client](https://github.com/cweijan/vscode-database-client): upstream states this repository is the early source and newer versions are closed source.
-- [SFTP plus](https://github.com/ng-jk/vscode-sftp): requested repository, checked out at version 1.16.3.
-
-Architecture and acceptance details are in `api-debugger/README.md`, `pipeline-configurator/README.md`, and `docs/roadmap.md`.
-
-Resolve Git change paths against the repository root before mapping into the selected SFTP context. Nested workspaces exclude outside-context changes and cannot mistake modified files for remote deletions.
-
-Detect filename case behavior from the actual local directory rather than the operating system, preserving distinct names on case-sensitive Windows/macOS volumes. Reconcile SCM staged and working-tree selections against current local files before planning uploads or deletions.
-
-Preserve incoming SSH tunnel sockets and already-resolved private keys through intermediate jump-host connections; the nested connection regression covers every hop without replacing connect().
-
-SFTP menu file actions now resolve an active editor or offer target selection without Explorer arguments. Remote actions can browse remote files, creation prompts for a destination context, and cancelled selection leaves files unchanged.
-
-Jump-host destinations use the shared authentication resolver, including UI/terminal password prompts and cancellation when final-hop credentials are omitted.
-
-Populate new directories with temporary owner write/search permission, then verify their final permissions after transfers settle, including failure cleanup and shared concurrent directory use. Save relevant dirty editors before upload/sync comparison and stop when saving fails.
-
-Directory permission overrides stop at existing ancestors during recursive creation; parent directories outside the selected destination retain their original access permissions.
-
-Resolve local ignore paths using directory containment rather than string prefixes, preserving ignored remote-only files during destructive sync when local and remote roots share a name prefix.
-
-Ignore evaluation now receives the filesystem side explicitly, so anchored patterns also protect remote files when local and remote pathnames are identical or nested. Remote Explorer all-profile uploads translate their URI into the local selection before resolving each profile context.
-
-### Automatic publishing after interface acceptance
-
-This repository sets `autoPublishAfterUat: true` in `.devkit-pipeline.json`. After the test gate passes, **CI/CD Pipeline → Approve interface and finish release** (or CLI `accept-uat`) records your real acceptance and automatically runs the final release phase: deployment checks and AI review, local Entra-enabled vsce publication, public package verification, then main promotion. No separate publish command is needed. Failed checks, unavailable AI review or missing acceptance block publication. A failed upload can be retried with `publish`; credentials remain outside Git. Commit each new package version before testing it. VS Code clients need extension auto-updates enabled to receive Marketplace updates automatically.
-
-Scope remote-picker directory caches by configuration identity as well as pathname, preventing navigation between servers with identical remote roots from retaining the previous server selection.
+Licensed under [MIT](LICENSE). See [third-party notices](THIRD-PARTY-NOTICES.md) and [release notes](CHANGELOG.md).

@@ -88,8 +88,7 @@ function watchWorkspace({
     }
 
     if (isConfigFile(uri)) {
-      onDidSaveSftpConfig(uri);
-      return;
+      return onDidSaveSftpConfig(uri);
     }
 
     onDidSaveFile(uri);

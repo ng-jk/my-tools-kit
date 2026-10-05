@@ -194,3 +194,7 @@ Resolve local ignore paths using directory containment rather than string prefix
 Ignore evaluation now receives the filesystem side explicitly, so anchored patterns also protect remote files when local and remote pathnames are identical or nested. Remote Explorer all-profile uploads translate their URI into the local selection before resolving each profile context.
 
 Scope remote-picker directory caches by configuration identity as well as pathname, preventing navigation between servers with identical remote roots from retaining the previous server selection.
+
+## Independent named contexts
+
+Use the `contexts` object and `activeContext` selector shown in the [user guide](../README.md#separate-ftpsftp-contexts). Each entry owns all connection and transfer settings. `SFTP: Select Context` reloads the selected service and watchers; CLI `--context NAME` overrides selection for one invocation only. Unlike legacy profiles, contexts inherit no connection credentials. Multiple contexts may share the same local root because only the selected one is active in VS Code.

@@ -128,7 +128,38 @@ export function initialConfig() {
   return {name:'My Server', host:'localhost', protocol:'sftp', port:22, username:'username', remotePath:'/project',
     uploadOnSave:false, useTempFile:false, openSsh:false, ignore:[...defaultConfig.ignore]};
 }
-export function normalizeConfigurations(value: any, environment: {[key:string]:string|undefined}) {
+export function contextNames(value: any): string[] {
+  if (!value || Array.isArray(value) || !Object.prototype.hasOwnProperty.call(value, 'contexts')) return [];
+  if (!value.contexts || typeof value.contexts !== 'object' || Array.isArray(value.contexts) || !Object.keys(value.contexts).length)
+    throw new Error('contexts must contain at least one named configuration');
+  const names = Object.keys(value.contexts);
+  for (const name of names) {
+    const config = value.contexts[name];
+    if (!name.trim() || !config || typeof config !== 'object' || Array.isArray(config)) throw new Error('Each context must be a named configuration object');
+  }
+  if (Object.keys(value).some(key => !['contexts', 'activeContext', '$schema'].includes(key)))
+    throw new Error('Put all connection settings inside each context; shared connection settings are not supported');
+  return names;
+}
+export function selectContext(value: any, name: string) {
+  if (!contextNames(value).includes(name)) throw new Error('Unknown context: ' + name);
+  return {...value, activeContext:name};
+}
+export function initialContexts() {
+  return {activeContext:'development', contexts:{development:{...initialConfig(), context:'.'}}};
+}
+export function normalizeConfigurations(value: any, environment: {[key:string]:string|undefined}, selectedContext?: string) {
+  const names = contextNames(value);
+  if (names.length) {
+    const name = selectedContext || value.activeContext;
+    if (!names.includes(name)) throw new Error('Choose an existing activeContext or pass --context NAME');
+    // Expand only the selected context: inactive contexts need no credentials.
+    value = {...value.contexts[name], name};
+  } else if (selectedContext) {
+    const choices = (Array.isArray(value) ? value : [value]).filter(c => c.name === selectedContext || c.context === selectedContext);
+    if (choices.length !== 1) throw new Error('Choose exactly one configuration with --context NAME');
+    value = choices[0];
+  }
   function expand(item: any): any {
     if(typeof item==='string') return item.replace(/\$\{env:([A-Za-z_][A-Za-z0-9_]*)\}/g,(_,key)=>{
       if(environment[key]===undefined)throw new Error('Missing environment variable: '+key);

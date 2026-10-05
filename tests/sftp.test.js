@@ -682,3 +682,41 @@ test('anchored ignores protect both sides when the remote pathname is nested ins
   fs.mkdirSync(path.join(remote,'folder'));fs.writeFileSync(path.join(remote,'folder','secret.txt'),'nested protected');fs.writeFileSync(path.join(remote,'folder','obsolete.txt'),'remove');
   await engine.operate(session,'delete','folder',{yes:true});assert.equal(fs.readFileSync(path.join(remote,'folder','secret.txt'),'utf8'),'nested protected');assert.equal(fs.existsSync(path.join(remote,'folder','obsolete.txt')),false);
 });
+
+
+test('named contexts isolate all connection settings, credentials and local/remote roots', async t => {
+  const {dir,local}=fixture(t);
+  const a=path.join(dir,'context-a'),b=path.join(dir,'context-b');fs.mkdirSync(a);fs.mkdirSync(b);
+  const raw={activeContext:'dev',contexts:{
+    dev:{context:'.',host:'dev-host',port:22,protocol:'local',username:'alice',password:'${env:DEV_PASSWORD}',remotePath:a.replaceAll('\\','/'),watcher:{autoUpload:true}},
+    prod:{context:'.',host:'prod-host',port:2121,protocol:'local',username:'bob',password:'${env:PROD_PASSWORD}',remotePath:b.replaceAll('\\','/')}
+  }};
+  const untouched=JSON.stringify(raw);
+  const dev=engine.normalizeConfigurations(raw,{DEV_PASSWORD:'dev-secret'})[0];
+  const prod=engine.normalizeConfigurations(raw,{PROD_PASSWORD:'prod-secret'},'prod')[0];
+  assert.equal(dev.password,'dev-secret');assert.equal(prod.password,'prod-secret');
+  assert.equal(prod.host,'prod-host');assert.equal(prod.port,2121);assert.equal(prod.username,'bob');assert.equal(prod.watcher,undefined);
+  assert.equal(JSON.stringify(raw),untouched);
+  assert.throws(()=>engine.normalizeConfigurations(raw,{},'missing'),/Choose/);
+  assert.throws(()=>engine.normalizeConfigurations({...raw,password:'shared'},{DEV_PASSWORD:'x'}),/inside each context/);
+  assert.deepEqual(engine.contextNames(raw),['dev','prod']);
+  assert.equal(engine.selectContext(raw,'prod').activeContext,'prod');assert.equal(raw.activeContext,'dev');
+  assert.throws(()=>engine.selectContext(raw,'missing'),/Unknown context/);
+  const first=engine.createSession(local,dev),second=engine.createSession(local,prod);
+  t.after(()=>{first.service.dispose();second.service.dispose();});
+  fs.writeFileSync(path.join(local,'context.txt'),'dev');await engine.operate(first,'upload','context.txt');
+  assert.equal(fs.existsSync(path.join(b,'context.txt')),false);
+  fs.writeFileSync(path.join(local,'context.txt'),'prod');await engine.operate(second,'upload','context.txt');
+  assert.equal(fs.readFileSync(path.join(a,'context.txt'),'utf8'),'dev');assert.equal(fs.readFileSync(path.join(b,'context.txt'),'utf8'),'prod');
+});
+
+test('CLI lists contexts without resolving secrets and selects only the requested context',t=>{
+  const {dir,local,remote}=fixture(t);
+  fs.mkdirSync(path.join(local,'.vscode'));
+  fs.writeFileSync(path.join(remote,'selected.txt'),'right target');
+  const raw={activeContext:'unavailable',contexts:{unavailable:{host:'bad',password:'${env:DEVKIT_ABSENT_TEST_SECRET}'},chosen:{protocol:'local',host:'local',username:'fixture',remotePath:remote.replaceAll('\\','/')}}};
+  fs.writeFileSync(path.join(local,'.vscode/sftp.json'),JSON.stringify(raw));
+  const run=(...args)=>spawnSync(process.execPath,['cli.js','sftp',...args],{cwd:path.resolve(__dirname,'..'),encoding:'utf8'});
+  const listing=run('profiles',local);assert.equal(listing.status,0,listing.stderr);assert.deepEqual(JSON.parse(listing.stdout).map(c=>c.name),['unavailable','chosen']);
+  const read=run('read',local,'selected.txt','--context','chosen');assert.equal(read.status,0,read.stderr);assert.equal(JSON.parse(read.stdout).results[0].result,'right target');
+});

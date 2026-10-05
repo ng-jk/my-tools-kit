@@ -1,5 +1,13 @@
 # Release notes
 
+## Unreleased — isolated FTP/SFTP contexts and usage guide
+
+- Added independent named FTP/SFTP contexts with per-context host/IP, port, credentials, local/remote paths, authentication and transfer settings. Contexts can share a local folder without overwriting one another.
+- Added SFTP: Select Context in the sidebar function menu and Command Palette. Switching saves the selection and reloads connections/watchers. CLI --context selects one context without changing the saved selection.
+- Resolve environment credentials only for the selected context; inactive contexts need no secrets. Named contexts do not use the CLI's shared password fallback.
+- Rewrote the Marketplace README as task-based instructions for each tool and moved maintainer details to docs/development.md.
+- Corrected FTP schema references for FTPS options.
+
 This file records implemented functionality and its verification limits. Extension and pipeline-plugin versions are independent.
 
 ## 0.5.0 — 2026-10-04
