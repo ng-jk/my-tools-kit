@@ -243,3 +243,5 @@ Ignore evaluation now receives the filesystem side explicitly, so anchored patte
 ### Automatic publishing after interface acceptance
 
 This repository sets `autoPublishAfterUat: true` in `.devkit-pipeline.json`. After the test gate passes, **CI/CD Pipeline → Approve interface and finish release** (or CLI `accept-uat`) records your real acceptance and automatically runs the final release phase: deployment checks and AI review, local Entra-enabled vsce publication, public package verification, then main promotion. No separate publish command is needed. Failed checks, unavailable AI review or missing acceptance block publication. A failed upload can be retried with `publish`; credentials remain outside Git. Commit each new package version before testing it. VS Code clients need extension auto-updates enabled to receive Marketplace updates automatically.
+
+Scope remote-picker directory caches by configuration identity as well as pathname, preventing navigation between servers with identical remote roots from retaining the previous server selection.

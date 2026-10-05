@@ -15,6 +15,7 @@ interface IFilePickerOption {
 
 interface FileListChildItem extends FileListItem {
   parentFsPath: string;
+  pickerRootId: number;
 }
 
 interface FileListItem {
@@ -105,7 +106,8 @@ async function showFiles<T extends FileListChildItem>(
   const fileSystem =
     typeof selectedValue.getFs === 'function' ? await selectedValue.getFs() : selectedValue.getFs;
 
-  const nextItems = fileLookUp[selectedPath];
+  const cacheKey = selectedPath === ROOT ? ROOT : JSON.stringify([selectedValue.pickerRootId, selectedPath]);
+  const nextItems = fileLookUp[cacheKey];
   if (nextItems !== undefined) {
     return showFiles(fileLookUp, selectedValue, nextItems, option);
   }
@@ -143,7 +145,7 @@ async function showFiles<T extends FileListChildItem>(
       );
     }
 
-    fileLookUp[selectedPath] = subItems;
+    fileLookUp[cacheKey] = subItems;
     return showFiles(fileLookUp, selectedValue, subItems, option);
   });
 }
@@ -152,7 +154,7 @@ export function listFiles<T extends FileListItem>(
   items: T[],
   option?: IFilePickerOption
 ): Promise<T & FileListChildItem | undefined> {
-  const baseItems = items.map(item => Object.assign({}, item, { parentFsPath: ROOT }));
+  const baseItems = items.map((item, pickerRootId) => Object.assign({}, item, { parentFsPath: ROOT, pickerRootId }));
   const fileLookUp = {
     [ROOT]: baseItems,
   };

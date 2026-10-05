@@ -192,3 +192,5 @@ Directory permission overrides stop at existing ancestors during recursive creat
 Resolve local ignore paths using directory containment rather than string prefixes, preserving ignored remote-only files during destructive sync when local and remote roots share a name prefix.
 
 Ignore evaluation now receives the filesystem side explicitly, so anchored patterns also protect remote files when local and remote pathnames are identical or nested. Remote Explorer all-profile uploads translate their URI into the local selection before resolving each profile context.
+
+Scope remote-picker directory caches by configuration identity as well as pathname, preventing navigation between servers with identical remote roots from retaining the previous server selection.

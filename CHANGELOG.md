@@ -6,6 +6,8 @@ This file records implemented functionality and its verification limits. Extensi
 
 Extension: **0.5.0**. Pipeline plugin: **0.3.1**.
 
+- Scope remote-picker directory caches by configuration identity as well as pathname, preventing navigation between servers with identical remote roots from retaining the previous server selection.
+
 - Enable automatic final publication after real interface UAT with `autoPublishAfterUat`. UI and CLI use the same Python release flow, retain all test/review gates, verify the Marketplace upload before main promotion, and refuse a changed candidate.
 
 - Ignore evaluation now receives the filesystem side explicitly, so anchored patterns also protect remote files when local and remote pathnames are identical or nested. Remote Explorer all-profile uploads translate their URI into the local selection before resolving each profile context.

@@ -202,3 +202,20 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
 
   } finally {extension?.deactivate();context.subscriptions.forEach(item=>item.dispose());Module._load=original;fs.readdir=nativeReaddir;}
 });
+
+test('remote picker keeps server identity when browsing equal paths on different servers',async()=>{
+  const {FileType}=require('../build/sftp/engine');
+  const compiled=require('esbuild').buildSync({entryPoints:[path.resolve('src/interface/sftp/helper/select.ts')],bundle:true,write:false,platform:'node',target:'node20',format:'cjs',external:['vscode','*.node','cpu-features'],logLevel:'silent'}).outputFiles[0].text;
+  for(const labels of [['Server A','..','Server B','file.txt'],['Server B','..','Server A','file.txt']]) {
+    const selectedServer=labels[2],queue=[...labels],listed=[];
+    const original=Module._load;const filename=path.resolve('tests/picker-fixture.js'),fixtureModule=new Module(filename,module);fixtureModule.filename=filename;fixtureModule.paths=module.paths;
+    try {
+      Module._load=function(id,...args){return id==='vscode'?{window:{showQuickPick:async items=>{const label=queue.shift();const selected=items.find(item=>item.label===label);assert.ok(selected,'Missing picker entry '+label);return selected;}}}:original.call(this,id,...args);};
+      fixtureModule._compile(compiled,filename);
+      const roots=['Server A','Server B'].map((name,index)=>({name,index,fsPath:'/srv/app',type:FileType.Directory,description:name,getFs:async()=>({list:async remotePath=>{listed.push(name);assert.equal(remotePath,'/srv/app');return [{fspath:'/srv/app/file.txt',type:FileType.File}];}})}));
+      const selected=await fixtureModule.exports.listFiles(roots);
+      assert.equal(selected.index,selectedServer==='Server A'?0:1);assert.equal(selected.description,'');assert.equal(selected.fsPath,'/srv/app/file.txt');
+      assert.deepEqual(listed,[labels[0],selectedServer]);assert.equal(queue.length,0);
+    } finally {Module._load=original;}
+  }
+});
