@@ -243,3 +243,5 @@ Select a context before transferring. “Active file” means the file open in y
 Database Client is currently an upstream reference, not a bundled database UI. This extension does not yet provide database connections or query execution. SFTP is bundled from the MIT-licensed vscode-sftp source with the toolkit’s data/logic/interface separation.
 
 Licensed under [MIT](LICENSE). See [third-party notices](THIRD-PARTY-NOTICES.md) and [release notes](CHANGELOG.md).
+
+Listing commands ask you to confirm the source and local overwrite destination before downloading a selected file or folder. Cancel leaves local content unchanged. **List All** also warns that ignore rules are bypassed.

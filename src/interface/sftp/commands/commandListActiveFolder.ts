@@ -1,5 +1,6 @@
 // Adapted from ng-jk/vscode-sftp (MIT); see THIRD-PARTY-NOTICES.md.
 import * as path from 'path';
+import {confirmListedDownload} from './confirmListedDownload';
 import { COMMAND_LIST_ACTIVEFOLDER } from '../../../data/sftp/constants';
 import { showTextDocument } from '../host';
 import { FileType, UResource } from '../../../logic/sftp/core/index';
@@ -39,15 +40,17 @@ export default checkCommand({
 
     const remoteUri = UResource.makeResource({fsPath:selected.fsPath, remoteId:ctx.fileService.id,
       remote:{host:config.host,port:config.port}}).uri;
+    const selectedCtx=handleCtxFromUri(remoteUri);
+    if(!await confirmListedDownload(selectedCtx,selected.type===FileType.Directory))return;
     if (selected.type !== FileType.Directory) {
-      await downloadFile(remoteUri);
+      await downloadFile(selectedCtx);
       try {
         await showTextDocument(handleCtxFromUri(remoteUri).target.localUri);
       } catch (error) {
         // ignore
       }
     } else {
-      await downloadFolder(remoteUri);
+      await downloadFolder(selectedCtx);
     }
   },
 });

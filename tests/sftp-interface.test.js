@@ -332,6 +332,17 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     let preview;
     vscode.window.showTextDocument=async uri=>{preview=await views.get('devkit.remoteExplorer').provideTextDocumentContent(uri,{});};
     await commands.get('devkit.sftp.viewContent')();assert.equal(preview,'remote preview');
+    fs.writeFileSync(path.join(root,'preview.txt'),'keep local changes');
+    const listConfirm=vscode.window.showInformationMessage;
+    for(const command of ['devkit.sftp.list','devkit.sftp.listAll','devkit.sftp.listActiveFolder']) {
+      const pickNames=command.endsWith('listActiveFolder')?['preview.txt']:['beta','preview.txt'];
+      vscode.window.activeTextEditor={document:{uri:URI.file(path.join(root,'preview.txt'))}};
+      vscode.window.showQuickPick=async choices=>choices.find(item=>item.label===pickNames.shift());
+      vscode.window.showInformationMessage=async message=>{assert.match(message,/beta-host/);assert.match(message,/preview.txt/);assert.match(message,/overwritten/);if(command.endsWith('listAll'))assert.match(message,/Ignore rules/);return undefined;};
+      await commands.get(command)();assert.deepEqual(errors,[]);
+      assert.equal(fs.readFileSync(path.join(root,'preview.txt'),'utf8'),'keep local changes');
+    }
+    vscode.window.showInformationMessage=listConfirm;
     const permanentConfirm=vscode.window.showInformationMessage;
     vscode.window.showInformationMessage=async message=>{assert.match(message,/beta-host/);assert.match(message,/preview.txt/);assert.match(message,/cannot be undone/);return undefined;};
     const previewItem=(await views.get('devkit.remoteExplorer').getChildren(betaRoot)).find(item=>path.basename(item.resource.fsPath)==='preview.txt');
