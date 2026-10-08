@@ -2,6 +2,7 @@
 
 ## Unreleased — automated UI/UX release gate
 
+- Confirm Edit in Local overwrites and distinguish folder planning from completed transfers in output.
 - Require explicit source/destination overwrite confirmation before List, List All, or List Active Folder downloads.
 - Reject duplicate local roots before registering configurations, support prototype-named path components, and distinguish acceptance-only actions from publishing.
 - Bind save/open automation to its original context, reject symlink retargeting and stale download approvals, identify overwrite targets, and serialize changed-file batches.

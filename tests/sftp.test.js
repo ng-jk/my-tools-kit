@@ -798,3 +798,14 @@ test('Git renames do not report success when a destination parent is missing',as
   await engine.executeGitTransfers(plan,{rename:(from,to)=>engine.renameRemotePath(remote,from,to,'/root'),upload:async()=>uploads++,delete:async()=>{}});
   assert.equal(uploads,1,'an absent source can still fall back to upload');
 });
+
+test('folder planning feedback never claims transfer success before a failed execution',async t=>{
+  const {local,session}=fixture(t);fs.writeFileSync(path.join(local,'pending.txt'),'pending');
+  const logs=[];engine.configurePorts({log:(_level,...parts)=>logs.push(parts.join(' '))});t.after(()=>engine.configurePorts({log:()=>{}}));
+  const target=await session.service.getRemoteFileSystem(session.config),put=target.put;
+  target.put=async()=>{logs.push('execution failed');throw new Error('payload failed');};
+  try {await assert.rejects(engine.operate(session,'upload'),/payload failed/);}finally{target.put=put;}
+  const planning=logs.findIndex(message=>message.includes('file transfers are pending'));
+  assert.ok(planning>=0);assert.ok(logs.indexOf('execution failed')>planning);
+  assert.equal(logs.some(message=>/folder transfer(?:r)?ed/i.test(message)),false);
+});

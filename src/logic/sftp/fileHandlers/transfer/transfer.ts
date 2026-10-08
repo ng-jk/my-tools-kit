@@ -125,7 +125,7 @@ async function transferFolder(
     )
   );
 
-  logger.info('folder transfered.');
+  logger.info('Folder transfer planning complete; file transfers are pending.');
 }
 
 async function transferFile(

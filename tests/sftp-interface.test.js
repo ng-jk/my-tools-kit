@@ -346,6 +346,12 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     const permanentConfirm=vscode.window.showInformationMessage;
     vscode.window.showInformationMessage=async message=>{assert.match(message,/beta-host/);assert.match(message,/preview.txt/);assert.match(message,/cannot be undone/);return undefined;};
     const previewItem=(await views.get('devkit.remoteExplorer').getChildren(betaRoot)).find(item=>path.basename(item.resource.fsPath)==='preview.txt');
+    fs.writeFileSync(path.join(root,'preview.txt'),'edit cancellation preserves local content');
+    const editConfirm=vscode.window.showInformationMessage;
+    vscode.window.showInformationMessage=async message=>{assert.match(message,/overwritten/);assert.match(message,/preview.txt/);return undefined;};
+    await commands.get('devkit.sftp.remoteExplorer.editInLocal')(previewItem);assert.deepEqual(errors,[]);
+    assert.equal(fs.readFileSync(path.join(root,'preview.txt'),'utf8'),'edit cancellation preserves local content');
+    vscode.window.showInformationMessage=editConfirm;
     await commands.get('devkit.sftp.delete.remote')(previewItem);
     assert.equal(fs.readFileSync(path.join(dir,'remote-other','preview.txt'),'utf8'),'remote preview');
     vscode.window.showInformationMessage=permanentConfirm;
