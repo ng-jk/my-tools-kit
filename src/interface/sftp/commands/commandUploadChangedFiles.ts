@@ -23,11 +23,11 @@ export default checkCommand({
 });
 
 function isRepository(object: any): object is Repository {
-  return 'rootUri' in object;
+  return object && typeof object === 'object' && 'rootUri' in object;
 }
 
 function isSourceControlResourceGroup(object: any): object is vscode.SourceControlResourceGroup {
-  return 'id' in object && 'resourceStates' in object;
+  return object && typeof object === 'object' && 'id' in object && 'resourceStates' in object;
 }
 
 async function handleCommand(hint: any) {
@@ -38,10 +38,24 @@ async function handleCommand(hint: any) {
   if (!hint) {
     repository = await getRepository(git);
   } else if (isSourceControlResourceGroup(hint)) {
-    repository = git.repositories.find(repo => repo.ui.selected);
+    const owners = new Set<Repository>();
+    for (const resource of hint.resourceStates) {
+      const file = resource.resourceUri?.fsPath;
+      if (!file) throw new Error('Cannot identify the repository for this Git resource');
+      const owner = git.repositories.filter(repo => {
+        const relative = path.relative(repo.rootUri.fsPath, file);
+        return relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative);
+      }).sort((a,b) => b.rootUri.fsPath.length - a.rootUri.fsPath.length)[0];
+      if (!owner) throw new Error('No repository owns the selected Git resource');
+      owners.add(owner);
+    }
+    if (!owners.size) return;
+    if (owners.size !== 1) throw new Error('Select changes from one repository at a time');
+    repository = [...owners][0];
     filterGroupId = hint.id;
   } else if (isRepository(hint)) {
-    repository = git.repositories.find(repo => repo.ui.selected);
+    repository = git.repositories.find(repo => path.relative(repo.rootUri.fsPath, hint.rootUri.fsPath) === '');
+    if (!repository) throw new Error('The selected repository is no longer available');
   }
 
   if (!repository) {

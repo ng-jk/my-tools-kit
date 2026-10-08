@@ -2,6 +2,7 @@
 
 ## Unreleased — automated UI/UX release gate
 
+- Keep SCM transfers bound to the clicked repository, scope remote tree actions to Remote Explorer, and report ignored Git changes as skipped.
 - Confirm destination-specific destructive Git-change uploads and sync before mutations; retain the legacy human-mode menu only for projects configured for it.
 - Fixed remote create/preview paths, retained invalid/retried creation input, added destination-aware permanent-delete confirmation and first-run setup guidance.
 - Extended remote ancestor validation to uploads, downloads, sync and creation before mutations.

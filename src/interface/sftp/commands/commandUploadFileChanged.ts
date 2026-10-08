@@ -14,6 +14,7 @@ import { checkCommand } from './abstract/createCommand';
 import { showWarningMessage, showInformationMessage } from '../host';
 import { simplifyPath } from '../helper/index';
 import logger from '../logger';
+import {handleCtxFromUri} from '../fileHandlers/createFileHandler';
 
 const COMMIT_DEPTH = 30;
 const UNCOMMITTED = '__uncommitted__';
@@ -61,7 +62,9 @@ export default checkCommand({
           return;
         }
         try {
-          await uploadFile(uri);
+          const ctx = handleCtxFromUri(uri);
+          if (ctx.config.ignore?.(fsPath, 'local')) { skipped.push(rel); return; }
+          await uploadFile(ctx);
           uploaded.push(rel);
         } catch (error) {
           skipped.push(rel);
@@ -73,7 +76,7 @@ export default checkCommand({
     logger.log('');
     logger.log('------ Upload File Changed Result ------');
     outputGroup('uploaded', uploaded);
-    outputGroup('skipped (no SFTP config / failed)', skipped);
+    outputGroup('skipped (ignored / no SFTP config / failed)', skipped);
 
     showInformationMessage(
       `SFTP: uploaded ${uploaded.length} file(s)` +

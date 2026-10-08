@@ -16,9 +16,10 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
   fs.writeFileSync(path.join(root,'.vscode','sftp.json'),JSON.stringify({name:'fixture',protocol:'local',host:'fixture',username:'fixture',remotePath:path.join(dir,'remote').replaceAll('\\','/'),syncOption:{delete:true},defaultProfile:'dev',profiles:{dev:{watcher:{files:'**/*',autoUpload:true,autoDelete:true}},prod:{watcher:{files:false}},other:{context:'nested',remotePath:path.join(dir,'remote-other').replaceAll('\\','/')}}}));
   let savedDocument; const contextValues=new Map(),commands=new Map(),views=new Map(),errors=[],watchers=[];const disposable=()=>({dispose(){}});
   const repository={rootUri:URI.file(root),ui:{selected:true},state:{indexChanges:[],workingTreeChanges:[]}};
+  const repositories=[repository];
   const vscode={WorkspaceEdit:class{replace(uri,range,text){this.text=text;}},Range:class{},Uri:URI,StatusBarAlignment:{Left:1},TreeItemCollapsibleState:{None:0,Collapsed:1,Expanded:2},
     EventEmitter:class{event=()=>disposable();fire(){}dispose(){}},ThemeIcon:class{constructor(id){this.id=id;}},RelativePattern:class{},
-    extensions:{getExtension:()=>({exports:{getAPI:()=>({repositories:[repository]})}})},
+    extensions:{getExtension:()=>({exports:{getAPI:()=>({repositories})}})},
     workspace:{isTrusted:true,asRelativePath:value=>path.relative(root,value),workspaceFolders:[{uri:URI.file(root)}],textDocuments:[],getConfiguration:()=>({get:()=>undefined}),
       createFileSystemWatcher:()=>{const watcher={disposed:false,handlers:{},onDidCreate(fn){this.handlers.create=fn;return disposable();},onDidChange(fn){this.handlers.change=fn;return disposable();},onDidDelete(fn){this.handlers.delete=fn;return disposable();},dispose(){this.disposed=true;}};watchers.push(watcher);return watcher;},
       onDidSaveTextDocument:fn=>{savedDocument=fn;return disposable();},onDidOpenTextDocument:disposable,registerTextDocumentContentProvider:disposable},
@@ -82,6 +83,35 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     fs.writeFileSync(path.join(root,'ui.txt'),'changed upload has completed');
     await commands.get('devkit.sftp.upload.changedFiles')();
     assert.equal(fs.readFileSync(path.join(dir,'remote','ui.txt'),'utf8'),'changed upload has completed');
+    const nestedRepository={rootUri:URI.file(path.join(root,'nested')),ui:{selected:false},state:{indexChanges:[{status:0,uri:URI.file(path.join(root,'nested','ui.txt'))}],workingTreeChanges:[]}};
+    repositories.push(nestedRepository);
+    fs.writeFileSync(path.join(root,'ui.txt'),'must not upload selected repository');
+    fs.writeFileSync(path.join(root,'nested','ui.txt'),'clicked repository content');
+    await commands.get('devkit.sftp.upload.changedFiles')({rootUri:nestedRepository.rootUri});
+    assert.equal(fs.readFileSync(path.join(dir,'remote','nested','ui.txt'),'utf8'),'clicked repository content');
+    assert.equal(fs.readFileSync(path.join(dir,'remote','ui.txt'),'utf8'),'changed upload has completed');
+    fs.writeFileSync(path.join(root,'nested','ui.txt'),'resource group content');
+    await commands.get('devkit.sftp.upload.changedFiles')({id:'index',resourceStates:[{resourceUri:URI.file(path.join(root,'nested','ui.txt'))}]});
+    assert.equal(fs.readFileSync(path.join(dir,'remote','nested','ui.txt'),'utf8'),'resource group content');
+    assert.equal(fs.readFileSync(path.join(dir,'remote','ui.txt'),'utf8'),'changed upload has completed');
+    repositories.pop();
+    fs.writeFileSync(path.join(root,'nested','ui.txt'),'from other context');
+    const cp=require('node:child_process');
+    cp.execFileSync('git',['init',root],{stdio:'ignore'});
+    cp.execFileSync('git',['-C',root,'add','ui.txt'],{stdio:'ignore'});
+    cp.execFileSync('git',['-C',root,'-c','user.name=Test','-c','user.email=test@example.com','commit','-m','fixture'],{stdio:'ignore'});
+    cp.execFileSync('git',['-C',root,'clean','-nd'],{stdio:'ignore'});
+    // Isolate tracked changes; ignored credentials must be counted as skipped.
+    fs.writeFileSync(path.join(root,'.git','info','exclude'),'*\n!ui.txt\n!.env\n');
+    fs.writeFileSync(path.join(root,'ui.txt'),'included change');
+    fs.writeFileSync(path.join(root,'.env'),'private');
+    const resultMessages=[];const previousInfo=vscode.window.showInformationMessage;
+    vscode.window.showInformationMessage=async message=>{resultMessages.push(message);};
+    await commands.get('devkit.sftp.upload.fileChanged')();
+    vscode.window.showInformationMessage=previousInfo;
+    assert.ok(resultMessages.some(message=>/uploaded 1 file\(s\), skipped 1/.test(message)),JSON.stringify(resultMessages));
+    assert.equal(fs.existsSync(path.join(dir,'remote','.env')),false);
+    assert.equal(fs.readFileSync(path.join(dir,'remote','ui.txt'),'utf8'),'included change');
     fs.writeFileSync(path.join(dir,'remote','missing.txt'),'staged then deleted locally');
     repository.state.indexChanges=[{status:0,uri:URI.file(path.join(root,'missing.txt'))}];
     repository.state.workingTreeChanges=[{status:6,uri:URI.file(path.join(root,'missing.txt'))}];
@@ -316,4 +346,8 @@ test('remote picker keeps server identity when browsing equal paths on different
       assert.deepEqual(listed,[labels[0],selectedServer]);assert.equal(queue.length,0);
     } finally {Module._load=original;}
   }
+});
+
+test('remote tree transfer actions are scoped to the remote explorer',()=>{
+  for(const item of require('../package.json').contributes.menus['view/item/context']) assert.ok(item.when.includes('view == devkit.remoteExplorer'),item.command);
 });

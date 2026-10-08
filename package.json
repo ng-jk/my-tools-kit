@@ -660,7 +660,7 @@
           "command": "devkit.sftp.upload.folder",
           "group": "3_trans@1",
           "alt": "devkit.sftp.forceUpload",
-          "when": "devkit.sftp.enabled && viewItem != file"
+          "when": "view == devkit.remoteExplorer && devkit.sftp.enabled && viewItem != file"
         },
         {
           "command": "devkit.sftp.upload.file",
@@ -671,7 +671,7 @@
           "command": "devkit.sftp.upload.folder.to.allProfiles",
           "group": "3_trans@1",
           "alt": "devkit.sftp.forceUpload.to.allProfiles",
-          "when": "devkit.sftp.enabled && viewItem != file"
+          "when": "view == devkit.remoteExplorer && devkit.sftp.enabled && viewItem != file"
         },
         {
           "command": "devkit.sftp.upload.file.to.allProfiles",
@@ -682,7 +682,7 @@
           "command": "devkit.sftp.download.folder",
           "group": "3_trans@2",
           "alt": "devkit.sftp.forceDownload",
-          "when": "devkit.sftp.enabled && viewItem != file"
+          "when": "view == devkit.remoteExplorer && devkit.sftp.enabled && viewItem != file"
         },
         {
           "command": "devkit.sftp.download.file",
