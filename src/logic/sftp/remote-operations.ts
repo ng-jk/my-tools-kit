@@ -6,9 +6,22 @@ export function assertRemoteChild(target:string,root:string) {
   const relative=path.posix.relative(base,value);
   if(!relative||relative==='..'||relative.startsWith('../')||path.posix.isAbsolute(relative)) throw new Error('Operation requires a non-root path inside the configured remote root');
 }
+export async function assertRemoteAncestors(fs:FileSystem,target:string,root:string) {
+  assertRemoteChild(target,root);
+  const base=path.posix.normalize(root.replace(/\\/g,'/'));
+  const relative=path.posix.relative(base,path.posix.normalize(target.replace(/\\/g,'/')));
+  const parents=relative.split('/').slice(0,-1);
+  let current=base;
+  for (const component of ['',...parents]) {
+    if(component)current=path.posix.join(current,component);
+    const entry=await fs.lstat(current);
+    if(entry.type!==FileType.Directory) throw new Error('Remote ancestor must be a real directory, not a symlink: '+current);
+  }
+}
 export async function removeRemotePath(fs:FileSystem,target:string,root:string,skipDir=false,ignore?: (path:string, side?: 'local' | 'remote')=>boolean) {
   assertRemoteChild(target,root);
   if(ignore?.(target, 'remote')) return;
+  await assertRemoteAncestors(fs,target,root);
   const stat=await fs.lstat(target);
   if(stat.type===FileType.Directory) {
     if(skipDir) return;
@@ -20,5 +33,5 @@ export async function removeRemotePath(fs:FileSystem,target:string,root:string,s
   else throw new Error('Unsupported remote file type');
 }
 export async function renameRemotePath(fs:FileSystem,from:string,to:string,root:string) {
-  assertRemoteChild(from,root);assertRemoteChild(to,root);await fs.rename(from,to);
+  await assertRemoteAncestors(fs,from,root);await assertRemoteAncestors(fs,to,root);await fs.rename(from,to);
 }

@@ -720,3 +720,18 @@ test('CLI lists contexts without resolving secrets and selects only the requeste
   const listing=run('profiles',local);assert.equal(listing.status,0,listing.stderr);assert.deepEqual(JSON.parse(listing.stdout).map(c=>c.name),['unavailable','chosen']);
   const read=run('read',local,'selected.txt','--context','chosen');assert.equal(read.status,0,read.stderr);assert.equal(JSON.parse(read.stdout).results[0].result,'right target');
 });
+
+
+test('remote delete and both rename endpoints reject symlink ancestors but permit deleting the link itself',async()=>{
+  const mutations=[];const {FileType}=engine;
+  const remote={lstat:async target=>({type:target==='/project'?FileType.Directory:target==='/project/link'?FileType.SymbolicLink:FileType.File}),
+    unlink:async target=>mutations.push(['unlink',target]),rename:async(from,to)=>mutations.push(['rename',from,to])};
+  await assert.rejects(engine.removeRemotePath(remote,'/project/link/important.txt','/project'),/ancestor.*symlink/);
+  await assert.rejects(engine.renameRemotePath(remote,'/project/link/important.txt','/project/safe.txt','/project'),/ancestor.*symlink/);
+  await assert.rejects(engine.renameRemotePath(remote,'/project/safe.txt','/project/link/important.txt','/project'),/ancestor.*symlink/);
+  assert.deepEqual(mutations,[]);
+  await engine.removeRemotePath(remote,'/project/link','/project');
+  assert.deepEqual(mutations,[['unlink','/project/link']]);
+  await engine.renameRemotePath(remote,'/project/link','/project/link-renamed','/project');
+  assert.deepEqual(mutations[1],['rename','/project/link','/project/link-renamed']);
+});

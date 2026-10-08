@@ -82,3 +82,5 @@ async function operate(session: any, action: string, relative = '.', flags: any 
 }
 
 export {directoryIgnoresCase} from '../../data/sftp/local-path-identity';
+
+export {removeRemotePath,renameRemotePath} from './remote-operations';

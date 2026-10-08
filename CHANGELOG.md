@@ -4,6 +4,7 @@
 
 - Confirm destination-specific destructive Git-change uploads and sync before mutations; retain the legacy human-mode menu only for projects configured for it.
 - Fixed remote create/preview paths, retained invalid/retried creation input, added destination-aware permanent-delete confirmation and first-run setup guidance.
+- Blocked remote delete/rename through symlink ancestors; deleting or renaming a symlink itself remains supported.
 - Kept server identity when downloading from List Active Folder across nested legacy contexts.
 - Replaced this project’s manual interface acceptance with a separate evidence-backed UI/UX code review during test and deployment.
 - Added Review UI/UX and release / `release` to run the complete lifecycle without human acceptance records.

@@ -198,3 +198,5 @@ Scope remote-picker directory caches by configuration identity as well as pathna
 ## Independent named contexts
 
 Use the `contexts` object and `activeContext` selector shown in the [user guide](../README.md#separate-ftpsftp-contexts). Each entry owns all connection and transfer settings. `SFTP: Select Context` reloads the selected service and watchers; CLI `--context NAME` overrides selection for one invocation only. Unlike legacy profiles, contexts inherit no connection credentials. Multiple contexts may share the same local root because only the selected one is active in VS Code.
+
+Remote delete and rename verify each ancestor inside the configured root with lstat and reject symlink/non-directory ancestors. Configure a canonical directory root for destructive operations. Leaf symlinks can be removed or renamed without following their targets.
