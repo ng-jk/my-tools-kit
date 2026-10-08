@@ -1,5 +1,11 @@
 # Release notes
 
+## Unreleased — automated UI/UX release gate
+
+- Replaced this project’s manual interface acceptance with a separate evidence-backed UI/UX code review during test and deployment.
+- Added Review UI/UX and release / `release` to run the complete lifecycle without human acceptance records.
+- Fail closed on rejected, incomplete, stale or unavailable review; preserve artifact hashes and publication verification. Legacy human-mode projects remain supported through the CLI.
+
 ## Unreleased — Marketplace command manual
 
 - Documented every contributed VS Code command with selection requirements, usage and results, plus all eight CI/CD menu actions.

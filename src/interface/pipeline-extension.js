@@ -8,7 +8,7 @@ async function configurePipeline(vscode, context, root) {
     { label: 'Check current changes', command: 'check', description: 'Architecture, unit, function, integration tests and package build' },
     { label: 'Test committed development', command: 'test', description: 'Advance test and run isolated checks plus AI review' },
     { label: 'Test and push test branch', command: 'test', flags: ['--push'], description: 'Also fast-forward the remote test branch' },
-    { label: 'Approve interface and finish release', command: 'accept-uat', description: 'Records your UAT; automatically publishes when autoPublishAfterUat is enabled' },
+    { label: 'Review UI/UX and release', command: 'release', description: 'Run tests, code and UI/UX reviews, then publish and promote on success' },
     { label: 'Publish', command: 'publish', description: 'Check deployment, publish approved VSIX if configured, then advance main' }
   ], { title: 'Development Tools Kit — Python CI/CD' });
   if (!action) return;

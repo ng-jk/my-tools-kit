@@ -1,3 +1,11 @@
+# Automated interface review and release
+
+This project now sets `interfaceReview: "ai-ux"`. Manual UI acceptance has been replaced by a separate AI UI/UX code review in both the test and deployment gates. No human acceptance record is created. The review must cover task flow, clarity/feedback, error recovery, destructive actions, keyboard access, accessibility and layout consistency with source evidence and stated limitations. Missing/malformed/unavailable review, a failed criterion, or high/critical findings block release.
+
+Run `python pipeline.py release` for the authorized full lifecycle: test/push the development candidate, run both AI reviews and all tests/builds, then publish the exact retained artifact after deployment checks and verify publication before main promotion. `test --push` performs checks without publication; `publish` retries publication of an already-reviewed candidate. Credentials remain local and outside Git.
+
+Code review replaces the release acceptance gate at the user's request; it does not claim rendered UI, assistive-technology or human testing. The notes below describe legacy `interfaceReview: "human"` compatibility wherever they refer to UAT or `accept-uat`; those steps do not apply to this toolkit's ai-ux mode.
+
 # Development and release operations
 
 For end-user steps, see the [tool user guide](../README.md).

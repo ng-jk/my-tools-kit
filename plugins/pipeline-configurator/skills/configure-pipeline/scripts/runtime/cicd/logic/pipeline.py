@@ -1,22 +1,23 @@
 """Shared pipeline use cases; UI and terminal both invoke these release decisions."""
 from datetime import datetime, timezone
 from pathlib import Path
-from .policy import BRANCHES, review_passes, require_tested, require_uat
+from .policy import BRANCHES, review_passes, require_tested, require_uat, require_ui_ux
 from ..data.config import read, GATES
 from ..data.git import Git
 from ..data.store import Store, digest
 from ..data.process import run
-from ..data.reviewer import review
+from ..data.reviewer import review, review_ui_ux
 from .marketplace import MarketplaceRelease
 
 
 class Pipeline:
-    def __init__(self, root, git=None, store=None, runner=run, reviewer=review, progress=None, marketplace=None):
+    def __init__(self, root, git=None, store=None, runner=run, reviewer=review, progress=None, marketplace=None, ux_reviewer=review_ui_ux):
         self.root = Path(root).resolve()
         self.git = git or Git(self.root)
         self.store = store or Store(self.git.common)
         self.config = read(self.root)
         self.runner, self.reviewer = runner, reviewer
+        self.ux_reviewer = ux_reviewer
         self.progress = progress or (lambda message: None)
         self.marketplace = marketplace or (MarketplaceRelease(self.root, self.config["marketplace"], self.store)
                                            if self.config.get("marketplace") else None)
@@ -24,9 +25,10 @@ class Pipeline:
     def status(self):
         return {"passed": True, "branches": {key: self.git.ref(value) for key, value in BRANCHES.items()},
                 "reviewer": self.config["reviewer"], "evidence": str(self.store.root),
+                "interfaceReview": self.config.get("interfaceReview", "human"),
                 "autoPublishAfterUat": self.config.get("autoPublishAfterUat", False),
                 "marketplace": self.config.get("marketplace"),
-                "flow": "developement -> test -> human interface UAT -> deployment -> configured Marketplace upload -> main"}
+                "flow": "developement -> test -> " + ("AI UI/UX review" if self.config.get("interfaceReview") == "ai-ux" else "human interface UAT") + " -> deployment -> configured Marketplace upload -> main"}
 
     def marketplace_check(self):
         if not self.marketplace:
@@ -73,6 +75,16 @@ class Pipeline:
             report["gates"]["ai_review"] = review_passes(result, sha, base)
             if not report["gates"]["ai_review"]:
                 raise ValueError("AI review rejected the candidate or returned invalid evidence")
+            if self.config.get("interfaceReview") == "ai-ux":
+                self.progress(f"{stage}: running UI/UX code review with {self.config['reviewer']}")
+                report["ui_ux_review"] = self.ux_reviewer(root, sha, base, self.config["reviewer"],
+                    self.store.root / f"review-ui-ux-{stage}-{sha}.json", self.config.get("timeout", 900))
+                report["gates"]["ui_ux_review"] = True
+                try:
+                    require_ui_ux(report, sha, base)
+                except ValueError:
+                    report["gates"]["ui_ux_review"] = False
+                    raise
             # Build/tests must not rewrite tracked source in the pinned checkout.
             self.git.verify_candidate(root, sha)
             report["artifacts"] = self.store.artifacts(root, self.config.get("artifacts", []), stage, sha)
@@ -96,7 +108,15 @@ class Pipeline:
                 self.git.push(self.config["remote"], "test", sha)
             return self._gates(sha, base, "test")
 
+    def release(self):
+        report = self.test(push=True)
+        if not report["passed"]:
+            return report
+        return self.publish(expected_candidate=report["candidate"])
+
     def accept_uat(self, candidate, reviewer, note):
+        if self.config.get("interfaceReview") == "ai-ux":
+            raise ValueError("This project uses automated UI/UX review; run test or release, not human accept-uat")
         with self.store.lock():
             sha = self.git.sha(candidate)
             report = self.store.load(f"test-{sha}.json")
@@ -122,7 +142,7 @@ class Pipeline:
             if expected_candidate is not None and sha != expected_candidate:
                 raise ValueError("Candidate changed after interface approval; automatic publication stopped")
             if self.git.sha("developement") != sha:
-                raise ValueError("developement changed since test; test and accept UAT again")
+                raise ValueError("developement changed since test; retest the candidate")
             remote_main = self.git.remote_ref(self.config["remote"], "main")
             report = self.store.load(f"test-{sha}.json")
             tested_base = report["base"]
@@ -130,10 +150,16 @@ class Pipeline:
                 raise ValueError("Local or remote main changed; reconcile and test again")
             require_tested(report, sha, tested_base, digest(self.config))
             self.store.verify_artifacts(report, self.config.get("artifacts", []))
-            require_uat(self.store.load(f"uat-{sha}.json"), sha, digest(report))
+            if self.config.get("interfaceReview") == "ai-ux":
+                require_ui_ux(report, sha, tested_base)
+            else:
+                require_uat(self.store.load(f"uat-{sha}.json"), sha, digest(report))
             if remote_main == sha:
                 # Recover a successful remote push followed by a local update failure.
-                require_tested(self.store.load(f"deployment-{sha}.json"), sha, tested_base, digest(self.config))
+                recovered = self.store.load(f"deployment-{sha}.json")
+                require_tested(recovered, sha, tested_base, digest(self.config))
+                if self.config.get("interfaceReview") == "ai-ux":
+                    require_ui_ux(recovered, sha, tested_base)
                 if self.git.sha("deployment") != sha or self.git.remote_ref(self.config["remote"], "deployment") != sha:
                     raise ValueError("Deployment refs changed; inspect before recovering publication")
                 receipt = self.marketplace.publish(report, allow_upload=False) if self.marketplace else None
@@ -159,7 +185,7 @@ class Pipeline:
             self.store.verify_artifacts(report, self.config.get("artifacts", []))
             receipt = None
             if self.marketplace:
-                self.progress("Publishing the UAT-approved VSIX through vsce with Microsoft Entra ID")
+                self.progress("Publishing the review-approved VSIX through vsce with Microsoft Entra ID")
                 receipt = self.marketplace.publish(report)
                 if (self.git.sha("developement") != sha or self.git.sha("test") != sha
                         or self.git.sha("deployment") != sha or self.git.sha("main") != base

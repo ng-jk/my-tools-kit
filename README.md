@@ -165,10 +165,10 @@ Your project must have a `.devkit-pipeline.json` containing its own test/build c
 | Check current changes | Choose this while developing, including with uncommitted edits. It runs architecture, unit, functional, integration and build checks. Read failures in the task terminal; this does not create release approval. |
 | Test committed development | Commit your changes first, then choose this. It sets the test candidate and runs isolated checks plus AI review, retaining artifacts when successful. A test-branch update alone does not mean tests passed. |
 | Test and push test branch | Use when you also want the candidate test branch pushed to the configured Git remote. Otherwise it performs the same checks as Test committed development. |
-| Approve interface and finish release | After personally testing the retained build, enter the exact commit, your name and the checks completed. This records your acceptance. If the project enables automatic publication after UAT, publication starts immediately. |
+| Review UI/UX and release | Choose this to run committed-candidate tests, technical AI review and a separate UI/UX code review, then automatically publish and promote the same candidate if all gates pass. No manual UI acceptance is needed in this project. |
 | Publish | Use for an approved candidate, or to retry a failed publication. It checks deployment gates, publishes the approved artifact if configured, verifies it, and only then advances main. Failures leave main unchanged. |
 
-Keep the task running until it reports completion. AI review needs an authenticated supported AI CLI. Interface acceptance is performed by you. Publisher credentials, build commands, packaging and release recovery are covered in the separate [developer guide](https://github.com/ng-jk/my-tools-kit/blob/developement/docs/development.md).
+Keep the task running until it reports completion. AI review needs an authenticated supported AI CLI. This project uses `interfaceReview: "ai-ux"`: a separate code review checks task flow, labels and feedback, error recovery, destructive actions, keyboard access, accessibility and layout. Every criterion needs source evidence; failed criteria or unavailable review block release. This is source review, not rendered visual testing or proof of usability with real users. Publisher credentials, build commands, packaging and release recovery are covered in the separate [developer guide](https://github.com/ng-jk/my-tools-kit/blob/developement/docs/development.md).
 
 ## Complete VS Code command reference
 

@@ -188,3 +188,74 @@ class PromotionTests(unittest.TestCase):
         (self.root / '.devkit-pipeline.json').write_text(json.dumps(self.config))
         with self.assertRaisesRegex(ValueError, 'must be a boolean'):
             read(self.root)
+
+
+class UiUxPromotionTests(PromotionTests):
+    def ai_mode(self):
+        from cicd.data.reviewer import UX_CRITERIA
+        self.pipeline.config["interfaceReview"] = "ai-ux"
+        self.report["configuration"] = digest(self.pipeline.config)
+        self.report["gates"]["ui_ux_review"] = True
+        self.report["ui_ux_review"] = {"approved":True,"candidate":"candidate","base":"base",
+            "summary":"Fixture source review", "findings":[], "limitations":"No rendered UI or human testing",
+            "criteria":{name:{"status":"pass","evidence":["media/index.html:10"],"rationale":"Fixture inspected"} for name in UX_CRITERIA}}
+        self.store.save("test-candidate.json",self.report)
+
+    def test_ai_mode_publishes_without_human_record(self):
+        self.ai_mode()
+        self.pipeline._gates=Mock(return_value=self.report)
+        self.assertTrue(self.pipeline.publish()["passed"])
+        self.assertIsNone(self.store.optional("uat-candidate.json"))
+        self.assertEqual(self.refs["main"],"candidate")
+
+    def test_ai_mode_rejects_legacy_acceptance_command(self):
+        self.ai_mode()
+        with self.assertRaisesRegex(ValueError,"automated UI/UX"):
+            self.pipeline.accept_uat("candidate","Fake human","No testing")
+
+    def test_missing_failed_stale_or_unsupported_ux_blocks_publish(self):
+        import copy
+        self.ai_mode();good=copy.deepcopy(self.report)
+        for change in ("missing","failure","stale","evidence","coverage","limitations"):
+            report=copy.deepcopy(good)
+            if change=="missing":report.pop("ui_ux_review")
+            if change=="failure":report["ui_ux_review"]["criteria"]["task_flow"]["status"]="fail"
+            if change=="stale":report["ui_ux_review"]["candidate"]="old"
+            if change=="evidence":report["ui_ux_review"]["criteria"]["task_flow"]["evidence"]=[]
+            if change=="coverage":report["ui_ux_review"]["criteria"].pop("accessibility")
+            if change=="limitations":report["ui_ux_review"].pop("limitations")
+            self.store.save("test-candidate.json",report)
+            with self.subTest(change=change),self.assertRaises(ValueError):self.pipeline.publish()
+            self.git.push.assert_not_called()
+
+    def test_release_stops_after_failed_test(self):
+        self.pipeline.test=Mock(return_value={"passed":False})
+        self.pipeline.publish=Mock()
+        self.assertFalse(self.pipeline.release()["passed"])
+        self.pipeline.publish.assert_not_called()
+
+    def test_release_pins_successful_test_candidate(self):
+        self.pipeline.test=Mock(return_value={"passed":True,"candidate":"candidate"})
+        self.pipeline.publish=Mock(return_value={"passed":True})
+        self.assertTrue(self.pipeline.release()["passed"])
+        self.pipeline.test.assert_called_once_with(push=True)
+        self.pipeline.publish.assert_called_once_with(expected_candidate="candidate")
+
+    def test_gate_runs_separate_review_and_records_failures(self):
+        from unittest.mock import patch
+        self.ai_mode()
+        good=self.report["ui_ux_review"]
+        self.pipeline.runner=Mock()
+        self.pipeline.reviewer=Mock(return_value={"approved":True,"candidate":"candidate","base":"base","summary":"Technical fixture","findings":[]})
+        self.pipeline.ux_reviewer=Mock(return_value=good)
+        with patch("cicd.logic.pipeline.read",return_value=self.pipeline.config):
+            result=self.pipeline._gates("candidate","base","test")
+        self.assertTrue(result["passed"])
+        self.pipeline.ux_reviewer.assert_called_once()
+        self.assertTrue(result["gates"]["ui_ux_review"])
+        self.pipeline.ux_reviewer=Mock(side_effect=RuntimeError("Review unavailable"))
+        with patch("cicd.logic.pipeline.read",return_value=self.pipeline.config):
+            result=self.pipeline._gates("candidate","base","test")
+        self.assertFalse(result["passed"])
+        self.assertIn("Review unavailable",result["error"])
+        self.assertNotIn("artifacts",result)

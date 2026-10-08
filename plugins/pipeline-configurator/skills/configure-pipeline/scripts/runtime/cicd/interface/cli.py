@@ -9,7 +9,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Python CI/CD: developement -> test -> deployment -> main")
     parser.add_argument("--root", default=".")
     commands = parser.add_subparsers(dest="command", required=True)
-    for name in ("init", "status", "check", "publish", "marketplace-check"):
+    for name in ("init", "status", "check", "publish", "release", "marketplace-check"):
         commands.add_parser(name)
     test = commands.add_parser("test")
     test.add_argument("--push", action="store_true")

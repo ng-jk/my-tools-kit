@@ -1,3 +1,7 @@
+# UI/UX review replaces manual acceptance
+
+This toolkit uses `interfaceReview: "ai-ux"`. Use **Review UI/UX and release** or `python pipeline.py release` to run tests, technical and UI/UX code reviews, then publish automatically on success. Manual acceptance is not required. Code review must include source evidence for all seven criteria and acknowledge that rendered UI and real-user behavior are unverified. The UAT steps below apply only to legacy human-mode projects.
+
 # What the CI/CD tool does
 
 The toolkit runs a Python CLI on this PC. The VS Code menu starts the same commands in a visible terminal task. No GitHub Actions or continuously running service is involved.
