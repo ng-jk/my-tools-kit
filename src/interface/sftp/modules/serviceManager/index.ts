@@ -10,6 +10,7 @@ import { validateConfig, readConfigsFromFile } from '../config';
 import { CONFIG_PATH } from '../../../../data/sftp/constants';
 import watcherService from '../fileWatcher';
 import Trie from './trie';
+import {setContextValue} from '../../host';
 
 const WIN_DRIVE_REGEX = /^([a-zA-Z]):/;
 const isWindows = process.platform === 'win32';
@@ -106,6 +107,7 @@ export function createFileService(
   logger.info(`config at ${normalizedBasePath}`, maskConfig(config));
 
   serviceManager.add(normalizedBasePath, service);
+  setContextValue('hasConfiguration', true);
   service.name = config.name;
   service.setConfigValidator(validateConfig);
   service.setWatcherService(watcherService);
@@ -153,6 +155,7 @@ export function getFileService(uri: Uri): FileService {
 
 export function disposeFileService(fileService: FileService) {
   serviceManager.remove(fileService.baseDir);
+  setContextValue('hasConfiguration', getAllFileService().length > 0);
   fileService.dispose();
 }
 

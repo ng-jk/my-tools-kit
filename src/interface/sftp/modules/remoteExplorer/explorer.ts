@@ -38,9 +38,7 @@ export default class RemoteExplorer {
         if (!uri) return;
         const service = getFileService(uri);
         if (!service) throw new Error('No SFTP configuration for the selected file');
-        const config = service.getConfig();
-        item = {resource: UResource.makeResource({remote: {host: config.host, port: config.port},
-          fsPath: toRemotePath(uri.fsPath, service.baseDir, config.remotePath), remoteId: service.id}), isDirectory: false} as ExplorerItem;
+        item = {resource: UResource.makeResource(uri), isDirectory:false} as ExplorerItem;
       }
       return this._treeDataProvider.showItem(item);
     });

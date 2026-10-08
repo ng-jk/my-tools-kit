@@ -45,6 +45,7 @@ export async function activate(context: vscode.ExtensionContext) {
   }
 
   setContextValue('enabled', true);
+  setContextValue('hasConfiguration', false);
   app.sftpBarItem.show();
   app.state.subscribe((_: any) => {
     const currentText = app.sftpBarItem.getText();

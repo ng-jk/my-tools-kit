@@ -14,7 +14,7 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
   fs.writeFileSync(path.join(root,'nested','ui.txt'),'from other context');
   fs.writeFileSync(path.join(root,'ui.txt'),'uploaded from the UI adapter');
   fs.writeFileSync(path.join(root,'.vscode','sftp.json'),JSON.stringify({name:'fixture',protocol:'local',host:'fixture',username:'fixture',remotePath:path.join(dir,'remote').replaceAll('\\','/'),syncOption:{delete:true},defaultProfile:'dev',profiles:{dev:{watcher:{files:'**/*',autoUpload:true,autoDelete:true}},prod:{watcher:{files:false}},other:{context:'nested',remotePath:path.join(dir,'remote-other').replaceAll('\\','/')}}}));
-  let savedDocument; const commands=new Map(),views=new Map(),errors=[],watchers=[];const disposable=()=>({dispose(){}});
+  let savedDocument; const contextValues=new Map(),commands=new Map(),views=new Map(),errors=[],watchers=[];const disposable=()=>({dispose(){}});
   const repository={rootUri:URI.file(root),ui:{selected:true},state:{indexChanges:[],workingTreeChanges:[]}};
   const vscode={WorkspaceEdit:class{replace(uri,range,text){this.text=text;}},Range:class{},Uri:URI,StatusBarAlignment:{Left:1},TreeItemCollapsibleState:{None:0,Collapsed:1,Expanded:2},
     EventEmitter:class{event=()=>disposable();fire(){}dispose(){}},ThemeIcon:class{constructor(id){this.id=id;}},RelativePattern:class{},
@@ -22,7 +22,7 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     workspace:{isTrusted:true,asRelativePath:value=>path.relative(root,value),workspaceFolders:[{uri:URI.file(root)}],textDocuments:[],getConfiguration:()=>({get:()=>undefined}),
       createFileSystemWatcher:()=>{const watcher={disposed:false,handlers:{},onDidCreate(fn){this.handlers.create=fn;return disposable();},onDidChange(fn){this.handlers.change=fn;return disposable();},onDidDelete(fn){this.handlers.delete=fn;return disposable();},dispose(){this.disposed=true;}};watchers.push(watcher);return watcher;},
       onDidSaveTextDocument:fn=>{savedDocument=fn;return disposable();},onDidOpenTextDocument:disposable,registerTextDocumentContentProvider:disposable},
-    commands:{registerCommand:(id,fn,self)=>{assert.equal(commands.has(id),false,'duplicate '+id);commands.set(id,fn.bind(self));return disposable();},executeCommand:async(id,...args)=>commands.has(id)?commands.get(id)(...args):undefined},
+    commands:{registerCommand:(id,fn,self)=>{assert.equal(commands.has(id),false,'duplicate '+id);commands.set(id,fn.bind(self));return disposable();},executeCommand:async(id,...args)=>id==='setContext'?contextValues.set(args[0],args[1]):commands.has(id)?commands.get(id)(...args):undefined},
     window:{activeTextEditor:{document:{uri:URI.file(path.join(root,'ui.txt'))}},createStatusBarItem:()=>({show(){},hide(){},dispose(){}}),createOutputChannel:()=>({appendLine(){},show(){},hide(){},dispose(){}}),
       showQuickPick:async choices=>choices.find(item=>item.command==='devkit.sftp.upload.file') || choices[0],
       showOpenDialog:async()=>[URI.file(path.join(root,'ui.txt'))],
@@ -231,6 +231,32 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     fs.writeFileSync(path.join(root,'context-switch.txt'),'only beta');
     await commands.get('devkit.sftp.upload.file')(URI.file(path.join(root,'context-switch.txt')));assert.deepEqual(errors,[]);
     assert.equal(fs.existsSync(path.join(dir,'remote','context-switch.txt')),false);assert.equal(fs.readFileSync(path.join(dir,'remote-other','context-switch.txt'),'utf8'),'only beta');
+    const betaRoot=roots[0];
+    vscode.window.showInputBox=async options=>{assert.ok(options.validateInput('../bad'));assert.equal(options.validateInput('created-remotely.txt'),undefined);return 'created-remotely.txt';};
+    await commands.get('devkit.sftp.create.file')(betaRoot);assert.deepEqual(errors,[]);
+    assert.equal(fs.existsSync(path.join(dir,'remote-other','created-remotely.txt')),true);
+    vscode.window.showInputBox=async()=> 'created-folder';
+    await commands.get('devkit.sftp.create.folder')(betaRoot);assert.deepEqual(errors,[]);
+    assert.equal(fs.statSync(path.join(dir,'remote-other','created-folder')).isDirectory(),true);
+    let retryInput=0;
+    const errorDisplay=vscode.window.showErrorMessage;
+    vscode.window.showErrorMessage=async()=> 'Retry';
+    vscode.window.showInputBox=async options=>{if(retryInput++===0)return 'created-remotely.txt';assert.equal(options.value,'created-remotely.txt');return 'retried-name.txt';};
+    await commands.get('devkit.sftp.create.file')(betaRoot);vscode.window.showErrorMessage=errorDisplay;
+    assert.equal(fs.existsSync(path.join(dir,'remote-other','retried-name.txt')),true);
+    fs.writeFileSync(path.join(dir,'remote-other','preview.txt'),'remote preview');
+    const previewPicks=['beta','preview.txt'];
+    vscode.window.showQuickPick=async choices=>{const label=previewPicks.shift();const item=choices.find(c=>c.label===label);assert.ok(item,'Missing '+label);return item;};
+    let preview;
+    vscode.window.showTextDocument=async uri=>{preview=await views.get('devkit.remoteExplorer').provideTextDocumentContent(uri,{});};
+    await commands.get('devkit.sftp.viewContent')();assert.equal(preview,'remote preview');
+    const permanentConfirm=vscode.window.showInformationMessage;
+    vscode.window.showInformationMessage=async message=>{assert.match(message,/beta-host/);assert.match(message,/preview.txt/);assert.match(message,/cannot be undone/);return undefined;};
+    const previewItem=(await views.get('devkit.remoteExplorer').getChildren(betaRoot)).find(item=>path.basename(item.resource.fsPath)==='preview.txt');
+    await commands.get('devkit.sftp.delete.remote')(previewItem);
+    assert.equal(fs.readFileSync(path.join(dir,'remote-other','preview.txt'),'utf8'),'remote preview');
+    vscode.window.showInformationMessage=permanentConfirm;
+
     vscode.window.showQuickPick=async()=>undefined;
     const before=documentText;await commands.get('devkit.sftp.selectContext')();assert.equal(documentText,before,'cancel preserves context');
 
@@ -256,6 +282,12 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     vscode.window.showQuickPick=async choices=>{const label=activePicks.shift();const item=choices.find(c=>c.label===label);assert.ok(item,'Missing '+label);return item;};
     await commands.get('devkit.sftp.listActiveFolder')();assert.deepEqual(errors,[]);
     assert.equal(fs.readFileSync(path.join(root,'nested','download-target.txt'),'utf8'),'from A');
+    extension.deactivate();commands.clear();views.clear();errors.length=0;fs.unlinkSync(contextFile);
+    await extension.activate(context);
+    assert.equal(contextValues.get('devkit.sftp.hasConfiguration'),false);
+    assert.equal((await views.get('devkit.remoteExplorer').getChildren()).length,0);
+    assert.equal(require('../package.json').contributes.viewsWelcome[0].when,'!devkit.sftp.hasConfiguration');
+
 
 
   } finally {extension?.deactivate();context.subscriptions.forEach(item=>item.dispose());Module._load=original;fs.readdir=nativeReaddir;}

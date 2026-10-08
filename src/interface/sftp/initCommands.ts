@@ -58,9 +58,9 @@ export default function init(context: any) {
   register(command5, createCommand, context);
   register(command6, createCommand, context);
   register(command7, createCommand, context);
-  register(command8, createFileCommand, context);
-  register(command9, createFileCommand, context);
-  register(command10, createFileCommand, context);
+  register(command8, createCommand, context);
+  register(command9, createCommand, context);
+  register(command10, createCommand, context);
   register(command11, createFileCommand, context);
   register(command12, createFileCommand, context);
   register(command13, createFileCommand, context);

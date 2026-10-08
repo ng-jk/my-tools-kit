@@ -232,12 +232,12 @@ export default class RemoteTreeData
     return buffer.toString();
   }
 
-  showItem(item: ExplorerItem): void {
+  async showItem(item: ExplorerItem): Promise<void> {
     if (item.isDirectory) {
       return;
     }
 
-    showTextDocument(makePreivewUrl(item.resource.uri));
+    await showTextDocument(makePreivewUrl(item.resource.uri));
   }
 
   private _getRoots(): ExplorerRoot[] {

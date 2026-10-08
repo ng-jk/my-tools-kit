@@ -770,7 +770,7 @@
       {
         "view": "devkit.remoteExplorer",
         "contents": "Configure a server to browse files.\n[Configure SFTP](command:devkit.sftp.config)",
-        "when": "!devkit.sftp.enabled"
+        "when": "!devkit.sftp.hasConfiguration"
       }
     ],
     "keybindings": [
