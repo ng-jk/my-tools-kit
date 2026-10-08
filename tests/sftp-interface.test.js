@@ -269,6 +269,21 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     await commands.get('devkit.sftp.upload.file')(URI.file(path.join(root,'context-switch.txt')));assert.deepEqual(errors,[]);
     assert.equal(fs.existsSync(path.join(dir,'remote','context-switch.txt')),false);assert.equal(fs.readFileSync(path.join(dir,'remote-other','context-switch.txt'),'utf8'),'only beta');
     const betaRoot=roots[0];
+    const provider=views.get('devkit.remoteExplorer'),changingPath=path.join(dir,'remote-other','changing-type');
+    fs.writeFileSync(changingPath,'file');
+    let changing=(await provider.getChildren(betaRoot)).find(item=>path.basename(item.resource.fsPath)==='changing-type');
+    assert.equal(provider.getTreeItem(changing).contextValue,'file');
+    fs.unlinkSync(changingPath);fs.mkdirSync(changingPath);
+    await provider.refresh(betaRoot);
+    changing=(await provider.getChildren(betaRoot)).find(item=>path.basename(item.resource.fsPath)==='changing-type');
+    assert.equal(provider.getTreeItem(changing).contextValue,'folder');assert.equal(provider.getTreeItem(changing).command,undefined);
+    assert.equal(provider.getTreeItem(changing).collapsibleState,vscode.TreeItemCollapsibleState.Collapsed);
+    fs.rmdirSync(changingPath);fs.writeFileSync(changingPath,'file again');
+    await provider.refresh(betaRoot);
+    changing=(await provider.getChildren(betaRoot)).find(item=>path.basename(item.resource.fsPath)==='changing-type');
+    assert.equal(provider.getTreeItem(changing).contextValue,'file');assert.ok(provider.getTreeItem(changing).command);
+    assert.equal(provider.getTreeItem(changing).collapsibleState,undefined);
+
     vscode.window.showInputBox=async options=>{assert.ok(options.validateInput('../bad'));assert.equal(options.validateInput('created-remotely.txt'),undefined);return 'created-remotely.txt';};
     await commands.get('devkit.sftp.create.file')(betaRoot);assert.deepEqual(errors,[]);
     assert.equal(fs.existsSync(path.join(dir,'remote-other','created-remotely.txt')),true);

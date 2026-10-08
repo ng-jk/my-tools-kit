@@ -2,6 +2,7 @@
 
 ## Unreleased — automated UI/UX release gate
 
+- Refresh cached remote entry types so file/folder replacements expose the correct actions and expansion behavior.
 - Defer sync deletions until all source reads and transfers succeed; refresh services when workspace folders change and support FTP current-directory metadata.
 - Keep SCM transfers bound to the clicked repository, scope remote tree actions to Remote Explorer, and report ignored Git changes as skipped.
 - Confirm destination-specific destructive Git-change uploads and sync before mutations; retain the legacy human-mode menu only for projects configured for it.

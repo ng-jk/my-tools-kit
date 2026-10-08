@@ -164,6 +164,8 @@ export default class RemoteTreeData
         });
         const mapItem = this._map.get(newResource.uri.query);
         if (mapItem) {
+          mapItem.isDirectory = isDirectory;
+          mapItem.resource = newResource;
           return mapItem;
         } else {
           const newItem = {
