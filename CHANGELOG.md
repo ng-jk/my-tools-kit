@@ -2,6 +2,7 @@
 
 ## Unreleased — automated UI/UX release gate
 
+- Display profile and destination per Remote Explorer root and transfer, without a misleading global profile status.
 - Confirm Edit in Local overwrites and distinguish folder planning from completed transfers in output.
 - Require explicit source/destination overwrite confirmation before List, List All, or List Active Folder downloads.
 - Reject duplicate local roots before registering configurations, support prototype-named path components, and distinguish acceptance-only actions from publishing.

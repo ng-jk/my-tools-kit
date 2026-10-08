@@ -115,7 +115,7 @@ export function createFileService(
   service.beforeTransfer((task: TransferTask) => {
     const { localFsPath, transferType } = task;
     app.sftpBarItem.showMsg(
-      `${transferType} ${path.basename(localFsPath)}`,
+      `${transferType} ${path.basename(localFsPath)} (${service.name || service.getConfig().host}, ${service.profile || 'base'})`,
       simplifyPath(localFsPath)
     );
   });

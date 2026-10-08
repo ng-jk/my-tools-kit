@@ -276,6 +276,17 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     const restoredProfiles=await views.get('devkit.remoteExplorer').getChildren();
     assert.equal(restoredProfiles.find(item=>item.explorerContext.fileService.name==='first').explorerContext.fileService.profile,'dev');
     assert.equal(restoredProfiles.find(item=>item.explorerContext.fileService.name==='second').explorerContext.fileService.profile,'prod','unrelated profile remains selected');
+    const profileTree=views.get('devkit.remoteExplorer');
+    assert.match(profileTree.getTreeItem(restoredProfiles.find(item=>item.explorerContext.fileService.name==='first')).description,/dev - fixture/);
+    assert.match(profileTree.getTreeItem(restoredProfiles.find(item=>item.explorerContext.fileService.name==='second')).description,/prod - fixture/);
+    assert.equal(statusTexts.some(text=>/^SFTP: (dev|prod)$/.test(text)),false);
+    configs[0].defaultProfile='prod';fs.writeFileSync(path.join(root,'.vscode','sftp.json'),JSON.stringify(configs));
+    vscode.workspace.getWorkspaceFolder=()=>({uri:URI.file(root)});
+    await savedDocument({uri:URI.file(path.join(root,'.vscode','sftp.json'))});
+    const reloadedProfiles=await profileTree.getChildren();
+    assert.match(profileTree.getTreeItem(reloadedProfiles.find(item=>item.explorerContext.fileService.name==='first')).description,/prod - fixture/);
+    assert.match(profileTree.getTreeItem(reloadedProfiles.find(item=>item.explorerContext.fileService.name==='first')).tooltip,/dest-first-prod/);
+
 
 
     extension.deactivate();commands.clear();views.clear();errors.length=0;

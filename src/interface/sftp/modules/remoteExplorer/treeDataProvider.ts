@@ -114,8 +114,12 @@ export default class RemoteTreeData
     if (!customLabel) {
       customLabel = upath.basename(item.resource.fsPath);
     }
+    const context = isRoot ? (item as ExplorerRoot).explorerContext : undefined;
+    const destination = context ? `${context.config.host}:${context.config.port} ${context.config.remotePath}` : undefined;
     return {
       label: customLabel,
+      description: context ? `${context.fileService.profile || 'base'} - ${context.config.host}` : undefined,
+      tooltip: context ? `${customLabel} | profile ${context.fileService.profile || 'base'} | ${destination} | local ${context.fileService.baseDir}` : undefined,
       resourceUri: item.resource.uri,
       collapsibleState: item.isDirectory ? vscode.TreeItemCollapsibleState.Collapsed : undefined,
       contextValue: isRoot ? 'root' : item.isDirectory ? 'folder' : 'file',

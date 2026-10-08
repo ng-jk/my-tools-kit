@@ -17,13 +17,7 @@ const app: App = shared;
 
 app.state = new AppState();
 app.sftpBarItem = new StatusBarItem(
-  () => {
-    if (app.state.profile) {
-      return `SFTP: ${app.state.profile}`;
-    } else {
-      return 'SFTP';
-    }
-  },
+  'SFTP',
   'SFTP@ng-jk',
   COMMAND_TOGGLE_OUTPUT
 );
