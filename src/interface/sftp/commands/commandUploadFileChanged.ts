@@ -52,26 +52,27 @@ export default checkCommand({
 
     const uploaded: string[] = [];
     const skipped: string[] = [];
-    await Promise.all(
-      relPaths.map(async rel => {
-        const fsPath = path.join(dir, rel);
-        const uri = vscode.Uri.file(fsPath);
+    const selected=relPaths.map(rel=>{
+      const fsPath=path.join(dir,rel),uri=vscode.Uri.file(fsPath);
+      const ctx=getFileService(uri)?handleCtxFromUri(uri):undefined;
+      return {rel,fsPath,ctx,check:ctx?.fileService.cancellationCheck()};
+    });
+    for (const {rel,fsPath,ctx,check} of selected) {
         // Only files that belong to an SFTP service can be uploaded.
-        if (!getFileService(uri)) {
+        if (!ctx) {
           skipped.push(rel);
-          return;
+          continue;
         }
         try {
-          const ctx = handleCtxFromUri(uri);
-          if (ctx.config.ignore?.(fsPath, 'local')) { skipped.push(rel); return; }
+          check!();
+          if (ctx.config.ignore?.(fsPath, 'local')) { skipped.push(rel); continue; }
           await uploadFile(ctx);
           uploaded.push(rel);
         } catch (error) {
           skipped.push(rel);
           logger.error(error as Error, `upload failed for ${rel}`);
         }
-      })
-    );
+    }
 
     logger.log('');
     logger.log('------ Upload File Changed Result ------');

@@ -15,7 +15,7 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
   fs.writeFileSync(path.join(root,'ui.txt'),'uploaded from the UI adapter');
   fs.writeFileSync(path.join(root,'.vscode','sftp.json'),JSON.stringify({name:'fixture',protocol:'local',host:'fixture',username:'fixture',remotePath:path.join(dir,'remote').replaceAll('\\','/'),syncOption:{delete:true},defaultProfile:'dev',profiles:{dev:{watcher:{files:'**/*',autoUpload:true,autoDelete:true}},prod:{watcher:{files:false}},other:{context:'nested',remotePath:path.join(dir,'remote-other').replaceAll('\\','/')}}}));
   const statusTexts=[];
-  let savedDocument, changedFolders; const contextValues=new Map(),commands=new Map(),views=new Map(),errors=[],watchers=[];const disposable=()=>({dispose(){}});
+  let savedDocument, changedFolders, openedDocument; const contextValues=new Map(),commands=new Map(),views=new Map(),errors=[],watchers=[];const disposable=()=>({dispose(){}});
   const repository={rootUri:URI.file(root),ui:{selected:true},state:{indexChanges:[],workingTreeChanges:[]}};
   const repositories=[repository];
   const vscode={WorkspaceEdit:class{replace(uri,range,text){this.text=text;}},Range:class{},Uri:URI,StatusBarAlignment:{Left:1},TreeItemCollapsibleState:{None:0,Collapsed:1,Expanded:2},
@@ -23,7 +23,7 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     extensions:{getExtension:()=>({exports:{getAPI:()=>({repositories})}})},
     workspace:{onDidChangeWorkspaceFolders:fn=>{changedFolders=fn;return disposable();},isTrusted:true,asRelativePath:value=>path.relative(root,value),workspaceFolders:[{uri:URI.file(root)}],textDocuments:[],getConfiguration:()=>({get:()=>undefined}),
       createFileSystemWatcher:()=>{const watcher={disposed:false,handlers:{},onDidCreate(fn){this.handlers.create=fn;return disposable();},onDidChange(fn){this.handlers.change=fn;return disposable();},onDidDelete(fn){this.handlers.delete=fn;return disposable();},dispose(){this.disposed=true;}};watchers.push(watcher);return watcher;},
-      onDidSaveTextDocument:fn=>{savedDocument=fn;return disposable();},onDidOpenTextDocument:disposable,registerTextDocumentContentProvider:disposable},
+      onDidSaveTextDocument:fn=>{savedDocument=fn;return disposable();},onDidOpenTextDocument:fn=>{openedDocument=fn;return disposable();},registerTextDocumentContentProvider:disposable},
     commands:{registerCommand:(id,fn,self)=>{assert.equal(commands.has(id),false,'duplicate '+id);commands.set(id,fn.bind(self));return disposable();},executeCommand:async(id,...args)=>id==='setContext'?contextValues.set(args[0],args[1]):commands.has(id)?commands.get(id)(...args):undefined},
     window:{activeTextEditor:{document:{uri:URI.file(path.join(root,'ui.txt'))}},createStatusBarItem:()=>({set text(value){this.value=value;statusTexts.push(value);},get text(){return this.value;},show(){},hide(){},dispose(){}}),createOutputChannel:()=>({appendLine(){},show(){},hide(){},dispose(){}}),
       showQuickPick:async choices=>choices.find(item=>item.command==='devkit.sftp.upload.file') || choices[0],
@@ -114,11 +114,17 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     fs.writeFileSync(path.join(root,'.git','info','exclude'),'*\n!ui.txt\n!.env\n');
     fs.writeFileSync(path.join(root,'ui.txt'),'included change');
     fs.writeFileSync(path.join(root,'.env'),'private');
+    fs.appendFileSync(path.join(root,'.git','info','exclude'),'!batch-second.txt\n');fs.writeFileSync(path.join(root,'batch-second.txt'),'second selected');
+    const batchRoot=(await views.get('devkit.remoteExplorer').getChildren())[0];
+    const batchFs=await batchRoot.explorerContext.fileService.getRemoteFileSystem(batchRoot.explorerContext.config);
+    const batchPut=batchFs.put;let activeBatch=0,peakBatch=0;
+    batchFs.put=async function(...args){activeBatch++;peakBatch=Math.max(peakBatch,activeBatch);try{await new Promise(resolve=>setTimeout(resolve,20));return await batchPut.apply(this,args);}finally{activeBatch--;}};
     const resultMessages=[];const previousInfo=vscode.window.showInformationMessage;
     vscode.window.showInformationMessage=async message=>{resultMessages.push(message);};
-    await commands.get('devkit.sftp.upload.fileChanged')();
+    try{await commands.get('devkit.sftp.upload.fileChanged')();}finally{batchFs.put=batchPut;}
+    assert.equal(peakBatch,1,'changed-file batch bounds concurrent transfers');
     vscode.window.showInformationMessage=previousInfo;
-    assert.ok(resultMessages.some(message=>/uploaded 1 file\(s\), skipped 1/.test(message)),JSON.stringify(resultMessages));
+    assert.ok(resultMessages.some(message=>/uploaded 2 file\(s\), skipped 1/.test(message)),JSON.stringify(resultMessages));
     assert.equal(fs.existsSync(path.join(dir,'remote','.env')),false);
     assert.equal(fs.readFileSync(path.join(dir,'remote','ui.txt'),'utf8'),'included change');
     fs.writeFileSync(path.join(dir,'remote','missing.txt'),'staged then deleted locally');
@@ -348,10 +354,27 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     const nestedA=path.join(dir,'remote','nested');fs.mkdirSync(nestedA,{recursive:true});
     fs.writeFileSync(path.join(nestedA,'wrong-server.txt'),'delete only A');fs.writeFileSync(path.join(dir,'remote-other','wrong-server.txt'),'preserve B');
     fs.writeFileSync(contextFile,JSON.stringify([
-      {name:'Server A',watcher:{files:'**/*',autoUpload:true,autoDelete:true},context:'.',protocol:'local',host:'server-a',username:'alice',remotePath:path.join(dir,'remote').replaceAll('\\','/')},
+      {name:'Server A',uploadOnSave:true,downloadOnOpen:'confirm',watcher:{files:'**/*',autoUpload:true,autoDelete:true},context:'.',protocol:'local',host:'server-a',username:'alice',remotePath:path.join(dir,'remote').replaceAll('\\','/')},
       {name:'Server B',watcher:{files:false,autoUpload:false,autoDelete:false},context:'nested',protocol:'local',host:'server-b',username:'bob',remotePath:path.join(dir,'remote-other').replaceAll('\\','/')}
     ]));
     await extension.activate(context);
+
+    const linkedFolder=path.join(root,'save-link');fs.symlinkSync(path.join(root,'nested'),linkedFolder,'junction');
+    fs.writeFileSync(path.join(root,'nested','save-check.txt'),'must not transfer');
+    await savedDocument({uri:URI.file(path.join(linkedFolder,'save-check.txt'))});
+    assert.equal(fs.existsSync(path.join(dir,'remote-other','save-check.txt')),false);
+    assert.equal(fs.existsSync(path.join(nestedA,'save-check.txt')),false);
+    fs.rmdirSync(linkedFolder);
+    fs.writeFileSync(path.join(root,'open-check.txt'),'keep local');
+    const oldConfirm=vscode.window.showInformationMessage;let confirmOpen,promptOpen;
+    const shown=new Promise(resolve=>promptOpen=resolve);
+    vscode.window.showInformationMessage=async(message,...choices)=>{assert.match(message,/server-a/);assert.match(message,/open-check.txt/);assert.match(message,/overwrite/);promptOpen();return new Promise(resolve=>confirmOpen=()=>resolve(choices[0]));};
+    const pendingOpen=openedDocument({uri:URI.file(path.join(root,'open-check.txt'))});
+    await shown;
+    await savedDocument({uri:URI.file(contextFile)});
+    confirmOpen();await pendingOpen;
+    vscode.window.showInformationMessage=oldConfirm;
+    assert.equal(fs.readFileSync(path.join(root,'open-check.txt'),'utf8'),'keep local','stale download confirmation cannot overwrite after config replacement');
     const parentWatcher=watchers.filter(item=>!item.disposed).at(-1);
     fs.writeFileSync(path.join(root,'nested','automation.txt'),'local change');
     fs.writeFileSync(path.join(dir,'remote-other','automation.txt'),'preserve B');

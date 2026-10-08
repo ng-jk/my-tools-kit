@@ -1,5 +1,7 @@
 // Adapted from ng-jk/vscode-sftp (MIT); see THIRD-PARTY-NOTICES.md.
 import * as vscode from 'vscode';
+import * as path from 'path';
+import {handleCtxFromUri} from '../fileHandlers/createFileHandler';
 import logger from '../logger';
 import { nativeRealpath } from '../../../data/sftp/local-path';
 import app from '../app';
@@ -10,6 +12,7 @@ import { isValidFile, isConfigFile, isInWorkspace } from '../helper/index';
 import { downloadFile, uploadFile } from '../fileHandlers/index';
 
 let workspaceWatcher: vscode.Disposable;
+let openWatcher: vscode.Disposable;
 
 async function handleConfigSave(uri: vscode.Uri) {
   const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
@@ -29,13 +32,16 @@ async function handleFileSave(uri: vscode.Uri) {
 
   const config = fileService.getConfig();
   if (config.uploadOnSave) {
-    const fspath = await nativeRealpath(uri.fsPath);
-    uri = vscode.Uri.file(fspath);
-    logger.info(`[file-save] ${fspath}`);
+    const ctx=handleCtxFromUri(uri),check=ctx.fileService.cancellationCheck();
+    const fspath=uri.fsPath;
     try {
-      await uploadFile(uri);
+      const resolved=await nativeRealpath(fspath);
+      check();
+      if(path.relative(fspath,resolved)!=='' || getFileService(vscode.Uri.file(resolved))!==fileService) throw new Error('Automatic upload cannot follow a symlink or change context');
+      logger.info(`[file-save] ${fspath}`);
+      await uploadFile(ctx);
     } catch (error) {
-      logger.error(error, `download ${fspath}`);
+      logger.error(error, `upload ${fspath}`);
       app.sftpBarItem.updateStatus(StatusBarItem.Status.error);
     }
   }
@@ -49,15 +55,16 @@ async function downloadOnOpen(uri: vscode.Uri) {
 
   const config = fileService.getConfig();
   if (config.downloadOnOpen) {
-    if (config.downloadOnOpen === 'confirm') {
-      const isConfirm = await showConfirmMessage('Do you want SFTP to download this file?');
-      if (!isConfirm) return;
-    }
-
-    const fspath = uri.fsPath;
-    logger.info(`[file-open] ${fspath}`);
+    const ctx=handleCtxFromUri(uri),check=ctx.fileService.cancellationCheck();
+    const fspath=uri.fsPath;
     try {
-      await downloadFile(uri);
+      if(config.downloadOnOpen==='confirm') {
+        const message=`Download from ${ctx.fileService.name || config.host} (${config.host}:${config.port}, profile ${ctx.fileService.profile || 'base'}) ${ctx.target.remoteFsPath} and overwrite ${ctx.target.localFsPath}?`;
+        if(!await showConfirmMessage(message,'Download','Cancel'))return;
+      }
+      check();
+      logger.info(`[file-open] ${fspath}`);
+      await downloadFile(ctx);
     } catch (error) {
       logger.error(error, `download ${fspath}`);
       app.sftpBarItem.updateStatus(StatusBarItem.Status.error);
@@ -91,17 +98,18 @@ function watchWorkspace({
       return onDidSaveSftpConfig(uri);
     }
 
-    onDidSaveFile(uri);
+    return onDidSaveFile(uri);
   });
 }
 
 function init() {
-  onDidOpenTextDocument((doc: vscode.TextDocument) => {
+  openWatcher?.dispose();
+  openWatcher = onDidOpenTextDocument((doc: vscode.TextDocument) => {
     if (!isValidFile(doc.uri) || !isInWorkspace(doc.uri.fsPath)) {
       return;
     }
 
-    downloadOnOpen(doc.uri);
+    return downloadOnOpen(doc.uri);
   });
 
   watchWorkspace({
@@ -111,6 +119,7 @@ function init() {
 }
 
 function destory() {
+  openWatcher?.dispose();
   if (workspaceWatcher) {
     workspaceWatcher.dispose();
   }
