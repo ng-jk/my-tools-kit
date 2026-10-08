@@ -39,10 +39,7 @@ export async function activate(context: vscode.ExtensionContext) {
     reportError(error, 'initCommands');
   }
 
-  const workspaceFolders = getWorkspaceFolders();
-  if (!workspaceFolders) {
-    return;
-  }
+  const workspaceFolders = getWorkspaceFolders() || [];
 
   setContextValue('enabled', true);
   setContextValue('hasConfiguration', false);
@@ -59,6 +56,13 @@ export async function activate(context: vscode.ExtensionContext) {
   });
   try {
     app.remoteExplorer = new RemoteExplorer(context);
+    context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(async event => {
+      for (const folder of event.removed) {
+        getAllFileService().filter(service => service.workspace === folder.uri.fsPath).forEach(disposeFileService);
+      }
+      await Promise.all(event.added.map(folder => setupWorkspaceFolder(folder.uri.fsPath).catch(error => reportError(error))));
+      app.remoteExplorer.refresh();
+    }));
     await setup(workspaceFolders);
     app.remoteExplorer.refresh();
   } catch (error) {

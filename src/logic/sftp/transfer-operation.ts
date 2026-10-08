@@ -45,8 +45,9 @@ export async function executeTransfer(service: any, config: any, local: string, 
     checkCancelled();
     scheduler = service.createTransferScheduler(config.concurrency);
     const tasks: any[] = [];
+    const pendingDeletions: Array<() => Promise<void>> = [];
     const deleted = await (synchronize ? sync : transfer)({
-      directoryScope,
+      directoryScope, pendingDeletions,
       srcFsPath: down ? remote : local, targetFsPath: down ? local : remote,
       srcFs: down ? remoteFs : localFs, targetFs: down ? localFs : remoteFs,
       transferDirection: down ? TransferDirection.REMOTE_TO_LOCAL : TransferDirection.LOCAL_TO_REMOTE,
@@ -58,6 +59,9 @@ export async function executeTransfer(service: any, config: any, local: string, 
     planning = false;
     tasks.forEach(task => scheduler.add(task));
     await scheduler.run();
+    checkCancelled();
+    planning = true;
+    for (const remove of pendingDeletions) { checkCancelled(); await remove(); }
     checkCancelled();
     return {passed: true, transferred: tasks.length, deleted: deleted || []};
   } finally {

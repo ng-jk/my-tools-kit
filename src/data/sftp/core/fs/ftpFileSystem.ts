@@ -87,6 +87,11 @@ export default class FTPFileSystem extends RemoteFileSystem {
   }
 
   async lstat(path: string): Promise<FileStats> {
+    if (['.','./'].includes(this.pathResolver.normalize(path))) {
+      const cwd = await this.queue.add(() => new Promise<string>((resolve,reject) => this.ftp.pwd((error,dir) => error ? reject(error) : resolve(dir))));
+      if (!this.pathResolver.isAbsolute(cwd)) throw new Error('FTP server returned an invalid working directory');
+      return this.lstat(cwd);
+    }
     if (path === '/') {
       return {
         type: FileType.Directory,

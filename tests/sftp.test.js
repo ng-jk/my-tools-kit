@@ -768,3 +768,21 @@ test('shared transfer rejects local intermediate source symlinks before reading 
     await assert.rejects(engine.operate(session,action,'link/sub'),/Local ancestor.*symlink/);assert.equal(scheduled,false);
   }
 });
+
+test('destructive sync preserves destination-only files after nested source or transfer failure',async t=>{
+  const {local,remote,session}=fixture(t,{syncOption:{delete:true}});
+  fs.mkdirSync(path.join(local,'nested'));fs.mkdirSync(path.join(remote,'nested'));
+  fs.writeFileSync(path.join(local,'nested','new.txt'),'new');fs.writeFileSync(path.join(remote,'only-copy.txt'),'retain');
+  const source=session.service.getLocalFileSystem(),target=await session.service.getRemoteFileSystem(session.config);
+  const list=source.list,put=target.put;
+  try {
+    source.list=async function(name){if(name===path.join(local,'nested'))throw new Error('nested source unreadable');return list.call(this,name);};
+    await assert.rejects(engine.operate(session,'sync-up','.',{yes:true}),/nested source unreadable/);
+    assert.equal(fs.readFileSync(path.join(remote,'only-copy.txt'),'utf8'),'retain');
+    source.list=list;target.put=async()=>{throw new Error('transfer failed');};
+    await assert.rejects(engine.operate(session,'sync-up','.',{yes:true}),/transfer failed/);
+    assert.equal(fs.readFileSync(path.join(remote,'only-copy.txt'),'utf8'),'retain');
+    target.put=put;await engine.operate(session,'sync-up','.',{yes:true});
+    assert.equal(fs.existsSync(path.join(remote,'only-copy.txt')),false);
+  }finally{source.list=list;target.put=put;}
+});

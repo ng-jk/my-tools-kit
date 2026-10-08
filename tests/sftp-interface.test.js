@@ -14,13 +14,13 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
   fs.writeFileSync(path.join(root,'nested','ui.txt'),'from other context');
   fs.writeFileSync(path.join(root,'ui.txt'),'uploaded from the UI adapter');
   fs.writeFileSync(path.join(root,'.vscode','sftp.json'),JSON.stringify({name:'fixture',protocol:'local',host:'fixture',username:'fixture',remotePath:path.join(dir,'remote').replaceAll('\\','/'),syncOption:{delete:true},defaultProfile:'dev',profiles:{dev:{watcher:{files:'**/*',autoUpload:true,autoDelete:true}},prod:{watcher:{files:false}},other:{context:'nested',remotePath:path.join(dir,'remote-other').replaceAll('\\','/')}}}));
-  let savedDocument; const contextValues=new Map(),commands=new Map(),views=new Map(),errors=[],watchers=[];const disposable=()=>({dispose(){}});
+  let savedDocument, changedFolders; const contextValues=new Map(),commands=new Map(),views=new Map(),errors=[],watchers=[];const disposable=()=>({dispose(){}});
   const repository={rootUri:URI.file(root),ui:{selected:true},state:{indexChanges:[],workingTreeChanges:[]}};
   const repositories=[repository];
   const vscode={WorkspaceEdit:class{replace(uri,range,text){this.text=text;}},Range:class{},Uri:URI,StatusBarAlignment:{Left:1},TreeItemCollapsibleState:{None:0,Collapsed:1,Expanded:2},
     EventEmitter:class{event=()=>disposable();fire(){}dispose(){}},ThemeIcon:class{constructor(id){this.id=id;}},RelativePattern:class{},
     extensions:{getExtension:()=>({exports:{getAPI:()=>({repositories})}})},
-    workspace:{isTrusted:true,asRelativePath:value=>path.relative(root,value),workspaceFolders:[{uri:URI.file(root)}],textDocuments:[],getConfiguration:()=>({get:()=>undefined}),
+    workspace:{onDidChangeWorkspaceFolders:fn=>{changedFolders=fn;return disposable();},isTrusted:true,asRelativePath:value=>path.relative(root,value),workspaceFolders:[{uri:URI.file(root)}],textDocuments:[],getConfiguration:()=>({get:()=>undefined}),
       createFileSystemWatcher:()=>{const watcher={disposed:false,handlers:{},onDidCreate(fn){this.handlers.create=fn;return disposable();},onDidChange(fn){this.handlers.change=fn;return disposable();},onDidDelete(fn){this.handlers.delete=fn;return disposable();},dispose(){this.disposed=true;}};watchers.push(watcher);return watcher;},
       onDidSaveTextDocument:fn=>{savedDocument=fn;return disposable();},onDidOpenTextDocument:disposable,registerTextDocumentContentProvider:disposable},
     commands:{registerCommand:(id,fn,self)=>{assert.equal(commands.has(id),false,'duplicate '+id);commands.set(id,fn.bind(self));return disposable();},executeCommand:async(id,...args)=>id==='setContext'?contextValues.set(args[0],args[1]):commands.has(id)?commands.get(id)(...args):undefined},
@@ -44,6 +44,13 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     assert.ok(views.has('devkit.remoteExplorer'));
     assert.deepEqual(views.get('devkit.tools').getChildren().map(item=>item.label),['API Debugger','JSON Formatter','Compare Text / Files','Compare Git Revisions','SFTP / FTP','CI/CD Pipeline']);
     assert.equal((await views.get('devkit.remoteExplorer').getChildren()).length,1);
+    const addedRoot=path.join(dir,'added-workspace');fs.mkdirSync(path.join(addedRoot,'.vscode'),{recursive:true});
+    fs.writeFileSync(path.join(addedRoot,'.vscode','sftp.json'),JSON.stringify({name:'added',protocol:'local',host:'fixture',username:'fixture',remotePath:path.join(dir,'remote-other').replaceAll('\\','/')}));
+    await changedFolders({added:[{uri:URI.file(addedRoot)}],removed:[]});
+    assert.equal((await views.get('devkit.remoteExplorer').getChildren()).length,2);
+    await changedFolders({added:[],removed:[{uri:URI.file(addedRoot)}]});
+    assert.equal((await views.get('devkit.remoteExplorer').getChildren()).length,1);
+
     await commands.get('devkit.sftp.upload.activeFile')();
     assert.deepEqual(errors,[]);
     assert.equal(fs.readFileSync(path.join(dir,'remote','ui.txt'),'utf8'),'uploaded from the UI adapter');

@@ -62,6 +62,7 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
   permissionsHonored=false;await assert.rejects(engine.operate(session,'upload','local.txt'),/required file permissions/);assert.equal(appendModes.length,appended);permissionsHonored=true;
   const list=await engine.operate(session,'list');assert.ok(list.some(item=>item.name==='local.txt'));
   const remoteFs=await session.service.getRemoteFileSystem(session.config);
+  for(const relative of ['.','./']) assert.equal((await remoteFs.lstat(relative)).type,engine.FileType.Directory);
   await assert.rejects(remoteFs.rename('/local.txt\r\nDELE /local.txt\r\nNOOP','/renamed.txt'),/prohibited control/);
   assert.equal(files.get('/local.txt').toString(),'ftp payload');
   await assert.rejects(remoteFs.symlink('local.txt','/link'),/does not support/);

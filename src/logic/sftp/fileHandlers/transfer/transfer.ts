@@ -43,6 +43,7 @@ interface SyncOption extends TransferOption {
 
 interface BaseTransferHandleConfig {
   directoryScope?: DirectoryPermissionScope;
+  pendingDeletions?: Array<() => Promise<void>>;
   srcFsPath: string;
   targetFsPath: string;
   dirPerm?: number,
@@ -381,9 +382,13 @@ async function _sync(
       });
     }
 
-    // side-effect
-    await settleAll(fileMissed.map(file => removeFile(file, targetFs, FileType.File, transferOption, transferDirection === TransferDirection.LOCAL_TO_REMOTE ? 'remote' : 'local')));
-    await settleAll(dirMissed.map(file => removeFile(file, targetFs, FileType.Directory, transferOption, transferDirection === TransferDirection.LOCAL_TO_REMOTE ? 'remote' : 'local')));
+    // Deletions execute only after the entire plan and all transfers succeed.
+    for (const [files,type] of [[fileMissed,FileType.File],[dirMissed,FileType.Directory]] as const) {
+      for (const file of files) {
+        if (!config.pendingDeletions) throw new Error('Destructive sync requires a deferred deletion plan');
+        config.pendingDeletions.push(() => removeFile(file, targetFs, type, transferOption, transferDirection === TransferDirection.LOCAL_TO_REMOTE ? 'remote' : 'local'));
+      }
+    }
 
     const transFilePromise = file2trans.map(([src, target, direction, type, option]) =>
       transferFile(
