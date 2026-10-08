@@ -7,6 +7,8 @@ import { uploadFile, renameRemote, removeRemote } from '../fileHandlers/index';
 import { getGitService, GitAPI, Repository, Status, Change } from '../modules/git/index';
 import { checkCommand } from './abstract/createCommand';
 import logger from '../logger';
+import {showConfirmMessage} from '../host';
+import {handleCtxFromUri} from '../fileHandlers/createFileHandler';
 import {localEntryExists} from '../../../data/sftp/local-events';
 import {reconcileGitChanges, planGitTransfers, executeGitTransfers, GitChange} from '../../../logic/sftp/git-transfer';
 
@@ -66,10 +68,23 @@ async function handleCommand(hint: any) {
     const service = getFileService(vscode.Uri.file(file));
     return service && !service.getConfig().ignore?.(file) ? service.baseDir : undefined;
   });
+  const contexts = new Map(plan.map(operation => {
+    const ctx = handleCtxFromUri(vscode.Uri.file(operation.path));
+    return [operation.path, {ctx, check:ctx.fileService.cancellationCheck()}] as const;
+  }));
+  const destructive = plan.filter(operation => operation.kind !== 'upload');
+  if (destructive.length) {
+    const details = destructive.map(operation => {
+      const {ctx} = contexts.get(operation.path)!;
+      return `${operation.kind}: ${ctx.fileService.name} (${ctx.config.host}:${ctx.config.port}) ${ctx.target.remoteFsPath}`;
+    }).join('\n');
+    if (!await showConfirmMessage(`Apply Git changes including remote deletions or renames?\n${details}`, 'Apply changes', 'Cancel')) return;
+  }
+  const selected = (file: string) => { const {ctx,check}=contexts.get(file)!;check();return ctx; };
   await executeGitTransfers(plan, {
-    upload: file => uploadFile(vscode.Uri.file(file)),
-    rename: (from,to) => renameRemote(vscode.Uri.file(to),{originPath:from}),
-    delete: file => removeRemote(vscode.Uri.file(file)),
+    upload: file => uploadFile(selected(file)),
+    rename: (from,to) => renameRemote(selected(to),{originPath:from}),
+    delete: file => removeRemote(selected(file)),
   });
   logger.log('------ Upload Changed Files Result ------');
   plan.forEach(operation => logger.log(`${operation.kind}: ${operation.path}`));

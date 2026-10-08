@@ -2,6 +2,8 @@
 
 ## Unreleased — automated UI/UX release gate
 
+- Confirm destination-specific destructive Git-change uploads and sync before mutations; retain the legacy human-mode menu only for projects configured for it.
+- Kept server identity when downloading from List Active Folder across nested legacy contexts.
 - Replaced this project’s manual interface acceptance with a separate evidence-backed UI/UX code review during test and deployment.
 - Added Review UI/UX and release / `release` to run the complete lifecycle without human acceptance records.
 - Fail closed on rejected, incomplete, stale or unavailable review; preserve artifact hashes and publication verification. Legacy human-mode projects remain supported through the CLI.

@@ -1,4 +1,5 @@
 // Adapted from ng-jk/vscode-sftp (MIT); see THIRD-PARTY-NOTICES.md.
+import {showConfirmMessage} from '../../host';
 import { refreshRemoteExplorer } from '../shared';
 import createFileHandler, { FileHandlerContext } from '../createFileHandler';
 import { TransferOption, SyncOption, TransferDirection } from '../../../../logic/sftp/fileHandlers/transfer/transfer';
@@ -7,6 +8,14 @@ import {executeTransfer} from '../../../../logic/sftp/transfer-operation';
 
 function createTransferHandle(direction: TransferDirection, synchronize = false) {
   return async function handle(this: FileHandlerContext, option: TransferOption) {
+    const check = this.fileService.cancellationCheck();
+    if (synchronize && (option as SyncOption).delete) {
+      const remote = `${this.fileService.name} (${this.config.host}:${this.config.port}) ${this.target.remoteFsPath}`;
+      const destination = (option as SyncOption).bothDiretions ? `${remote} and local ${this.target.localFsPath}`
+        : direction === TransferDirection.REMOTE_TO_LOCAL ? `local ${this.target.localFsPath}` : remote;
+      if (!await showConfirmMessage(`Synchronize and delete destination-only files at ${destination}?`, 'Sync and delete', 'Cancel')) return;
+    }
+    check();
     return executeTransfer(this.fileService, this.config, this.target.localFsPath, this.target.remoteFsPath,
       direction === TransferDirection.REMOTE_TO_LOCAL,
       {...option, filePerm: this.config.filePerm, dirPerm: this.config.dirPerm}, synchronize);

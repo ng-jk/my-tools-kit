@@ -1,14 +1,13 @@
 // Adapted from ng-jk/vscode-sftp (MIT); see THIRD-PARTY-NOTICES.md.
 import * as path from 'path';
-import { Uri } from 'vscode';
 import { COMMAND_LIST_ACTIVEFOLDER } from '../../../data/sftp/constants';
 import { showTextDocument } from '../host';
-import { FileType } from '../../../logic/sftp/core/index';
+import { FileType, UResource } from '../../../logic/sftp/core/index';
 import { downloadFile, downloadFolder } from '../fileHandlers/index';
 import { checkCommand } from './abstract/createCommand';
 import { getActiveFolder } from './shared';
 import { handleCtxFromUri } from '../fileHandlers/index';
-import { listFiles, toLocalPath } from '../helper/index';
+import { listFiles } from '../helper/index';
 
 export default checkCommand({
   id: COMMAND_LIST_ACTIVEFOLDER,
@@ -23,7 +22,7 @@ export default checkCommand({
     const config = ctx.config;
     const remotefs = await ctx.fileService.getRemoteFileSystem(config);
     const fileEntry = await remotefs.list(ctx.target.remoteFsPath);
-    const filter = config.ignore ? (file: any) => !config.ignore!(file.fsPath) : undefined;
+    const filter = config.ignore ? (file: any) => !config.ignore!(file.fsPath, 'remote') : undefined;
 
     const listItems = fileEntry.map(file => ({
       name: path.basename(file.fspath) + (file.type === FileType.Directory ? '/' : ''),
@@ -38,18 +37,17 @@ export default checkCommand({
       return;
     }
 
-    const localUri = Uri.file(
-      toLocalPath(selected.fsPath, config.remotePath, ctx.fileService.baseDir)
-    );
+    const remoteUri = UResource.makeResource({fsPath:selected.fsPath, remoteId:ctx.fileService.id,
+      remote:{host:config.host,port:config.port}}).uri;
     if (selected.type !== FileType.Directory) {
-      await downloadFile(localUri);
+      await downloadFile(remoteUri);
       try {
-        await showTextDocument(localUri);
+        await showTextDocument(handleCtxFromUri(remoteUri).target.localUri);
       } catch (error) {
         // ignore
       }
     } else {
-      await downloadFolder(localUri);
+      await downloadFolder(remoteUri);
     }
   },
 });

@@ -85,6 +85,11 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     fs.writeFileSync(path.join(dir,'remote','missing.txt'),'staged then deleted locally');
     repository.state.indexChanges=[{status:0,uri:URI.file(path.join(root,'missing.txt'))}];
     repository.state.workingTreeChanges=[{status:6,uri:URI.file(path.join(root,'missing.txt'))}];
+    const confirmChanges=vscode.window.showInformationMessage;
+    vscode.window.showInformationMessage=async message=>{assert.match(message,/remote deletions/);assert.match(message,/missing.txt/);return undefined;};
+    await commands.get('devkit.sftp.upload.changedFiles')();
+    assert.equal(fs.existsSync(path.join(dir,'remote','missing.txt')),true,'cancelled Git deletion preserves remote file');
+    vscode.window.showInformationMessage=confirmChanges;
     await commands.get('devkit.sftp.upload.changedFiles')();
     assert.deepEqual(errors,[]);
     assert.equal(fs.existsSync(path.join(dir,'remote','missing.txt')),false,'staged modification followed by deletion removes the remote file');
@@ -142,6 +147,12 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
 
     errors.length=0;
     fs.writeFileSync(path.join(dir,'remote-other','keep-on-cancel.txt'),'keep');
+    const confirmSync=vscode.window.showInformationMessage;
+    vscode.window.showInformationMessage=async message=>{assert.match(message,/delete destination-only/);assert.match(message,/remote-other/);return undefined;};
+    await commands.get('devkit.sftp.sync.localToRemote')([path.join(root,'nested')]);
+    assert.equal(fs.readFileSync(path.join(dir,'remote-other','keep-on-cancel.txt'),'utf8'),'keep','cancelled sync makes no deletion');
+    vscode.window.showInformationMessage=confirmSync;
+
     const originalRead=nativeReaddir;
     let cancellationCount=0;
     readHook=function(directory,callback){
@@ -238,6 +249,14 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     await commands.get('devkit.sftp.delete.remote')();assert.deepEqual(errors,[]);assert.equal(picks.length,0);
     assert.equal(fs.existsSync(path.join(nestedA,'wrong-server.txt')),false,'delete targets the selected server despite nested local context');
     assert.equal(fs.readFileSync(path.join(dir,'remote-other','wrong-server.txt'),'utf8'),'preserve B');
+    fs.writeFileSync(path.join(nestedA,'download-target.txt'),'from A');fs.writeFileSync(path.join(dir,'remote-other','download-target.txt'),'from B');
+    fs.writeFileSync(path.join(root,'active.txt'),'local');
+    vscode.window.activeTextEditor={document:{uri:URI.file(path.join(root,'active.txt'))}};
+    const activePicks=['nested/','download-target.txt'];
+    vscode.window.showQuickPick=async choices=>{const label=activePicks.shift();const item=choices.find(c=>c.label===label);assert.ok(item,'Missing '+label);return item;};
+    await commands.get('devkit.sftp.listActiveFolder')();assert.deepEqual(errors,[]);
+    assert.equal(fs.readFileSync(path.join(root,'nested','download-target.txt'),'utf8'),'from A');
+
 
   } finally {extension?.deactivate();context.subscriptions.forEach(item=>item.dispose());Module._load=original;fs.readdir=nativeReaddir;}
 });

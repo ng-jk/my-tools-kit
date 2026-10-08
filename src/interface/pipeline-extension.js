@@ -1,6 +1,11 @@
 'use strict';
 const path = require('node:path');
+const {readJson} = require('../data/files');
 async function configurePipeline(vscode, context, root) {
+  const mode = readJson(path.join(root, '.devkit-pipeline.json')).interfaceReview || 'human';
+  const acceptance = mode === 'ai-ux'
+    ? { label: 'Review UI/UX and release', command: 'release', description: 'Run tests, code and UI/UX reviews, then publish and promote on success' }
+    : { label: 'Approve interface and finish release', command: 'accept-uat', description: 'Record actual human acceptance for this project' };
   const action = await vscode.window.showQuickPick([
     { label: 'Status', command: 'status', description: 'Show branches, reviewer, and evidence location' },
     { label: 'Verify Marketplace access', command: 'marketplace-check', description: 'Read-only vsce check using Microsoft Entra ID' },
@@ -8,7 +13,7 @@ async function configurePipeline(vscode, context, root) {
     { label: 'Check current changes', command: 'check', description: 'Architecture, unit, function, integration tests and package build' },
     { label: 'Test committed development', command: 'test', description: 'Advance test and run isolated checks plus AI review' },
     { label: 'Test and push test branch', command: 'test', flags: ['--push'], description: 'Also fast-forward the remote test branch' },
-    { label: 'Review UI/UX and release', command: 'release', description: 'Run tests, code and UI/UX reviews, then publish and promote on success' },
+    acceptance,
     { label: 'Publish', command: 'publish', description: 'Check deployment, publish approved VSIX if configured, then advance main' }
   ], { title: 'Development Tools Kit — Python CI/CD' });
   if (!action) return;

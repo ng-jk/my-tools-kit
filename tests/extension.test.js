@@ -35,3 +35,18 @@ test('extension host bridge executes requests and persists no response credentia
     assert.match(messages.at(-1).text, /trust/);
   } finally { Module._load = original; await new Promise(resolve => server.close(resolve)); fs.rmSync(root, { recursive: true }); }
 });
+
+
+test('pipeline menu follows the target project interface review mode',async()=>{
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-pipeline-menu-'));
+  try {
+    const {configurePipeline}=require('../src/interface/pipeline-extension');
+    for(const mode of ['human','ai-ux']) {
+      fs.writeFileSync(path.join(root,'.devkit-pipeline.json'),JSON.stringify({interfaceReview:mode}));
+      let choices;
+      await configurePipeline({window:{showQuickPick:async items=>{choices=items;return undefined;}}},{},root);
+      assert.equal(choices.some(item=>item.command==='accept-uat'),mode==='human');
+      assert.equal(choices.some(item=>item.command==='release'),mode==='ai-ux');
+    }
+  } finally {fs.rmSync(root,{recursive:true,force:true});}
+});
