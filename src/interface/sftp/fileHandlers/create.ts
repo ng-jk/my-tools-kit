@@ -1,4 +1,5 @@
 // Adapted from ng-jk/vscode-sftp (MIT); see THIRD-PARTY-NOTICES.md.
+import {assertRemoteAncestors} from '../../../logic/sftp/remote-operations';
 import { refreshRemoteExplorer } from './shared';
 import { fileOperations } from '../../../logic/sftp/core/index';
 import createFileHandler from './createFileHandler';
@@ -9,6 +10,7 @@ export const createRemoteFile = createFileHandler<FileHandleOption & { skipDir?:
   async handle(option) {
     const remoteFs = await this.fileService.getRemoteFileSystem(this.config);
     const { remoteFsPath } = this.target;
+    await assertRemoteAncestors(remoteFs,remoteFsPath,this.config.remotePath,false,true);
 
     let promise;
     promise = fileOperations.createFile(remoteFsPath, remoteFs, {});
@@ -48,6 +50,7 @@ export const createRemoteFolder = createFileHandler<FileHandleOption & { skipDir
   async handle(option) {
     const remoteFs = await this.fileService.getRemoteFileSystem(this.config);
     const { remoteFsPath } = this.target;
+    await assertRemoteAncestors(remoteFs,remoteFsPath,this.config.remotePath,false,true);
 
     let promise;
     promise = fileOperations.createDir(remoteFsPath, remoteFs, {});

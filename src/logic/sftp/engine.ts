@@ -5,7 +5,7 @@ import {executeTransfer} from './transfer-operation';
 export {cancelActiveTransfers} from './transfer-operation';
 import { mergedDefault, validateConfig } from './config';
 import { resolveProfileContext } from './core/profileContext';
-import {removeRemotePath,renameRemotePath} from './remote-operations';
+import {removeRemotePath,renameRemotePath,assertRemoteAncestors} from './remote-operations';
 export { configurePorts } from '../../data/sftp/ports';
 export { sshArguments } from './ssh-arguments';
 export { watchPolicy } from './watch-policy';
@@ -65,8 +65,8 @@ async function operate(session: any, action: string, relative = '.', flags: any 
   if (action === 'list') return remoteFs.list(remote);
   if (action === 'read') return (await remoteFs.readFile(remote)).toString('utf8');
   if (action === 'diff') return { local: (await localFs.readFile(local)).toString('utf8'), remote: (await remoteFs.readFile(remote)).toString('utf8') };
-  if (action === 'mkdir') { await remoteFs.ensureDir(remote); return { passed: true }; }
-  if (action === 'create') { await fileOperations.createFile(remote, remoteFs); return { passed: true }; }
+  if (action === 'mkdir') { await assertRemoteAncestors(remoteFs,remote,config.remotePath,true,true); await remoteFs.ensureDir(remote); return { passed: true }; }
+  if (action === 'create') { await assertRemoteAncestors(remoteFs,remote,config.remotePath,false,true); await fileOperations.createFile(remote, remoteFs); return { passed: true }; }
   if (action === 'rename') {
     if (!flags.to || path.posix.resolve('/', remote) === path.posix.resolve('/', config.remotePath)) throw new Error('Rename requires a non-root path and --to');
     const destination = resolveTarget(session, flags.to).remote;

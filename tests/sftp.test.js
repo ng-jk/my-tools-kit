@@ -735,3 +735,18 @@ test('remote delete and both rename endpoints reject symlink ancestors but permi
   await engine.renameRemotePath(remote,'/project/link','/project/link-renamed','/project');
   assert.deepEqual(mutations[1],['rename','/project/link','/project/link-renamed']);
 });
+
+
+test('upload and destructive sync reject intermediate remote symlinks before scheduling any mutation',async t=>{
+  const {session,local}=fixture(t);
+  session.config.remotePath='/project';
+  fs.mkdirSync(path.join(local,'link'));fs.mkdirSync(path.join(local,'link','sub'));fs.writeFileSync(path.join(local,'link','sub','payload.txt'),'safe local');
+  const inspected=[];let scheduled=false;
+  session.service.getRemoteFileSystem=async()=>({lstat:async target=>{inspected.push(target);return {type:target==='/project/link'?engine.FileType.SymbolicLink:engine.FileType.Directory};}});
+  session.service.createTransferScheduler=()=>{scheduled=true;throw new Error('must not schedule');};
+  for(const action of ['upload','sync-up','sync-down','sync-both']) {
+    session.config.syncOption={delete:true};
+    await assert.rejects(engine.operate(session,action,'link/sub',{yes:true}),/ancestor.*symlink/);
+    assert.equal(scheduled,false);assert.ok(inspected.includes('/project/link'));
+  }
+});

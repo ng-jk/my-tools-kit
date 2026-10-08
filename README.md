@@ -79,7 +79,7 @@ SFTP verifies host keys: use a trusted `knownHostsPath` or independently verifie
 | Connect with SSH | Choose the SSH terminal action for the selected SFTP server; requires your system SSH client. |
 | Stop or troubleshoot | Choose **Cancel All Transfers**, **Show Output**, or Remote Explorer’s refresh button. |
 
-**Force Upload/Download** bypass ignore filtering. **Upload to All Profiles** addresses legacy profiles inside the active context; it never means all independent contexts. Use a disposable folder before enabling automatic deletion. Delete and rename require a real directory as the remote root and reject symlink parent folders; use the canonical server path. A symlink itself can still be deleted or renamed. FTP file creation and destructive FTP sync-down are blocked where FTP cannot provide the required safety guarantees; use SFTP for those operations. [Full command inventory and protocol limits](https://github.com/ng-jk/my-tools-kit/blob/developement/docs/sftp.md).
+**Force Upload/Download** bypass ignore filtering. **Upload to All Profiles** addresses legacy profiles inside the active context; it never means all independent contexts. Use a disposable folder before enabling automatic deletion. Transfers, creation, delete and rename reject existing symlink parent folders and require existing remote roots to be real directories; use the canonical server path. A symlink itself can still be deleted or renamed. FTP file creation and destructive FTP sync-down are blocked where FTP cannot provide the required safety guarantees; use SFTP for those operations. [Full command inventory and protocol limits](https://github.com/ng-jk/my-tools-kit/blob/developement/docs/sftp.md).
 
 ## API Debugger
 

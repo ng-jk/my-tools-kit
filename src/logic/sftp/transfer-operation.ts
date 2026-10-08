@@ -2,6 +2,7 @@ import {filesystemIdentity} from './core/staged-replacement';
 import {transfer, sync} from './fileHandlers/transfer/transfer';
 import {TransferDirection} from './core';
 import {backupBeforeUpload} from './backup';
+import {assertRemoteAncestors} from './remote-operations';
 import {DirectoryPermissionScope} from './directory-permissions';
 
 const active = new Set<() => void>();
@@ -23,6 +24,8 @@ export async function executeTransfer(service: any, config: any, local: string, 
   try {
     checkCancelled();
     const remoteFs = guard(await service.getRemoteFileSystem(config));
+    checkCancelled();
+    await assertRemoteAncestors(remoteFs, remote, config.remotePath, true, true);
     checkCancelled();
     const localFs = guard(service.getLocalFileSystem());
     scheduler = service.createTransferScheduler(config.concurrency);

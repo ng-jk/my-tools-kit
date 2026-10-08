@@ -6,15 +6,18 @@ export function assertRemoteChild(target:string,root:string) {
   const relative=path.posix.relative(base,value);
   if(!relative||relative==='..'||relative.startsWith('../')||path.posix.isAbsolute(relative)) throw new Error('Operation requires a non-root path inside the configured remote root');
 }
-export async function assertRemoteAncestors(fs:FileSystem,target:string,root:string) {
-  assertRemoteChild(target,root);
+export async function assertRemoteAncestors(fs:FileSystem,target:string,root:string,allowRoot=false,allowMissing=false) {
+  const same=path.posix.resolve('/',target.replace(/\\/g,'/'))===path.posix.resolve('/',root.replace(/\\/g,'/'));
+  if(!allowRoot || !same)assertRemoteChild(target,root);
   const base=path.posix.normalize(root.replace(/\\/g,'/'));
   const relative=path.posix.relative(base,path.posix.normalize(target.replace(/\\/g,'/')));
   const parents=relative.split('/').slice(0,-1);
   let current=base;
   for (const component of ['',...parents]) {
     if(component)current=path.posix.join(current,component);
-    const entry=await fs.lstat(current);
+    let entry;
+    try {entry=await fs.lstat(current);}
+    catch(error) {if(allowMissing && (error.code==='ENOENT'||error.code===2))return;throw error;}
     if(entry.type!==FileType.Directory) throw new Error('Remote ancestor must be a real directory, not a symlink: '+current);
   }
 }
