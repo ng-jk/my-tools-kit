@@ -195,7 +195,7 @@ Select a context before transferring. “Active file” means the file open in y
 | Command | How to use it and result |
 | --- | --- |
 | **Config**<br>`devkit.sftp.config` | Open a project and choose this command. Select a workspace folder if prompted; edit and save .vscode/sftp.json with your server settings. |
-| **Set Profile**<br>`devkit.sftp.setProfile` | For legacy profiles inside the active context, choose a profile name. UNSET uses the base configuration. Watchers and services reload for the selection. |
+| **Set Profile**<br>`devkit.sftp.setProfile` | Choose the configuration first when several are available, then choose its legacy profile. UNSET uses that configuration’s base settings. Only the selected configuration and its watcher are changed. |
 | **Open SSH in Terminal**<br>`devkit.sftp.openConnectInTerminal` | Choose a configured SFTP server to open it using your system SSH client. Use a trusted SSH config alias for terminal jump hosts; FTP has no SSH terminal. |
 | **Cancel All Transfers**<br>`devkit.sftp.cancelAllTransfer` | Choose while transfers are running to cancel pending and active operations. Inspect output for any partially completed work. |
 | **Upload File**<br>`devkit.sftp.upload.file` | Select a local file in Explorer, or focus its editor, then choose this. Without either selection, pick the file when prompted. Upload File bypasses ignore filtering for the selected file. |

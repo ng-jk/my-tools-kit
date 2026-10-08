@@ -96,10 +96,10 @@ export function getBasePath(context: string | undefined, workspace: string) {
 export function createFileService(
   config: any,
   workspace: string,
-  options: { preserveProfile?: boolean } = {}
+  options: { preserveProfile?: boolean; profile?: string | null } = {}
 ) {
   // Capture selection per service; creating another config must not retarget it.
-  const requested = options.preserveProfile ? app.state.profile : config.defaultProfile || null;
+  const requested = options.profile !== undefined ? options.profile : options.preserveProfile ? app.state.profile : config.defaultProfile || null;
   const selected = requested && config.profiles && !config.profiles[requested] ? config.defaultProfile || null : requested;
   const normalizedBasePath = getBasePath(resolveProfileContext(config, selected), workspace);
   const service = new FileService(normalizedBasePath, workspace, config, selected);
@@ -213,4 +213,17 @@ export function getRunningTransformTasks(): TransferTask[] {
   return getAllFileService().reduce<TransferTask[]>((acc, fileService) => {
     return acc.concat(fileService.getPendingTransferTasks());
   }, []);
+}
+
+export function selectServiceProfile(service: FileService, profile: string | null) {
+  if (!getAllFileService().includes(service)) throw new Error('Configuration changed; select the profile again');
+  const raw=service.getRawConfiguration();
+  const preview=service.forProfile(profile);
+  try { preview.getConfig(); } finally { preview.dispose(); }
+  const nextBase=getBasePath(resolveProfileContext(raw,profile),service.workspace);
+  if(getAllFileService().some(other=>other!==service && other.baseDir===nextBase)) throw new Error('This profile overlaps another configured local context');
+  disposeFileService(service);
+  createFileService(raw,service.workspace,{profile});
+  app.state.profile=profile;
+  app.remoteExplorer?.refresh();
 }

@@ -140,6 +140,18 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     const remoteRoot=(await views.get('devkit.remoteExplorer').getChildren())[0];
     const remoteSelection=(await views.get('devkit.remoteExplorer').getChildren(remoteRoot)).find(item=>path.basename(item.resource.fsPath)==='ui.txt');
     assert.ok(remoteSelection);
+    const progressFs=await remoteRoot.explorerContext.fileService.getRemoteFileSystem(remoteRoot.explorerContext.config);
+    const originalPut=progressFs.put;let resumeSlow,startedSlow;const slowStarted=new Promise(resolve=>startedSlow=resolve),slowReady=new Promise(resolve=>resumeSlow=resolve);
+    fs.writeFileSync(path.join(root,'slow.txt'),'slow payload');
+    progressFs.put=async function(input,target,...args){if(target.includes('slow.txt')){startedSlow();await slowReady;}return originalPut.call(this,input,target,...args);};
+    const slowUpload=commands.get('devkit.sftp.upload.file')(URI.file(path.join(root,'slow.txt')));
+    try {
+      await slowStarted;
+      await commands.get('devkit.sftp.upload.file')(URI.file(path.join(root,'ui.txt')));
+      assert.match(statusTexts.at(-1),/sync~spin.*1 operation\(s\) running/);
+    } finally {resumeSlow();await slowUpload;progressFs.put=originalPut;}
+    assert.equal(statusTexts.at(-1).includes('sync~spin'),false);
+
     await commands.get('devkit.sftp.upload.file.to.allProfiles')(remoteSelection);
     assert.deepEqual(errors,[]);
     assert.equal(fs.readFileSync(path.join(dir,'remote-other','ui.txt'),'utf8'),'from other context');
@@ -249,6 +261,16 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     assert.equal(fs.readFileSync(path.join(root,'dest-second-prod','profile.txt'),'utf8'),'second prod');
     assert.equal(fs.existsSync(path.join(root,'dest-first-prod','profile.txt')),false);
     assert.equal(fs.existsSync(path.join(root,'dest-second-dev','profile.txt')),false);
+    vscode.window.showQuickPick=async choices=>choices.find(item=>item.service?.name==='first') || choices[0];
+    await commands.get('devkit.sftp.setProfile')('prod');assert.deepEqual(errors,[]);
+    const selectedProfiles=await views.get('devkit.remoteExplorer').getChildren();
+    assert.equal(selectedProfiles.find(item=>item.explorerContext.fileService.name==='first').explorerContext.fileService.profile,'prod');
+    assert.equal(selectedProfiles.find(item=>item.explorerContext.fileService.name==='second').explorerContext.fileService.profile,'prod');
+    await commands.get('devkit.sftp.setProfile')('dev');assert.deepEqual(errors,[]);
+    const restoredProfiles=await views.get('devkit.remoteExplorer').getChildren();
+    assert.equal(restoredProfiles.find(item=>item.explorerContext.fileService.name==='first').explorerContext.fileService.profile,'dev');
+    assert.equal(restoredProfiles.find(item=>item.explorerContext.fileService.name==='second').explorerContext.fileService.profile,'prod','unrelated profile remains selected');
+
 
     extension.deactivate();commands.clear();views.clear();errors.length=0;
     const contextFile=path.join(root,'.vscode','sftp.json');

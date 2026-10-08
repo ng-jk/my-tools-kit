@@ -21,6 +21,7 @@ export default class StatusBarItem {
   private tooltip: string;
   private statusBarItem: vscode.StatusBarItem;
   private spinnerTimer: any = null;
+  private activeOperations = 0;
   private resetTimer: any = null;
   private curFrameOfSpinner: number = 0;
   private text: string;
@@ -62,7 +63,9 @@ export default class StatusBarItem {
   }
 
   startSpinner() {
+    this.activeOperations++;
     if (this.spinnerTimer) {
+      this._render();
       return;
     }
 
@@ -75,6 +78,8 @@ export default class StatusBarItem {
   }
 
   stopSpinner() {
+    this.activeOperations=Math.max(0,this.activeOperations-1);
+    if(this.activeOperations){this._render();return;}
     clearInterval(this.spinnerTimer);
     this.spinnerTimer = null;
     this.curFrameOfSpinner = 0;
@@ -104,7 +109,7 @@ export default class StatusBarItem {
 
   private _render() {
     if (this.isSpinning()) {
-      this.statusBarItem.text = this.spinner.frames[this.curFrameOfSpinner] + ' ' + this.text;
+      this.statusBarItem.text = this.spinner.frames[this.curFrameOfSpinner] + ' ' + this.activeOperations + ' operation(s) running: ' + this.text;
     } else if (this.name === this.text) {
       switch (this.status) {
         case Status.ok:

@@ -445,7 +445,9 @@ export default class FileService {
     return this._profiles || [];
   }
 
-  forProfile(profile: string): FileService {
+  getRawConfiguration(): FileServiceConfig { return {...this._config}; }
+
+  forProfile(profile: string | null): FileService {
     const service = new FileService(path.resolve(this.workspace, this.resolveContext(profile) || '.'), this.workspace, this._config, profile);
     service.setConfigValidator(this._configValidator);
     return service;

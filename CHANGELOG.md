@@ -2,6 +2,7 @@
 
 ## Unreleased — automated UI/UX release gate
 
+- Scope profile selection to one configuration and keep the busy indicator visible until all concurrent operations finish.
 - Keep watcher actions within their owning context, preserve remote-preview identity for active-folder commands, clarify transfer status, and reject incomplete Git renames.
 - Refresh cached remote entry types so file/folder replacements expose the correct actions and expansion behavior.
 - Defer sync deletions until all source reads and transfers succeed; refresh services when workspace folders change and support FTP current-directory metadata.
