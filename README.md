@@ -11,7 +11,7 @@ Open the **Development Tools Kit** toolbox icon in VS Code’s Activity Bar, the
 3. Click the toolbox icon in the Activity Bar. The Tools list contains **API Debugger**, **JSON Formatter**, **Compare Text / Files**, **Compare Git Revisions**, **SFTP / FTP**, and **CI/CD Pipeline**.
 4. Alternatively, press **Ctrl+Shift+P** (macOS: **Cmd+Shift+P**) and search for **Development Tools Kit** or **SFTP**.
 
-Requires VS Code 1.96+. FTP/SFTP dependencies are bundled. Git comparisons require Git. CI/CD requires Python 3.11+ and the test/build CLIs configured for your project. Trust your workspace to enable the extension. The context features below belong to the 0.5.0 candidate; an older installed version may not contain them.
+Requires VS Code 1.96+. FTP/SFTP dependencies are bundled. Git comparisons require Git. CI/CD requires Python 3.11+ and the test/build CLIs configured for your project. Trust your workspace to enable the extension. If a command described below is missing, check which extension version is installed.
 
 ## Separate FTP/SFTP contexts
 
@@ -81,24 +81,6 @@ SFTP verifies host keys: use a trusted `knownHostsPath` or independently verifie
 
 **Force Upload/Download** bypass ignore filtering. **Upload to All Profiles** addresses legacy profiles inside the active context; it never means all independent contexts. Use a disposable folder before enabling automatic deletion. FTP file creation and destructive FTP sync-down are blocked where FTP cannot provide the required safety guarantees; use SFTP for those operations. [Full command inventory and protocol limits](https://github.com/ng-jk/my-tools-kit/blob/developement/docs/sftp.md).
 
-### FTP/SFTP from a terminal
-
-The commands below run from a source checkout with Node.js 20+, `npm ci` and `npm run build:sftp`. VS Code uses the bundled version of the same engine.
-
-```sh
-node cli.js sftp config /path/to/project
-node cli.js sftp profiles /path/to/project
-node cli.js sftp list /path/to/project --context development
-node cli.js sftp upload /path/to/project src/app.js --context development
-node cli.js sftp download /path/to/project src/app.js --context staging
-node cli.js sftp sync-up /path/to/project --context development
-node cli.js sftp diff /path/to/project src/app.js --context development
-node cli.js sftp watch /path/to/project --context development
-node cli.js sftp --help
-```
-
-Paths are relative to the context’s local/remote roots. `--context` selects only that invocation and leaves `activeContext` unchanged. Use `--yes` only for intended destructive operations; Ctrl+C cancels/disconnects.
-
 ## API Debugger
 
 ### Send your first request
@@ -132,17 +114,6 @@ Click **Store secret securely** to save a named secret in VS Code SecretStorage.
 - In **Advanced**, set timeout, redirects, response extraction and TLS files as needed. Extraction entries such as `[{"variable":"id","path":"data.id"}]` make response values available to later requests.
 - **Scripts** supports trusted pre/post scripts when explicitly enabled. Scripts run with local process privileges; only enable your own trusted code.
 
-### Run the same request in a terminal
-
-Use **Save request for CLI**, then run from a toolkit source checkout:
-
-```sh
-node cli.js send request.json --env environment.local.json --out response.json
-node cli.js run collection.json --json results.json --junit results.xml
-```
-
-CLI secrets can use `{{env.NAME}}`. Collection reports return a failing exit code for failed assertions. Saved single-request responses may contain sensitive data. Add `--allow-scripts` only when you intend to run trusted scripts.
-
 This is not full Thunder Client parity: interactive OAuth, Digest/NTLM/AWS auth, proxies, WebSockets/gRPC and complete script migration are not implemented.
 
 ## JSON Formatter
@@ -154,11 +125,6 @@ This is not full Thunder Client parity: interactive OAuth, Digest/NTLM/AWS auth,
 
 Invalid input is retained with an error. Formatting preserves large numbers, key order, duplicate keys and number spelling; it changes whitespace only. It accepts strict JSON, not comments or trailing commas. To format an existing editor, run **Format JSON Document or Selection** from the Command Palette. It formats the selection, or the entire document if nothing is selected.
 
-```sh
-node cli.js json input.json --indent 4 --out formatted.json
-node cli.js json input.json --minify
-node cli.js json input.json --validate
-```
 
 ## Compare two long pastes or two files
 
@@ -172,12 +138,7 @@ For files, run **Compare Two Files** and pick both files, or select two files in
 
 Binary/non-UTF files display size, SHA-256 identity and a hex excerpt; this does not visually compare PDFs/images/Office files. Text comparison supports up to 20 MiB per side. Check the native diff editor’s **Ignore Trim Whitespace** setting when whitespace matters.
 
-```sh
-node cli.js compare before.txt after.txt
-node cli.js compare before.txt after.txt --ignore-case --line-endings
-```
 
-CLI comparison returns 0 for equal, 1 for different, and 2 for an execution error. `compare - -` accepts a JSON object with `left` and `right` strings on stdin for long pastes.
 
 ## Compare any two Git revisions
 
@@ -189,43 +150,93 @@ CLI comparison returns 0 for equal, 1 for different, and 2 for an execution erro
 
 No checkout is needed. The tool does not fetch, stage, commit or modify your files. If Git reports dubious ownership, verify that you trust the repository and configure Git’s `safe.directory` for that exact path yourself.
 
-```sh
-node cli.js git-changes . HEAD~1 HEAD
-node cli.js git-compare . HEAD~1 HEAD old/path.txt new/path.txt
-node cli.js git-compare . HEAD WORKTREE src/app.js src/app.js
-```
 
-## CI/CD Pipeline
+## CI/CD Pipeline — menu actions
 
-1. Open the project you want to test/deploy. Choose **CI/CD Pipeline** from the toolbox.
-2. Set **Development Tools Kit: Python Path** (`devkit.pythonPath`) if Python is not discovered.
-3. Configure that project’s `.devkit-pipeline.json` with its actual architecture, unit, function, integration and build commands. Each project needs its own configuration; installing this extension does not automatically configure a website deployment.
-4. Use **Status** to inspect branches and evidence, then run the check/test actions. Each action opens a VS Code task showing the same Python CLI output and exit status as terminal execution.
-5. Commit development work before **Test**. After automated tests and AI review pass, install the retained build and perform your interface acceptance checks.
-6. Use **Approve interface and finish release** only after accepting that exact candidate. If `autoPublishAfterUat` is true, deployment checks and publication start automatically; otherwise invoke **Publish** separately.
+Choose **CI/CD Pipeline** in the toolbox (or **Development Tools Kit: Configure CI/CD**), select your workspace when prompted, then choose an action below. Each action opens a VS Code task: read its terminal output and exit status to see the result.
 
-The branch flow is **developement → test → deployment → main**. `test` records the candidate on the test branch and runs gates; a test branch alone is not evidence of a passing build. `publish` reruns deployment checks, uploads the approved artifact when Marketplace is configured, verifies it publicly, then promotes main. Failed gates leave main unchanged. AI review uses an installed/authenticated Codex or Claude CLI and blocks release if unavailable or rejected. The user performs interface acceptance; the pipeline never fabricates it.
+Your project must have a `.devkit-pipeline.json` containing its own test/build commands. Set **Development Tools Kit: Python Path** in Settings if Python 3.11+ is not discovered. This tool operates on the selected project; it does not automatically configure or deploy websites.
 
-```sh
-python pipeline.py init
-python pipeline.py status
-python pipeline.py check
-python pipeline.py test --push
-python pipeline.py accept-uat --commit <tested-sha> --reviewer "Your name" --note "Actual checks completed"
-python pipeline.py publish
-```
+| Menu action | How to use it and what happens |
+| --- | --- |
+| Status | Choose this first to inspect branch commits, the configured AI reviewer and saved evidence location. It does not publish anything. |
+| Verify Marketplace access | Choose this for a project configured to publish a VS Code extension. It checks the locally signed-in identity’s Marketplace access without uploading. |
+| Initialize branches | Choose this when the configured repository needs its workflow branches. Missing development/test/deployment branches are created from main; existing branches are retained. |
+| Check current changes | Choose this while developing, including with uncommitted edits. It runs architecture, unit, functional, integration and build checks. Read failures in the task terminal; this does not create release approval. |
+| Test committed development | Commit your changes first, then choose this. It sets the test candidate and runs isolated checks plus AI review, retaining artifacts when successful. A test-branch update alone does not mean tests passed. |
+| Test and push test branch | Use when you also want the candidate test branch pushed to the configured Git remote. Otherwise it performs the same checks as Test committed development. |
+| Approve interface and finish release | After personally testing the retained build, enter the exact commit, your name and the checks completed. This records your acceptance. If the project enables automatic publication after UAT, publication starts immediately. |
+| Publish | Use for an approved candidate, or to retry a failed publication. It checks deployment gates, publishes the approved artifact if configured, verifies it, and only then advances main. Failures leave main unchanged. |
 
-These examples run from the toolkit checkout; `node cli.js pipeline status /path/to/project` targets another configured project. The pipeline runs locally, uses Python orchestration and your project’s CLI tools, and requires the PC/terminal to remain running. It uses no GitHub Actions.
+Keep the task running until it reports completion. AI review needs an authenticated supported AI CLI. Interface acceptance is performed by you. Publisher credentials, build commands, packaging and release recovery are covered in the separate [developer guide](https://github.com/ng-jk/my-tools-kit/blob/developement/docs/development.md).
 
-### Publishing this extension
+## Complete VS Code command reference
 
-The repository is configured for publisher `NGJUNKAI`. Authenticate Azure CLI locally using your Entra tenant and a publisher Contributor/Owner identity. **Verify Marketplace access** (or `python pipeline.py marketplace-check`) checks access without uploading. Publication uses local `vsce --azure-credential`; credentials stay in the local Azure login cache, outside Git. VS Code clients receive Marketplace releases according to their extension auto-update settings.
+Press **Ctrl+Shift+P** (**Cmd+Shift+P** on macOS) to find available palette commands. For SFTP, the toolbox’s **SFTP / FTP** menu includes the functions below, including commands hidden from the palette. File-specific actions also appear in Explorer/Remote Explorer context menus. The command ID is provided for custom keybindings; it is not a terminal command.
 
-[Detailed build, release and recovery instructions](https://github.com/ng-jk/my-tools-kit/blob/developement/docs/development.md).
+Select a context before transferring. “Active file” means the file open in your focused editor; “active folder” is its parent folder; “project” means the configured local context, which may be smaller than the workspace. Sync with `syncOption.delete: true` can delete destination-only files. **To All Profiles** operates on legacy profiles within the active context, not all named contexts.
 
-### Codex / Claude Code pipeline plugin
+### Workspace tools
 
-The separate `pipeline-configurator-0.3.1.zip` build contains the shared Python runtime and `configure-pipeline` skill; it is not installed by the VS Code extension. In a source checkout, `python scripts/build.py` builds it. For Claude Code local testing, run `claude --plugin-dir ./plugins/pipeline-configurator`. Project-local skill installation and verification limits are covered in the [development guide](https://github.com/ng-jk/my-tools-kit/blob/developement/docs/development.md). Ask the agent to configure your project’s actual CLI checks; the skill does not grant global permissions or approve UAT.
+| Command | How to use it and result |
+| --- | --- |
+| **Development Tools Kit: Open API Debugger**<br>`devkit.open` | Choose from the toolbox or Command Palette. Enter a method and URL, configure the tabs, then click Send; inspect the response below. |
+| **Development Tools Kit: Configure CI/CD**<br>`devkit.pipeline` | Open a project, run this command, select the workspace if prompted, and choose a pipeline action from the table above. |
+| **Development Tools Kit: Store API Secret**<br>`devkit.secret` | Run this command or click Store secret securely in API Debugger. Enter a secret name and value; reference it as {{secret.NAME}} in requests. |
+| **Development Tools Kit: Compare Text / Open Text Tools**<br>`devkit.textTools` | Open this command, paste or load Original and Modified text, then choose Compare texts to open the native diff editor. |
+| **Development Tools Kit: Open JSON Formatter**<br>`devkit.jsonFormatter` | Open this command, paste JSON, choose indentation and click Format, Minify or Validate. Copy or save the result. |
+| **Development Tools Kit: Format JSON Document or Selection**<br>`devkit.formatJson` | Focus a JSON editor and optionally select a JSON value. Run this to format that selection, or the whole document if nothing is selected; Undo restores the edit. |
+| **Development Tools Kit: Compare Two Files**<br>`devkit.compareFiles` | Select two files in Explorer and invoke the command, or run it and choose the original and modified files. It opens a text diff or binary comparison summary. |
+| **Development Tools Kit: Compare Editor or Selection with Clipboard**<br>`devkit.compareClipboard` | Copy the comparison text, focus an editor and optionally select text, then run this command. It compares the selection (or entire editor) against the clipboard. |
+| **Development Tools Kit: Compare Git Revisions**<br>`devkit.compareGit` | Choose a repository, set both revisions, click Show changed files and select a file. Use INDEX or WORKTREE on the right for staged or local changes. |
+
+### FTP/SFTP commands
+
+| Command | How to use it and result |
+| --- | --- |
+| **Config**<br>`devkit.sftp.config` | Open a project and choose this command. Select a workspace folder if prompted; edit and save .vscode/sftp.json with your server settings. |
+| **Set Profile**<br>`devkit.sftp.setProfile` | For legacy profiles inside the active context, choose a profile name. UNSET uses the base configuration. Watchers and services reload for the selection. |
+| **Open SSH in Terminal**<br>`devkit.sftp.openConnectInTerminal` | Choose a configured SFTP server to open it using your system SSH client. Use a trusted SSH config alias for terminal jump hosts; FTP has no SSH terminal. |
+| **Cancel All Transfers**<br>`devkit.sftp.cancelAllTransfer` | Choose while transfers are running to cancel pending and active operations. Inspect output for any partially completed work. |
+| **Upload File**<br>`devkit.sftp.upload.file` | Select a local file in Explorer, or focus its editor, then choose this. Without either selection, pick the file when prompted. Upload File bypasses ignore filtering for the selected file. |
+| **Upload Changed Files**<br>`devkit.sftp.upload.changedFiles` | Open a configured Git project, select changes in Source Control or run this command for its changes. It uploads current local contents and applies supported rename/delete changes after confirmation. |
+| **Upload File Changed (Pick Commit)**<br>`devkit.sftp.upload.fileChanged` | Choose the repository, then a recent commit or uncommitted changes. It uploads current local versions of the created/modified paths in that selection—not historical file contents; deleted paths are skipped. |
+| **Upload Active File**<br>`devkit.sftp.upload.activeFile` | Focus the saved local file’s editor and choose this command to upload that file to the configured remote path. |
+| **Upload Folder**<br>`devkit.sftp.upload.folder` | Select a local folder, or pick it in the dialog. Its contents are uploaded recursively, respecting ignore rules. |
+| **Upload Active Folder**<br>`devkit.sftp.upload.activeFolder` | Focus a local file’s editor and run this to upload its containing folder recursively. |
+| **Upload Project**<br>`devkit.sftp.upload.project` | Choose the configured local context from the picker. It uploads that entire context recursively, respecting ignore rules. |
+| **Force Upload**<br>`devkit.sftp.forceUpload` | Select the local files/folders or use the picker. It uploads them while bypassing ignore filtering; check the selection for private files first. |
+| **Upload File To All Profiles**<br>`devkit.sftp.upload.file.to.allProfiles` | Choose this with the selected local file. It uploads that relative selection to every legacy profile inside the active context, using each profile’s own destination. Confirm if prompted; it does not upload to every named context. |
+| **Upload Active File To All Profiles**<br>`devkit.sftp.upload.activeFile.to.allProfiles` | Choose this with the file in the active editor. It uploads that relative selection to every legacy profile inside the active context, using each profile’s own destination. Confirm if prompted; it does not upload to every named context. |
+| **Upload Folder To All Profiles**<br>`devkit.sftp.upload.folder.to.allProfiles` | Choose this with the selected local folder. It uploads that relative selection to every legacy profile inside the active context, using each profile’s own destination. Confirm if prompted; it does not upload to every named context. |
+| **Upload Active Folder To All Profiles**<br>`devkit.sftp.upload.activeFolder.to.allProfiles` | Choose this with the folder containing the active editor file. It uploads that relative selection to every legacy profile inside the active context, using each profile’s own destination. Confirm if prompted; it does not upload to every named context. |
+| **Upload Project To All Profiles**<br>`devkit.sftp.upload.project.to.allProfiles` | Choose this with the chosen project context. It uploads that relative selection to every legacy profile inside the active context, using each profile’s own destination. Confirm if prompted; it does not upload to every named context. |
+| **Force Upload To All Profiles**<br>`devkit.sftp.forceUpload.to.allProfiles` | Select local files/folders and choose this to upload to every legacy profile inside the active context while bypassing ignore filtering. Verify all destinations before confirming. |
+| **Download File**<br>`devkit.sftp.download.file` | Select a remote file or its corresponding local file, then choose this to download it into the configured local folder. Without a selection, follow the target picker. |
+| **Download Active File**<br>`devkit.sftp.download.activeFile` | Focus the corresponding local file’s editor and run this to replace its local contents with the remote file. |
+| **Download Folder**<br>`devkit.sftp.download.folder` | Choose a remote folder through the remote context menu or folder picker. Downloads its contents into the matching local folder. |
+| **Download Active Folder**<br>`devkit.sftp.download.activeFolder` | Focus a local file’s editor and run this to download the corresponding remote folder into that local folder. |
+| **Download Project**<br>`devkit.sftp.download.project` | Select a configured context. Downloads its remote root into the local context folder, respecting ignore rules. |
+| **Force Download**<br>`devkit.sftp.forceDownload` | Select a target or use the picker to download it while bypassing ignore filtering. Existing local files may be replaced. |
+| **Sync Local -> Remote**<br>`devkit.sftp.sync.localToRemote` | Select a local folder or configured context and run this to synchronize local contents to the remote destination using syncOption. |
+| **Sync Remote -> Local**<br>`devkit.sftp.sync.remoteToLocal` | Select a folder or configured context and run this to synchronize remote contents to the local destination using syncOption. |
+| **Sync Both Directions**<br>`devkit.sftp.sync.bothDirections` | Select a folder/context and run this to synchronize both sides using syncOption. Resolve file/folder conflicts before retrying a failed sync. |
+| **Diff with Remote**<br>`devkit.sftp.diff` | Select a file (or focus its editor) and run this to compare the local and remote versions in VS Code’s diff editor. |
+| **Diff Active File with Remote**<br>`devkit.sftp.diff.activeFile` | Focus a file’s editor and run this to compare it with its corresponding remote file. |
+| **List**<br>`devkit.sftp.list` | Choose the server, browse folders, then select a file to download and open it. Selecting the current folder (.) downloads that folder. Ignore rules apply; expanding Remote Explorer alone only lists files. |
+| **List Active Folder**<br>`devkit.sftp.listActiveFolder` | Focus a local file and run this to browse its corresponding remote folder. Select a file to download/open, or a folder to download. |
+| **List All**<br>`devkit.sftp.listAll` | Browse remote targets including ignored paths. Select a file to download/open or the current folder (.) to download; this command bypasses ignore filtering. |
+| **Delete**<br>`devkit.sftp.delete.remote` | Select remote files/folders, or browse to a remote target when no editor/selection is active. Verify the filename and confirm Delete. Removes remote data; deleting the configured remote root is blocked. |
+| **Create Folder**<br>`devkit.sftp.create.folder` | Select the destination folder in Remote Explorer or choose a context when prompted. Enter a folder name to create it remotely. |
+| **Create File**<br>`devkit.sftp.create.file` | Select a destination folder or choose a context, then enter the filename. Creates a remote file without overwriting an existing one; use SFTP because FTP creation is unsupported. |
+| **Reveal in Explorer**<br>`devkit.sftp.revealInExplorer` | Select a remote item and choose this to reveal its corresponding local path in VS Code Explorer. It does not download missing content. |
+| **Reveal in Remote Explorer**<br>`devkit.sftp.revealInRemoteExplorer` | Select a local file and choose this to locate its corresponding remote item in SFTP Remote Explorer. |
+| **Edit in Local**<br>`devkit.sftp.remoteExplorer.editInLocal` | Right-click a remote file and choose this to download it and open the local copy. Upload edits manually or enable uploadOnSave in that context. |
+| **View Content**<br>`devkit.sftp.viewContent` | Right-click a remote file and choose this to open its remote content for viewing, instead of editing the local copy. |
+| **Refresh**<br>`devkit.sftp.remoteExplorer.refresh` | Click the Remote Explorer refresh button or choose this function to reload its tree after remote changes. |
+| **Refresh Active Remote File**<br>`devkit.sftp.remoteExplorer.refreshActiveFile` | Focus a remote-content editor and click its refresh action to reload the remote content. |
+| **Development Tools Kit: SFTP / FTP Functions**<br>`devkit.sftp.menu` | Choose SFTP / FTP in the toolbox to open the complete SFTP function list. Choose a function below; supply a file/folder selection where required. |
+| **SFTP: Select Context**<br>`devkit.sftp.selectContext` | Save sftp.json first, run this command and choose a named context. The selected connection and watchers replace the previous active context. |
 
 ## Database tools and licensing
 

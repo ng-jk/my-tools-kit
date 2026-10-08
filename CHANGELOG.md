@@ -1,5 +1,11 @@
 # Release notes
 
+## Unreleased — Marketplace command manual
+
+- Documented every contributed VS Code command with selection requirements, usage and results, plus all eight CI/CD menu actions.
+- Removed publisher setup, deployment recipes and source-build commands from the Marketplace README; kept them in developer documentation.
+- Clarified that SFTP List commands download the selected target and that commit-based upload uses current local file contents.
+
 ## Unreleased — isolated FTP/SFTP contexts and usage guide
 
 - Added independent named FTP/SFTP contexts with per-context host/IP, port, credentials, local/remote paths, authentication and transfer settings. Contexts can share a local folder without overwriting one another.
