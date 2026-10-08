@@ -10,8 +10,8 @@ import { logger } from '../../../data/sftp/ports';
 let hasWarnedModifedTimePermission = false;
 
 export enum TransferDirection {
-  LOCAL_TO_REMOTE = 'local ➞ remote',
-  REMOTE_TO_LOCAL = 'remote ➞ local',
+  LOCAL_TO_REMOTE = 'Uploading',
+  REMOTE_TO_LOCAL = 'Downloading',
 }
 
 interface FileHandle {

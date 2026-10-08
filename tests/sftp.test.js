@@ -786,3 +786,15 @@ test('destructive sync preserves destination-only files after nested source or t
     assert.equal(fs.existsSync(path.join(remote,'only-copy.txt')),false);
   }finally{source.list=list;target.put=put;}
 });
+
+test('Git renames do not report success when a destination parent is missing',async()=>{
+  const missing=()=>Object.assign(new Error('missing parent'),{code:'ENOENT'});
+  const remote={lstat:async name=>{if(name==='/root/new')throw missing();return {type:name==='/root'?engine.FileType.Directory:engine.FileType.File};},rename:async()=>{throw new Error('must not rename');}};
+  let uploads=0;
+  const plan=engine.planGitTransfers([{kind:'rename',oldPath:'/root/old.txt',path:'/root/new/file.txt'}],()=>'/root');
+  await assert.rejects(engine.executeGitTransfers(plan,{rename:(from,to)=>engine.renameRemotePath(remote,from,to,'/root'),upload:async()=>uploads++,delete:async()=>{}}),/missing parent/);
+  assert.equal(uploads,0);
+  remote.lstat=async name=>{if(name==='/root/old.txt')throw missing();return {type:engine.FileType.Directory};};
+  await engine.executeGitTransfers(plan,{rename:(from,to)=>engine.renameRemotePath(remote,from,to,'/root'),upload:async()=>uploads++,delete:async()=>{}});
+  assert.equal(uploads,1,'an absent source can still fall back to upload');
+});

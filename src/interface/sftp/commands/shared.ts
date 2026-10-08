@@ -1,7 +1,7 @@
 // Adapted from ng-jk/vscode-sftp (MIT); see THIRD-PARTY-NOTICES.md.
 import * as path from 'path';
 import { Uri, window } from 'vscode';
-import { FileType, UResource } from '../../../logic/sftp/core/index';
+import { FileType, UResource, upath } from '../../../logic/sftp/core/index';
 import { getAllFileService } from '../modules/serviceManager/index';
 import { ExplorerItem } from '../modules/remoteExplorer/index';
 import { getActiveTextEditor } from '../host';
@@ -113,6 +113,10 @@ export function getActiveFolder() {
     return;
   }
 
+  if (UResource.isRemote(uri)) {
+    const resource=UResource.makeResource(uri);
+    return UResource.updateResource(resource,{remotePath:upath.dirname(resource.fsPath)}).uri;
+  }
   return Uri.file(path.dirname(uri.fsPath));
 }
 

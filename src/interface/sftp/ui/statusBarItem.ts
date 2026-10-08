@@ -4,7 +4,7 @@ import * as vscode from 'vscode';
 const spinners = {
   dots: {
     interval: 80,
-    frames: ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'],
+    frames: ['$(sync~spin)'],
   },
 };
 

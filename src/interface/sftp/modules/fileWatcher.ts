@@ -8,7 +8,7 @@ import { upload, removeRemote } from '../fileHandlers/index';
 import { WatcherService, TransferDirection } from '../../../logic/sftp/core/index';
 import app from '../app';
 import StatusBarItem from '../ui/statusBarItem';
-import { getRunningTransformTasks } from './serviceManager/index';
+import { getFileService, getRunningTransformTasks } from './serviceManager/index';
 import {isOwnLocalChange, localEntryExists} from '../../../data/sftp/local-events';
 import {isTransferArtifact} from '../../../logic/sftp/core/staged-replacement';
 
@@ -16,21 +16,25 @@ const watchers: {
   [x: string]: vscode.FileSystemWatcher;
 } = {};
 
-const uploadQueue = new Set<vscode.Uri>();
-const deleteQueue = new Set<vscode.Uri>();
+import {handleCtxFromUri, FileHandlerContext} from '../fileHandlers/createFileHandler';
+interface WatchEvent {uri:vscode.Uri; ctx:FileHandlerContext; current:()=>boolean;}
+const uploadQueue = new Set<WatchEvent>();
+const deleteQueue = new Set<WatchEvent>();
 
 // less than 550 will not work
 const ACTION_INTEVAL = 550;
 
 function doUpload() {
-  const files = Array.from(uploadQueue).sort((a, b) => fileDepth(b.fsPath) - fileDepth(a.fsPath));
+  const files = Array.from(uploadQueue).sort((a, b) => fileDepth(b.uri.fsPath) - fileDepth(a.uri.fsPath));
   uploadQueue.clear();
 
   const currentDownloadTasks = getRunningTransformTasks().filter(
     task => task.transferType === TransferDirection.REMOTE_TO_LOCAL
   );
 
-  files.forEach(async uri => {
+  files.forEach(async event => {
+    if (!event.current()) return;
+    const {uri,ctx}=event;
     if (isOwnLocalChange(uri.fsPath) || isTransferArtifact(uri.fsPath)) return;
     // current target is still in downloading, so don't upload it.
     if (currentDownloadTasks.find(task => task.localFsPath === uri.fsPath)) {
@@ -40,7 +44,7 @@ function doUpload() {
     const fspath = uri.fsPath;
     logger.info(`[watcher/updated] ${fspath}`);
     try {
-      await upload(uri);
+      await upload(ctx);
     } catch (error) {
       logger.error(error, `upload ${fspath}`);
       app.sftpBarItem.updateStatus(StatusBarItem.Status.error);
@@ -49,14 +53,16 @@ function doUpload() {
 }
 
 function doDelete() {
-  const files = Array.from(deleteQueue).sort((a, b) => fileDepth(b.fsPath) - fileDepth(a.fsPath));
+  const files = Array.from(deleteQueue).sort((a, b) => fileDepth(b.uri.fsPath) - fileDepth(a.uri.fsPath));
   deleteQueue.clear();
-  files.forEach(async uri => {
+  files.forEach(async event => {
+    if (!event.current()) return;
+    const {uri,ctx}=event;
     if (isOwnLocalChange(uri.fsPath) || isTransferArtifact(uri.fsPath) || localEntryExists(uri.fsPath)) return;
     const fspath = uri.fsPath;
     logger.info(`[watcher/removed] ${fspath}`);
     try {
-      await removeRemote(uri);
+      await removeRemote(ctx);
     } catch (error) {
       logger.error(error, `remove ${fspath}`);
       app.sftpBarItem.updateStatus(StatusBarItem.Status.error);
@@ -67,12 +73,13 @@ function doDelete() {
 const debouncedUpload = debounce(doUpload, ACTION_INTEVAL, { leading: true, trailing: true });
 const debouncedDelete = debounce(doDelete, ACTION_INTEVAL, { leading: true, trailing: true });
 
-function uploadHandler(uri: vscode.Uri) {
+function uploadHandler(event: WatchEvent) {
+  const {uri}=event;
   if (!isValidFile(uri) || isOwnLocalChange(uri.fsPath) || isTransferArtifact(uri.fsPath)) {
     return;
   }
 
-  uploadQueue.add(uri);
+  uploadQueue.add(event);
   debouncedUpload();
 }
 
@@ -112,9 +119,17 @@ function createWatcher(
   );
   addWatcher(watcherBase, watcher);
 
+  const owner = getFileService(vscode.Uri.file(watcherBase));
+  const thisWatcher = watcher;
+  const bind = (uri:vscode.Uri):WatchEvent|undefined => {
+    const current=()=>watchers[watcherBase]===thisWatcher && getFileService(uri)===owner;
+    if (!owner || !current()) return; // A nested context owns its own automation policy.
+    return {uri,ctx:handleCtxFromUri(uri),current};
+  };
   if (watcherConfig.autoUpload) {
-    watcher.onDidCreate(uploadHandler);
-    watcher.onDidChange(uploadHandler);
+    const changed=(uri:vscode.Uri)=>{const event=bind(uri);if(event)uploadHandler(event);};
+    watcher.onDidCreate(changed);
+    watcher.onDidChange(changed);
   }
 
   if (watcherConfig.autoDelete) {
@@ -123,7 +138,8 @@ function createWatcher(
         return;
       }
 
-      deleteQueue.add(uri);
+      const event=bind(uri);if(!event)return;
+      deleteQueue.add(event);
       debouncedDelete();
     });
   }
@@ -131,9 +147,9 @@ function createWatcher(
 
 function removeWatcher(watcherBase: string) {
   for (const queue of [uploadQueue, deleteQueue]) {
-    for (const uri of queue) {
-      const relative = path.relative(watcherBase, uri.fsPath);
-      if (relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative)) queue.delete(uri);
+    for (const event of queue) {
+      const relative = path.relative(watcherBase, event.uri.fsPath);
+      if (relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative)) queue.delete(event);
     }
   }
   if (!uploadQueue.size) debouncedUpload.cancel();

@@ -36,5 +36,7 @@ export async function removeRemotePath(fs:FileSystem,target:string,root:string,s
   else throw new Error('Unsupported remote file type');
 }
 export async function renameRemotePath(fs:FileSystem,from:string,to:string,root:string) {
-  await assertRemoteAncestors(fs,from,root);await assertRemoteAncestors(fs,to,root);await fs.rename(from,to);
+  await assertRemoteAncestors(fs,from,root);
+  try { await fs.lstat(from); } catch(error) { if(error.code==='ENOENT'||error.code===2) { error.missingRenameSource=true; } throw error; }
+  await assertRemoteAncestors(fs,to,root);await fs.rename(from,to);
 }

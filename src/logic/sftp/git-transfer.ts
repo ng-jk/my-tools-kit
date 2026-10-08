@@ -25,7 +25,10 @@ export async function executeGitTransfers(plan: GitOperation[], adapter: {
       try {
         if (operation.kind === 'rename') await adapter.rename(operation.oldPath!,operation.path);
         else await adapter.delete(operation.path);
-      } catch (error) { if (error.code !== 'ENOENT' && error.code !== 2) throw error; }
+      } catch (error) {
+        if (operation.kind === 'rename' && !error.missingRenameSource) throw error;
+        if (error.code !== 'ENOENT' && error.code !== 2) throw error;
+      }
     }
   }
   return plan;
