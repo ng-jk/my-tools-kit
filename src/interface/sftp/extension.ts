@@ -10,15 +10,13 @@ import initCommands from './initCommands';
 import { reportError } from './helper/index';
 import fileActivityMonitor from './modules/fileActivityMonitor';
 import { tryLoadConfigs } from './modules/config';
-import { getAllFileService, createFileService, disposeFileService } from './modules/serviceManager/index';
+import { getAllFileService, createFileServices, disposeFileService } from './modules/serviceManager/index';
 import { getWorkspaceFolders, setContextValue } from './host';
 import RemoteExplorer from './modules/remoteExplorer/index';
 
 async function setupWorkspaceFolder(dir: string) {
   const configs = await tryLoadConfigs(dir);
-  configs.forEach(config => {
-    createFileService(config, dir);
-  });
+  createFileServices(configs,dir);
 }
 
 function setup(workspaceFolders: vscode.WorkspaceFolder[]) {

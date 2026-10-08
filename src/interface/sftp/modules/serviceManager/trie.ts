@@ -18,7 +18,7 @@ class TrieNode<T> {
   constructor(token: string, value: T | null = null) {
     this.token = token;
     this.value = value;
-    this.children = {};
+    this.children = Object.create(null);
     this.parent = null;
   }
 

@@ -2,6 +2,7 @@
 
 ## Unreleased — automated UI/UX release gate
 
+- Reject duplicate local roots before registering configurations, support prototype-named path components, and distinguish acceptance-only actions from publishing.
 - Bind save/open automation to its original context, reject symlink retargeting and stale download approvals, identify overwrite targets, and serialize changed-file batches.
 - Scope profile selection to one configuration and keep the busy indicator visible until all concurrent operations finish.
 - Keep watcher actions within their owning context, preserve remote-preview identity for active-folder commands, clarify transfer status, and reject incomplete Git renames.

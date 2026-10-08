@@ -41,12 +41,13 @@ test('pipeline menu follows the target project interface review mode',async()=>{
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-pipeline-menu-'));
   try {
     const {configurePipeline}=require('../src/interface/pipeline-extension');
-    for(const mode of ['human','ai-ux']) {
-      fs.writeFileSync(path.join(root,'.devkit-pipeline.json'),JSON.stringify({interfaceReview:mode}));
+    for(const mode of ['human','ai-ux']) for(const autoPublishAfterUat of [false,true]) {
+      fs.writeFileSync(path.join(root,'.devkit-pipeline.json'),JSON.stringify({interfaceReview:mode,autoPublishAfterUat}));
       let choices;
       await configurePipeline({window:{showQuickPick:async items=>{choices=items;return undefined;}}},{},root);
       assert.equal(choices.some(item=>item.command==='accept-uat'),mode==='human');
       assert.equal(choices.some(item=>item.command==='release'),mode==='ai-ux');
+      if(mode==='human') assert.equal(choices.find(item=>item.command==='accept-uat').label,autoPublishAfterUat?'Approve interface and finish release':'Record interface acceptance');
     }
   } finally {fs.rmSync(root,{recursive:true,force:true});}
 });

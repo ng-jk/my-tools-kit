@@ -102,6 +102,7 @@ export function createFileService(
   const requested = options.profile !== undefined ? options.profile : options.preserveProfile ? app.state.profile : config.defaultProfile || null;
   const selected = requested && config.profiles && !config.profiles[requested] ? config.defaultProfile || null : requested;
   const normalizedBasePath = getBasePath(resolveProfileContext(config, selected), workspace);
+  if(getAllFileService().some(service=>service.baseDir===normalizedBasePath)) throw new Error('Duplicate SFTP local context: '+normalizedBasePath+'. Use distinct contexts or named contexts with one active selection.');
   const service = new FileService(normalizedBasePath, workspace, config, selected);
 
   logger.info(`config at ${normalizedBasePath}`, maskConfig(config));
@@ -179,7 +180,7 @@ export async function reloadWorkspaceServices(
 
   try {
     const configs = await readConfigsFromFile(path.join(workspacePath, CONFIG_PATH));
-    configs.forEach(config => createFileService(config, workspacePath, options));
+    createFileServices(configs, workspacePath, options);
     if (options.preserveProfile) {
       // Safety: restore the user's selection in case creation changed it.
       app.state.profile = activeProfile;
@@ -226,4 +227,16 @@ export function selectServiceProfile(service: FileService, profile: string | nul
   createFileService(raw,service.workspace,{profile});
   app.state.profile=profile;
   app.remoteExplorer?.refresh();
+}
+
+export function createFileServices(configs:any[],workspace:string,options:{preserveProfile?:boolean}={}) {
+  const roots=new Set(getAllFileService().map(service=>service.baseDir));
+  for(const config of configs){
+    const requested=options.preserveProfile?app.state.profile:config.defaultProfile || null;
+    const selected=requested && config.profiles && !config.profiles[requested]?config.defaultProfile || null:requested;
+    const base=getBasePath(resolveProfileContext(config,selected),workspace);
+    if(roots.has(base))throw new Error('Duplicate SFTP local context: '+base+'. Use distinct contexts or named contexts with one active selection.');
+    roots.add(base);
+  }
+  configs.forEach(config=>createFileService(config,workspace,options));
 }

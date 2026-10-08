@@ -411,6 +411,17 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     await savedDocument({uri:URI.file(contextFile)});
     const recoveredRoots=await views.get('devkit.remoteExplorer').getChildren();assert.equal(recoveredRoots.length,1);assert.deepEqual(errors,[]);
     assert.equal(contextValues.get('devkit.sftp.hasConfiguration'),true);
+    for(const name of ['constructor','toString','__proto__']) {
+      fs.mkdirSync(path.join(root,name),{recursive:true});fs.writeFileSync(path.join(root,name,'safe.txt'),'valid pathname');
+      await commands.get('devkit.sftp.upload.file')(URI.file(path.join(root,name,'safe.txt')));
+      assert.deepEqual(errors,[]);assert.equal(fs.readFileSync(path.join(dir,'remote',name,'safe.txt'),'utf8'),'valid pathname');
+    }
+    const duplicate=[{name:'A',protocol:'local',host:'a',username:'fixture',remotePath:path.join(dir,'remote').replaceAll('\\','/')},{name:'B',protocol:'local',host:'b',username:'fixture',remotePath:path.join(dir,'remote-other').replaceAll('\\','/')}];
+    fs.writeFileSync(contextFile,JSON.stringify(duplicate));await savedDocument({uri:URI.file(contextFile)});
+    assert.ok(errors.some(message=>/Duplicate SFTP local context/.test(message)));assert.equal((await views.get('devkit.remoteExplorer').getChildren()).length,0);
+    extension.deactivate();commands.clear();views.clear();errors.length=0;await extension.activate(context);
+    assert.ok(errors.some(message=>/Duplicate SFTP local context/.test(message)));assert.equal((await views.get('devkit.remoteExplorer').getChildren()).length,0);
+
 
 
 

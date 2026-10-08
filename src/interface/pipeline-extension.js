@@ -2,10 +2,11 @@
 const path = require('node:path');
 const {readJson} = require('../data/files');
 async function configurePipeline(vscode, context, root) {
-  const mode = readJson(path.join(root, '.devkit-pipeline.json')).interfaceReview || 'human';
+  const config = readJson(path.join(root, '.devkit-pipeline.json'));
+  const mode = config.interfaceReview || 'human';
   const acceptance = mode === 'ai-ux'
     ? { label: 'Review UI/UX and release', command: 'release', description: 'Run tests, code and UI/UX reviews, then publish and promote on success' }
-    : { label: 'Approve interface and finish release', command: 'accept-uat', description: 'Record actual human acceptance for this project' };
+    : { label: config.autoPublishAfterUat ? 'Approve interface and finish release' : 'Record interface acceptance', command: 'accept-uat', description: config.autoPublishAfterUat ? 'Record actual human acceptance, then publish on success' : 'Record actual human acceptance; use Publish separately to release' };
   const action = await vscode.window.showQuickPick([
     { label: 'Status', command: 'status', description: 'Show branches, reviewer, and evidence location' },
     { label: 'Verify Marketplace access', command: 'marketplace-check', description: 'Read-only vsce check using Microsoft Entra ID' },

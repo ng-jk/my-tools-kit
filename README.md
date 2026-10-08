@@ -60,7 +60,7 @@ A context is one complete connection configuration. Give development, staging, p
 
 For password authentication, omit `password` to use VS Code’s masked prompt, or give each context a separate `${env:VARIABLE}` reference. Start VS Code from an environment containing those variables; restart it after changing the environment. Inactive contexts’ variables are not resolved. Named contexts in the CLI require their own password reference or key/agent; they do not fall back to a shared `DEVKIT_SFTP_PASSWORD`.
 
-SFTP verifies host keys: use a trusted `knownHostsPath` or independently verified `hostFingerprint`. Keep `.vscode/sftp.json` out of Git if it contains credentials. Config can also use separate SSH keys, passphrases, agent settings and jump-host configuration per context. Existing single-object and array configurations still work; the named-context format above is recommended when connections share a local folder. Legacy `profiles` inherit their parent settings; use independent contexts when you need complete separation.
+SFTP verifies host keys: use a trusted `knownHostsPath` or independently verified `hostFingerprint`. Keep `.vscode/sftp.json` out of Git if it contains credentials. Config can also use separate SSH keys, passphrases, agent settings and jump-host configuration per context. Existing single-object and array configurations still work with distinct resolved local roots; the named-context format above is recommended when connections share a local folder. Legacy `profiles` inherit their parent settings; use independent contexts when you need complete separation.
 
 ### Transfer, edit and compare remote files
 
