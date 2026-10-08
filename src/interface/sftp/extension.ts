@@ -23,7 +23,7 @@ async function setupWorkspaceFolder(dir: string) {
 
 function setup(workspaceFolders: vscode.WorkspaceFolder[]) {
   fileActivityMonitor.init();
-  const pendingInits = workspaceFolders.map(folder => setupWorkspaceFolder(folder.uri.fsPath));
+  const pendingInits = workspaceFolders.map(folder => setupWorkspaceFolder(folder.uri.fsPath).catch(error => reportError(error)));
 
   return Promise.all(pendingInits);
 }
@@ -58,8 +58,9 @@ export async function activate(context: vscode.ExtensionContext) {
     }
   });
   try {
-    await setup(workspaceFolders);
     app.remoteExplorer = new RemoteExplorer(context);
+    await setup(workspaceFolders);
+    app.remoteExplorer.refresh();
   } catch (error) {
     reportError(error);
   }

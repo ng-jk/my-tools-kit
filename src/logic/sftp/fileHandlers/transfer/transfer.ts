@@ -433,6 +433,7 @@ async function _sync(
   // create dir here so we don't have to ensure it for children files.
 
 
+  if ((await srcFs.lstat(srcFsPath)).type !== FileType.Directory) throw new Error('Sync source must be a real directory, not a symlink: ' + srcFsPath);
   const sourceEntries=checkedEntries(srcFs,srcFsPath,await srcFs.list(srcFsPath));
   rejectDestinationCollisions(sourceEntries,targetFs,targetFsPath);
   await ensureTransferDirectory(srcFs, targetFs, srcFsPath, targetFsPath, transferPermissions(transferOption, config.transferDirection === TransferDirection.LOCAL_TO_REMOTE).dirPerm, config.directoryScope);

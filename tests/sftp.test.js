@@ -117,7 +117,7 @@ test('downloads ignore configured upload file and directory permission overrides
 });
 test('bidirectional sync rejects both file/directory conflict orientations',async()=>{
   for(const [left,right] of [[engine.FileType.File,engine.FileType.Directory],[engine.FileType.Directory,engine.FileType.File]]) {
-    const source={pathResolver:path.posix,list:async()=>[{name:'conflict',fspath:'/source/conflict',type:left,mtime:1}]};
+    const source={pathResolver:path.posix,lstat:async name=>{assert.ok(['/source','/local'].includes(name));return {type:engine.FileType.Directory};},list:async()=>[{name:'conflict',fspath:'/source/conflict',type:left,mtime:1}]};
     const target={pathResolver:path.posix,lstat:async()=>({type:engine.FileType.Directory}),ensureDir:async()=>{},list:async()=>[{name:'conflict',fspath:'/destination/conflict',type:right,mtime:2}]};
     const tasks=[];
     await assert.rejects(engine.sync({srcFsPath:'/source',targetFsPath:'/destination',srcFs:source,targetFs:target,transferDirection:engine.TransferDirection.LOCAL_TO_REMOTE,transferOption:{bothDiretions:true}},task=>tasks.push(task)),/type conflict/);
@@ -126,7 +126,7 @@ test('bidirectional sync rejects both file/directory conflict orientations',asyn
 });
 test('excluded file/directory conflicts do not abort sync',async()=>{
   for(const direction of [engine.TransferDirection.LOCAL_TO_REMOTE,engine.TransferDirection.REMOTE_TO_LOCAL]) {
-    const source={pathResolver:path.posix,list:async()=>[{name:'ignored',fspath:'/source/ignored',type:engine.FileType.File}]};
+    const source={pathResolver:path.posix,lstat:async name=>{assert.ok(['/source','/local'].includes(name));return {type:engine.FileType.Directory};},list:async()=>[{name:'ignored',fspath:'/source/ignored',type:engine.FileType.File}]};
     const target={pathResolver:path.posix,lstat:async()=>({type:engine.FileType.Directory}),ensureDir:async()=>{},list:async()=>[{name:'ignored',fspath:'/destination/ignored',type:engine.FileType.Directory}]};
     for(const policy of [{ignore:file=>file.endsWith('/ignored')},{ignoreExisting:true}]) {
       const tasks=[];await engine.sync({srcFsPath:'/source',targetFsPath:'/destination',srcFs:source,targetFs:target,transferDirection:direction,transferOption:policy},task=>tasks.push(task));assert.equal(tasks.length,0);
@@ -145,7 +145,7 @@ test('source failure during protocol permission checks rejects instead of hangin
   }
 });
 test('sync preserves symbolic link identity without reading linked file contents',async()=>{
-  const source={pathResolver:path.posix,list:async()=>[{name:'link',fspath:'/local/link',type:engine.FileType.SymbolicLink,mtime:1,atime:1}],readlink:async()=>'../../private/key',get:async()=>{throw new Error('must not dereference');}};
+  const source={pathResolver:path.posix,lstat:async name=>{assert.ok(['/source','/local'].includes(name));return {type:engine.FileType.Directory};},list:async()=>[{name:'link',fspath:'/local/link',type:engine.FileType.SymbolicLink,mtime:1,atime:1}],readlink:async()=>'../../private/key',get:async()=>{throw new Error('must not dereference');}};
   let link;
   const target={pathResolver:path.posix,lstat:async()=>({type:engine.FileType.Directory}),ensureDir:async()=>{},list:async()=>[],lstat:async name=>{if(name==='/remote')return {type:engine.FileType.Directory};throw Object.assign(new Error('missing'),{code:'ENOENT'});},unlink:async()=>{},rename:async(_,destination)=>{link.destination=destination;},symlink:async(value,destination)=>{link={value,destination};}};
   const tasks=[];
@@ -203,7 +203,7 @@ test('recursive transfers retain each child permission mode in both directions',
 test('sync compares equal-length symlink targets even with identical timestamps',async()=>{
   const entry=(fspath,type=engine.FileType.SymbolicLink)=>({name:'link',fspath,type,size:3,mtime:1000,atime:1000});
   let reads=0;
-  const source={pathResolver:path.posix,list:async()=>[entry('/source/link')],readlink:async()=>{reads++;return 'one';}};
+  const source={pathResolver:path.posix,lstat:async name=>{assert.ok(['/source','/local'].includes(name));return {type:engine.FileType.Directory};},list:async()=>[entry('/source/link')],readlink:async()=>{reads++;return 'one';}};
   const target={pathResolver:path.posix,lstat:async()=>({type:engine.FileType.Directory}),ensureDir:async()=>{},list:async()=>[entry('/destination/link')],readlink:async()=>{reads++;return 'two';}};
   let tasks=[];
   await engine.sync({srcFsPath:'/source',targetFsPath:'/destination',srcFs:source,targetFs:target,transferDirection:engine.TransferDirection.LOCAL_TO_REMOTE,transferOption:{}},task=>tasks.push(task));
@@ -213,7 +213,7 @@ test('sync compares equal-length symlink targets even with identical timestamps'
 });
 test('sync replacing a symlink with a file uses source permissions rather than link permissions',async()=>{
   let createdMode;
-  const source={pathResolver:path.posix,list:async()=>[{name:'private',fspath:'/source/private',type:engine.FileType.File,mode:0o600,size:3,mtime:1}],get:async()=>require('node:stream').Readable.from('secret')};
+  const source={pathResolver:path.posix,lstat:async name=>{assert.ok(['/source','/local'].includes(name));return {type:engine.FileType.Directory};},list:async()=>[{name:'private',fspath:'/source/private',type:engine.FileType.File,mode:0o600,size:3,mtime:1}],get:async()=>require('node:stream').Readable.from('secret')};
   const target={pathResolver:path.posix,lstat:async()=>({type:engine.FileType.Directory}),ensureDir:async()=>{},list:async()=>[{name:'private',fspath:'/destination/private',type:engine.FileType.SymbolicLink,mode:0o777,size:3,mtime:1}],lstat:async()=>({type:engine.FileType.SymbolicLink,mode:0o777}),open:async(_,flags,mode)=>{createdMode=mode;return 1;},put:async input=>{for await(const chunk of input){}},close:async()=>{},rename:async()=>{},unlink:async()=>{}};
   const tasks=[];
   await engine.sync({srcFsPath:'/source',targetFsPath:'/destination',srcFs:source,targetFs:target,transferDirection:engine.TransferDirection.REMOTE_TO_LOCAL,transferOption:{}},task=>tasks.push(task));
@@ -748,5 +748,23 @@ test('upload and destructive sync reject intermediate remote symlinks before sch
     session.config.syncOption={delete:true};
     await assert.rejects(engine.operate(session,action,'link/sub',{yes:true}),/ancestor.*symlink/);
     assert.equal(scheduled,false);assert.ok(inspected.includes('/project/link'));
+  }
+});
+
+
+test('sync rejects a selected source symlink before listing it',async()=>{
+  let listed=false;
+  const source={lstat:async()=>({type:engine.FileType.SymbolicLink}),list:async()=>{listed=true;return [];},pathResolver:path.posix};
+  await assert.rejects(engine.sync({srcFsPath:'/local/link',targetFsPath:'/remote',srcFs:source,targetFs:source,
+    transferDirection:engine.TransferDirection.LOCAL_TO_REMOTE,transferOption:{}},()=>{}),/source must be a real directory/);
+  assert.equal(listed,false);
+});
+
+test('shared transfer rejects local intermediate source symlinks before reading or scheduling',async t=>{
+  const {session,local}=fixture(t);let scheduled=false;
+  session.service.getLocalFileSystem=()=>({lstat:async target=>({type:path.basename(target)==='link'?engine.FileType.SymbolicLink:engine.FileType.Directory})});
+  session.service.createTransferScheduler=()=>{scheduled=true;throw new Error('must not schedule');};
+  for(const action of ['upload','sync-up','sync-both']) {
+    await assert.rejects(engine.operate(session,action,'link/sub'),/Local ancestor.*symlink/);assert.equal(scheduled,false);
   }
 });

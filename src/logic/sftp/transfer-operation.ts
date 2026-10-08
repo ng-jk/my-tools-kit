@@ -1,9 +1,22 @@
 import {filesystemIdentity} from './core/staged-replacement';
 import {transfer, sync} from './fileHandlers/transfer/transfer';
-import {TransferDirection} from './core';
+import * as path from 'path';
+import {TransferDirection, FileType} from './core';
 import {backupBeforeUpload} from './backup';
 import {assertRemoteAncestors} from './remote-operations';
 import {DirectoryPermissionScope} from './directory-permissions';
+
+async function assertLocalAncestors(fs:any,target:string,root:string) {
+  const base=path.resolve(root), relative=path.relative(base,path.resolve(target));
+  if(relative==='..'||relative.startsWith('..'+path.sep)||path.isAbsolute(relative)) throw new Error('Transfer escapes the configured local context');
+  let current=base;
+  for(const part of ['',...relative.split(path.sep).filter(Boolean).slice(0,-1)]) {
+    if(part)current=path.join(current,part);
+    let entry;
+    try {entry=await fs.lstat(current);} catch(error) {if(error.code==='ENOENT'||error.code===2)return;throw error;}
+    if(entry.type!==FileType.Directory)throw new Error('Local ancestor must be a real directory, not a symlink: '+current);
+  }
+}
 
 const active = new Set<() => void>();
 export function cancelActiveTransfers() { for (const cancel of [...active]) cancel(); }
@@ -28,6 +41,8 @@ export async function executeTransfer(service: any, config: any, local: string, 
     await assertRemoteAncestors(remoteFs, remote, config.remotePath, true, true);
     checkCancelled();
     const localFs = guard(service.getLocalFileSystem());
+    await assertLocalAncestors(localFs, local, service.baseDir);
+    checkCancelled();
     scheduler = service.createTransferScheduler(config.concurrency);
     const tasks: any[] = [];
     const deleted = await (synchronize ? sync : transfer)({

@@ -6,6 +6,7 @@
 - Fixed remote create/preview paths, retained invalid/retried creation input, added destination-aware permanent-delete confirmation and first-run setup guidance.
 - Extended remote ancestor validation to uploads, downloads, sync and creation before mutations.
 - Blocked remote delete/rename through symlink ancestors; deleting or renaming a symlink itself remains supported.
+- Reject selected sync-source symlinks and local symlink ancestors before reads; recover Remote Explorer after correcting invalid startup configuration.
 - Kept server identity when downloading from List Active Folder across nested legacy contexts.
 - Replaced this project’s manual interface acceptance with a separate evidence-backed UI/UX code review during test and deployment.
 - Added Review UI/UX and release / `release` to run the complete lifecycle without human acceptance records.

@@ -287,6 +287,14 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     assert.equal(contextValues.get('devkit.sftp.hasConfiguration'),false);
     assert.equal((await views.get('devkit.remoteExplorer').getChildren()).length,0);
     assert.equal(require('../package.json').contributes.viewsWelcome[0].when,'!devkit.sftp.hasConfiguration');
+    extension.deactivate();commands.clear();views.clear();errors.length=0;
+    fs.writeFileSync(contextFile,'invalid json');await extension.activate(context);
+    assert.ok(errors.length);assert.ok(views.has('devkit.remoteExplorer'));assert.ok(commands.has('devkit.sftp.viewContent'));
+    errors.length=0;fs.writeFileSync(contextFile,JSON.stringify(isolated));
+    await savedDocument({uri:URI.file(contextFile)});
+    const recoveredRoots=await views.get('devkit.remoteExplorer').getChildren();assert.equal(recoveredRoots.length,1);assert.deepEqual(errors,[]);
+    assert.equal(contextValues.get('devkit.sftp.hasConfiguration'),true);
+
 
 
 
