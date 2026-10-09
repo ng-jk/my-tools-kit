@@ -259,3 +259,45 @@ class UiUxPromotionTests(PromotionTests):
         self.assertFalse(result["passed"])
         self.assertIn("Review unavailable",result["error"])
         self.assertNotIn("artifacts",result)
+
+
+class SecurityPromotionTests(PromotionTests):
+    def test_missing_security_evidence_blocks_upload_and_main(self):
+        self.uat()
+        self.pipeline.config["securityReview"]=True
+        self.report["configuration"]=digest(self.pipeline.config)
+        self.store.save("test-candidate.json",self.report)
+        self.uat()
+        self.pipeline._gates=Mock(return_value=self.report)
+        self.pipeline.marketplace=Mock()
+        with self.assertRaisesRegex(ValueError,"security approval"):self.pipeline.publish()
+        self.pipeline.marketplace.publish.assert_not_called()
+        self.assertEqual(self.refs["main"],"base")
+
+    def test_security_evidence_binds_candidate_and_artifact_hashes(self):
+        import copy
+        self.pipeline.config["securityReview"]=True
+        tested={"artifacts":[{"name":"package.vsix","sha256":"expected"}]}
+        valid={"candidate":"candidate","base":"base","gates":{"security_scan":True,"security_review":True},
+            "security_scan":{"passed":True,"artifacts":tested["artifacts"]},
+            "security_review":{"candidate":"candidate","base":"base","approved":True,"summary":"Fixture inspection","findings":[]}}
+        self.pipeline._require_security(valid,tested,"candidate","base")
+        for change in ("stale","rejected","artifact","missing"):
+            report=copy.deepcopy(valid)
+            if change=="stale":report["security_review"]["candidate"]="old"
+            if change=="rejected":report["security_review"]["approved"]=False
+            if change=="artifact":report["security_scan"]["artifacts"][0]["sha256"]="other"
+            if change=="missing":report.pop("security_review")
+            with self.subTest(change=change),self.assertRaises(ValueError):self.pipeline._require_security(report,tested,"candidate","base")
+
+    def test_final_security_gate_fails_closed_and_precedes_artifact_retention(self):
+        from unittest.mock import patch
+        self.pipeline.config["securityReview"]=True
+        self.pipeline.runner=Mock()
+        self.pipeline.reviewer=Mock(return_value={"approved":True,"candidate":"candidate","base":"base","summary":"Technical fixture","findings":[]})
+        self.pipeline.security_reviewer=Mock(side_effect=RuntimeError("Security reviewer unavailable"))
+        with patch("cicd.logic.pipeline.read",return_value=self.pipeline.config):
+            result=self.pipeline._gates("candidate","base","deployment")
+        self.assertFalse(result["passed"]);self.assertIn("Security reviewer unavailable",result["error"])
+        self.assertNotIn("artifacts",result)
+        self.pipeline.security_reviewer.assert_called_once()

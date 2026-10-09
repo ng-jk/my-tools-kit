@@ -128,5 +128,6 @@
       ]
     ]
   },
-  "interfaceReview": "ai-ux"
+  "interfaceReview": "ai-ux",
+  "securityReview": true
 }

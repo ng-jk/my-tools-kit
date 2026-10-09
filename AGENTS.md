@@ -10,3 +10,5 @@
 - When Marketplace is configured, upload only the retained review-approved VSIX through Entra-enabled vsce. Verify the public identity and payload before main promotion. Preserve uncertain-upload receipts; never blindly reupload or commit credentials.
 - Required AI review must fail closed if unavailable, malformed, rejected, or finding high/critical issues. Do not replace it with a fake response outside isolated automated tests.
 - Git authentication failures: retry the same authorized operation up to three total attempts with existing credentials. Inspect the remote after an uncertain push before retrying; never force-push.
+
+- Before Marketplace upload, require the final credential scan and AI security review of the exact retained release archives. Do not request another manual approval; all mandatory gates must pass. Never include secret values in review reports.

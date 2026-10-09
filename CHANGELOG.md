@@ -2,6 +2,8 @@
 
 ## Unreleased — automated UI/UX release gate
 
+- Add a final credential scan and AI security review of exact retained release packages before publication, with redacted reports and fail-closed evidence validation.
+- Confirm destination overwrites for every direct download command and show loading feedback while remote browsing connects and lists files.
 - Display profile and destination per Remote Explorer root and transfer, without a misleading global profile status.
 - Confirm Edit in Local overwrites and distinguish folder planning from completed transfers in output.
 - Require explicit source/destination overwrite confirmation before List, List All, or List Active Folder downloads.

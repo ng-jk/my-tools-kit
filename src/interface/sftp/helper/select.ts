@@ -103,8 +103,6 @@ async function showFiles<T extends FileListChildItem>(
 
   const selectedValue = result.value;
   const selectedPath = selectedValue.fsPath;
-  const fileSystem =
-    typeof selectedValue.getFs === 'function' ? await selectedValue.getFs() : selectedValue.getFs;
 
   const cacheKey = selectedPath === ROOT ? ROOT : JSON.stringify([selectedValue.pickerRootId, selectedPath]);
   const nextItems = fileLookUp[cacheKey];
@@ -112,7 +110,10 @@ async function showFiles<T extends FileListChildItem>(
     return showFiles(fileLookUp, selectedValue, nextItems, option);
   }
 
-  return fileSystem.list(selectedPath).then(subFiles => {
+  return vscode.window.withProgress({location:vscode.ProgressLocation.Window,title:'Loading remote files: '+selectedPath},async()=>{
+    const fileSystem=typeof selectedValue.getFs === 'function' ? await selectedValue.getFs() : selectedValue.getFs;
+    return fileSystem.list(selectedPath);
+  }).then(subFiles => {
     const subItems = subFiles.map(file =>
       Object.assign({}, selectedValue, {
         name: path.basename(file.fspath) + (file.type === FileType.Directory ? '/' : ''),

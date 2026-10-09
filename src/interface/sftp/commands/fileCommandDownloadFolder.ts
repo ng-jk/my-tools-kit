@@ -1,3 +1,4 @@
+import {confirmListedDownload} from './confirmListedDownload';
 // Adapted from ng-jk/vscode-sftp (MIT); see THIRD-PARTY-NOTICES.md.
 import { COMMAND_DOWNLOAD_FOLDER } from '../../../data/sftp/constants';
 import { downloadFolder } from '../fileHandlers/index';
@@ -8,5 +9,8 @@ export default checkFileCommand({
   id: COMMAND_DOWNLOAD_FOLDER,
   getFileTarget: selectRemoteFolder,
 
-  handleFile: downloadFolder,
+  async handleFile(ctx) {
+    if(!await confirmListedDownload(ctx,true))return;
+    await downloadFolder(ctx);
+  },
 });

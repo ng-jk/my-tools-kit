@@ -6,18 +6,20 @@ from ..data.config import read, GATES
 from ..data.git import Git
 from ..data.store import Store, digest
 from ..data.process import run
-from ..data.reviewer import review, review_ui_ux
+from ..data.reviewer import review, review_ui_ux, review_security
+from ..data.security import scan_artifacts
 from .marketplace import MarketplaceRelease
 
 
 class Pipeline:
-    def __init__(self, root, git=None, store=None, runner=run, reviewer=review, progress=None, marketplace=None, ux_reviewer=review_ui_ux):
+    def __init__(self, root, git=None, store=None, runner=run, reviewer=review, progress=None, marketplace=None, ux_reviewer=review_ui_ux, security_reviewer=review_security):
         self.root = Path(root).resolve()
         self.git = git or Git(self.root)
         self.store = store or Store(self.git.common)
         self.config = read(self.root)
         self.runner, self.reviewer = runner, reviewer
         self.ux_reviewer = ux_reviewer
+        self.security_reviewer = security_reviewer
         self.progress = progress or (lambda message: None)
         self.marketplace = marketplace or (MarketplaceRelease(self.root, self.config["marketplace"], self.store)
                                            if self.config.get("marketplace") else None)
@@ -85,6 +87,20 @@ class Pipeline:
                 except ValueError:
                     report["gates"]["ui_ux_review"] = False
                     raise
+            if stage == "deployment" and self.config.get("securityReview", False):
+                self.progress("deployment: running final credential scan and AI security review")
+                tested = self.store.load(f"test-{sha}.json")
+                self.store.verify_artifacts(tested, self.config.get("artifacts", []))
+                report["security_scan"] = scan_artifacts(tested.get("artifacts", []))
+                report["gates"]["security_scan"] = report["security_scan"]["passed"]
+                if not report["gates"]["security_scan"]:
+                    raise ValueError("Release package credential scan failed; inspect redacted findings")
+                report["security_review"] = self.security_reviewer(root, sha, base, self.config["reviewer"],
+                    self.store.root / f"review-security-{stage}-{sha}.json", self.config.get("timeout",900), tested.get("artifacts", []))
+                report["gates"]["security_review"] = review_passes(report["security_review"],sha,base)
+                if not report["gates"]["security_review"]:
+                    raise ValueError("Final security review rejected the release or is invalid")
+                self.store.verify_artifacts(tested, self.config.get("artifacts", []))
             # Build/tests must not rewrite tracked source in the pinned checkout.
             self.git.verify_candidate(root, sha)
             report["artifacts"] = self.store.artifacts(root, self.config.get("artifacts", []), stage, sha)
@@ -162,6 +178,7 @@ class Pipeline:
                     require_ui_ux(recovered, sha, tested_base)
                 if self.git.sha("deployment") != sha or self.git.remote_ref(self.config["remote"], "deployment") != sha:
                     raise ValueError("Deployment refs changed; inspect before recovering publication")
+                self._require_security(recovered,report,sha,tested_base)
                 receipt = self.marketplace.publish(report, allow_upload=False) if self.marketplace else None
                 self.git.update("main", sha)
                 return {"passed": True, "candidate": sha, "recovered": True, "marketplace": receipt}
@@ -174,6 +191,7 @@ class Pipeline:
             deployment = self._gates(sha, base, "deployment")
             if not deployment["passed"]:
                 return deployment
+            self._require_security(deployment,report,sha,base)
             # Recheck refs after slow tests/review. Never promote a different or stale candidate.
             if (self.git.sha("main") != base or self.git.sha("test") != sha
                     or self.git.sha("developement") != sha or self.git.sha("deployment") != sha
@@ -197,3 +215,14 @@ class Pipeline:
             return {"passed": True, "candidate": sha, "promoted": ["deployment", "main"],
                     "marketplace": receipt,
                     "note": "Marketplace version verified and main promoted." if receipt else "Repository publication complete; no external hosting target is configured."}
+
+    def _require_security(self, deployment, tested, sha, base):
+        if not self.config.get("securityReview",False):return
+        expected=[{"name":item["name"],"sha256":item["sha256"]} for item in tested.get("artifacts",[])]
+        if (deployment.get("candidate") != sha or deployment.get("base") != base
+                or deployment.get("gates",{}).get("security_scan") is not True
+                or deployment.get("gates",{}).get("security_review") is not True
+                or deployment.get("security_scan",{}).get("passed") is not True
+                or deployment.get("security_scan",{}).get("artifacts") != expected
+                or not review_passes(deployment.get("security_review"),sha,base)):
+            raise ValueError("Final security approval for the exact release artifacts is required")

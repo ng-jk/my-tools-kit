@@ -52,8 +52,8 @@ export function selectContext(): Promise<Uri | undefined> {
       .map(service => ({
         value: service.baseDir,
         label: service.name || simplifyPath(service.baseDir),
-        description: '',
-        detail: service.baseDir,
+        description: `${service.profile || 'base'} - ${service.getConfig().host}:${service.getConfig().port}`,
+        detail: `${service.baseDir} <-> ${service.getConfig().remotePath}`,
       }))
       .sort((l, r) => l.label.localeCompare(r.label));
 

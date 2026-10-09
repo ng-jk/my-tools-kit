@@ -14,18 +14,18 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
   fs.writeFileSync(path.join(root,'nested','ui.txt'),'from other context');
   fs.writeFileSync(path.join(root,'ui.txt'),'uploaded from the UI adapter');
   fs.writeFileSync(path.join(root,'.vscode','sftp.json'),JSON.stringify({name:'fixture',protocol:'local',host:'fixture',username:'fixture',remotePath:path.join(dir,'remote').replaceAll('\\','/'),syncOption:{delete:true},defaultProfile:'dev',profiles:{dev:{watcher:{files:'**/*',autoUpload:true,autoDelete:true}},prod:{watcher:{files:false}},other:{context:'nested',remotePath:path.join(dir,'remote-other').replaceAll('\\','/')}}}));
-  const statusTexts=[];
+  const statusTexts=[],loading=[];
   let savedDocument, changedFolders, openedDocument; const contextValues=new Map(),commands=new Map(),views=new Map(),errors=[],watchers=[];const disposable=()=>({dispose(){}});
   const repository={rootUri:URI.file(root),ui:{selected:true},state:{indexChanges:[],workingTreeChanges:[]}};
   const repositories=[repository];
-  const vscode={WorkspaceEdit:class{replace(uri,range,text){this.text=text;}},Range:class{},Uri:URI,StatusBarAlignment:{Left:1},TreeItemCollapsibleState:{None:0,Collapsed:1,Expanded:2},
+  const vscode={ProgressLocation:{Window:10},WorkspaceEdit:class{replace(uri,range,text){this.text=text;}},Range:class{},Uri:URI,StatusBarAlignment:{Left:1},TreeItemCollapsibleState:{None:0,Collapsed:1,Expanded:2},
     EventEmitter:class{event=()=>disposable();fire(){}dispose(){}},ThemeIcon:class{constructor(id){this.id=id;}},RelativePattern:class{},
     extensions:{getExtension:()=>({exports:{getAPI:()=>({repositories})}})},
     workspace:{onDidChangeWorkspaceFolders:fn=>{changedFolders=fn;return disposable();},isTrusted:true,asRelativePath:value=>path.relative(root,value),workspaceFolders:[{uri:URI.file(root)}],textDocuments:[],getConfiguration:()=>({get:()=>undefined}),
       createFileSystemWatcher:()=>{const watcher={disposed:false,handlers:{},onDidCreate(fn){this.handlers.create=fn;return disposable();},onDidChange(fn){this.handlers.change=fn;return disposable();},onDidDelete(fn){this.handlers.delete=fn;return disposable();},dispose(){this.disposed=true;}};watchers.push(watcher);return watcher;},
       onDidSaveTextDocument:fn=>{savedDocument=fn;return disposable();},onDidOpenTextDocument:fn=>{openedDocument=fn;return disposable();},registerTextDocumentContentProvider:disposable},
     commands:{registerCommand:(id,fn,self)=>{assert.equal(commands.has(id),false,'duplicate '+id);commands.set(id,fn.bind(self));return disposable();},executeCommand:async(id,...args)=>id==='setContext'?contextValues.set(args[0],args[1]):commands.has(id)?commands.get(id)(...args):undefined},
-    window:{activeTextEditor:{document:{uri:URI.file(path.join(root,'ui.txt'))}},createStatusBarItem:()=>({set text(value){this.value=value;statusTexts.push(value);},get text(){return this.value;},show(){},hide(){},dispose(){}}),createOutputChannel:()=>({appendLine(){},show(){},hide(){},dispose(){}}),
+    window:{withProgress:async(options,run)=>{loading.push(options.title);return run();},activeTextEditor:{document:{uri:URI.file(path.join(root,'ui.txt'))}},createStatusBarItem:()=>({set text(value){this.value=value;statusTexts.push(value);},get text(){return this.value;},show(){},hide(){},dispose(){}}),createOutputChannel:()=>({appendLine(){},show(){},hide(){},dispose(){}}),
       showQuickPick:async choices=>choices.find(item=>item.command==='devkit.sftp.upload.file') || choices[0],
       showOpenDialog:async()=>[URI.file(path.join(root,'ui.txt'))],
       showInformationMessage:async(message,...choices)=>choices[0],showErrorMessage:async message=>{errors.push(message);},registerTreeDataProvider:(id,provider)=>{views.set(id,provider);return disposable();},
@@ -353,7 +353,19 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
       await commands.get(command)();assert.deepEqual(errors,[]);
       assert.equal(fs.readFileSync(path.join(root,'preview.txt'),'utf8'),'keep local changes');
     }
+
+    for(const command of ['devkit.sftp.download.file','devkit.sftp.download.activeFile','devkit.sftp.download.folder','devkit.sftp.download.activeFolder','devkit.sftp.download.project','devkit.sftp.forceDownload','devkit.sftp.download']) {
+      vscode.window.activeTextEditor={document:{uri:URI.file(path.join(root,'preview.txt'))}};
+      vscode.window.showQuickPick=async choices=>choices[0];
+      let confirmations=0;
+      vscode.window.showInformationMessage=async message=>{assert.match(message,/beta-host/);assert.match(message,/overwritten/);confirmations++;return undefined;};
+      const target=command.includes('folder')?URI.file(root):URI.file(path.join(root,'preview.txt'));
+      await commands.get(command)(command==='devkit.sftp.download'?[target.fsPath]:target);assert.deepEqual(errors,[]);
+      assert.equal(confirmations,1,command);assert.equal(fs.readFileSync(path.join(root,'preview.txt'),'utf8'),'keep local changes');
+    }
+    assert.ok(loading.some(title=>title.startsWith('Loading remote files:')));
     vscode.window.showInformationMessage=listConfirm;
+
     const permanentConfirm=vscode.window.showInformationMessage;
     vscode.window.showInformationMessage=async message=>{assert.match(message,/beta-host/);assert.match(message,/preview.txt/);assert.match(message,/cannot be undone/);return undefined;};
     const previewItem=(await views.get('devkit.remoteExplorer').getChildren(betaRoot)).find(item=>path.basename(item.resource.fsPath)==='preview.txt');
@@ -464,7 +476,7 @@ test('remote picker keeps server identity when browsing equal paths on different
     const selectedServer=labels[2],queue=[...labels],listed=[];
     const original=Module._load;const filename=path.resolve('tests/picker-fixture.js'),fixtureModule=new Module(filename,module);fixtureModule.filename=filename;fixtureModule.paths=module.paths;
     try {
-      Module._load=function(id,...args){return id==='vscode'?{window:{showQuickPick:async items=>{const label=queue.shift();const selected=items.find(item=>item.label===label);assert.ok(selected,'Missing picker entry '+label);return selected;}}}:original.call(this,id,...args);};
+      Module._load=function(id,...args){return id==='vscode'?{ProgressLocation:{Window:10},window:{withProgress:async(options,run)=>{assert.match(options.title,/Loading remote files/);return run();},showQuickPick:async items=>{const label=queue.shift();const selected=items.find(item=>item.label===label);assert.ok(selected,'Missing picker entry '+label);return selected;}}}:original.call(this,id,...args);};
       fixtureModule._compile(compiled,filename);
       const roots=['Server A','Server B'].map((name,index)=>({name,index,fsPath:'/srv/app',type:FileType.Directory,description:name,getFs:async()=>({list:async remotePath=>{listed.push(name);assert.equal(remotePath,'/srv/app');return [{fspath:'/srv/app/file.txt',type:FileType.File}];}})}));
       const selected=await fixtureModule.exports.listFiles(roots);

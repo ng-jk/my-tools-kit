@@ -90,3 +90,32 @@ class PolicyTests(unittest.TestCase):
             self.assertTrue(violations(root))
             (folder / "bad.js").write_text("const io = require('../data/files');")
             self.assertEqual(violations(root), [])
+
+
+class ReleaseCredentialScanTests(unittest.TestCase):
+    def test_package_scan_redacts_secrets_and_checks_hashes(self):
+        import hashlib, tempfile, zipfile
+        from pathlib import Path
+        from cicd.data.security import scan_artifacts
+        with tempfile.TemporaryDirectory() as directory:
+            file=Path(directory)/"package.vsix"
+            secret="gh"+"p_"+"A"*36
+            with zipfile.ZipFile(file,"w") as archive:
+                archive.writestr("extension/.env","TOKEN="+secret)
+            artifacts=[{"name":"package.vsix","path":str(file),"sha256":hashlib.sha256(file.read_bytes()).hexdigest()}]
+            result=scan_artifacts(artifacts)
+            self.assertFalse(result["passed"])
+            self.assertEqual(len(result["findings"]),2)
+            self.assertNotIn(secret,str(result))
+            file.write_bytes(b"changed")
+            with self.assertRaisesRegex(ValueError,"changed"):scan_artifacts(artifacts)
+
+    def test_clean_package_passes_with_limitations(self):
+        import hashlib, tempfile, zipfile
+        from pathlib import Path
+        from cicd.data.security import scan_artifacts
+        with tempfile.TemporaryDirectory() as directory:
+            file=Path(directory)/"package.zip"
+            with zipfile.ZipFile(file,"w") as archive:archive.writestr("README.md","Use environment variables for credentials")
+            result=scan_artifacts([{"name":"package.zip","path":str(file),"sha256":hashlib.sha256(file.read_bytes()).hexdigest()}])
+            self.assertTrue(result["passed"]);self.assertEqual(result["files_scanned"],1);self.assertTrue(result["limitations"])

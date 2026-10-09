@@ -30,7 +30,7 @@ function setup(workspaceFolders: vscode.WorkspaceFolder[]) {
 // your extension is activated the very first time the command is executed
 export async function activate(context: vscode.ExtensionContext) {
   if (!vscode.workspace.isTrusted) return;
-  configurePorts({ settings: (section: string) => vscode.workspace.getConfiguration(section), password: (prompt: string) => vscode.window.showInputBox({prompt, password:true, ignoreFocusOut:true}), documents: () => vscode.workspace.textDocuments, log: (level: string, ...args: any[]) => logger[level](...args) });
+  configurePorts({ status: (...args:any[]) => args[0] ? app.sftpBarItem.showMsg(args[0],args[1]) : app.sftpBarItem.reset(), settings: (section: string) => vscode.workspace.getConfiguration(section), password: (prompt: string) => vscode.window.showInputBox({prompt, password:true, ignoreFocusOut:true}), documents: () => vscode.workspace.textDocuments, log: (level: string, ...args: any[]) => logger[level](...args) });
   try {
     initCommands(context);
   } catch (error) {

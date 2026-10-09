@@ -23,6 +23,8 @@ def read(root):
         raise ValueError("autoPublishAfterUat must be a boolean")
     if value.get("interfaceReview", "human") not in ("human", "ai-ux"):
         raise ValueError("interfaceReview must be human or ai-ux")
+    if not isinstance(value.get("securityReview", False), bool):
+        raise ValueError("securityReview must be a boolean")
     artifacts = value.get("artifacts", [])
     if not isinstance(artifacts, list) or any(not isinstance(item, str) or not item or Path(item).is_absolute() or ".." in Path(item).parts for item in artifacts):
         raise ValueError("artifacts must be relative file paths inside the project")

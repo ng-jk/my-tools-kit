@@ -244,4 +244,4 @@ Database Client is currently an upstream reference, not a bundled database UI. T
 
 Licensed under [MIT](LICENSE). See [third-party notices](THIRD-PARTY-NOTICES.md) and [release notes](CHANGELOG.md).
 
-Listing commands and **Edit in Local** ask you to confirm the source and local overwrite destination before downloading a selected file or folder. Cancel leaves local content unchanged. **List All** also warns that ignore rules are bypassed.
+Download commands, listing commands, and **Edit in Local** ask you to confirm the source and local overwrite destination before downloading a selected file or folder. Cancel leaves local content unchanged. **List All** also warns that ignore rules are bypassed.
