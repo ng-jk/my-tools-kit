@@ -6,6 +6,58 @@ const fs=require('node:fs');
 const os=require('node:os');
 const path=require('node:path');
 const engine=require('../build/sftp/engine');
+const tls=require('node:tls');
+
+test('implicit FTPS keeps authentication and passive data in verified TLS',{timeout:20000},async t=>{
+  const fixture=name=>fs.readFileSync(path.join(__dirname,'fixtures','ftps',name));
+  const key=fixture('test-only-key.pem'),cert=fixture('test-only-cert.pem'),wrong=fixture('test-only-wrong-host-cert.pem');
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-ftps-')),sockets=new Set(),servers=new Set(),sessions=[];
+  const commands=[],wire=[];let wrongData=false,tlsDataConnections=0;
+  const track=server=>{servers.add(server);server.on('connection',socket=>{sockets.add(socket);socket.on('error',()=>{});socket.on('close',()=>sockets.delete(socket));});server.on('tlsClientError',()=>{});return server;};
+  const control=track(tls.createServer({key,cert},socket=>{
+    assert.equal(socket.encrypted,true);let pending='',dataReady;
+    const reply=message=>socket.write(message+'\r\n');reply('220 TLS fixture');
+    socket.on('data',chunk=>{pending+=chunk.toString();let end;
+      while((end=pending.indexOf('\r\n'))!==-1){
+        const line=pending.slice(0,end);pending=pending.slice(end+2);commands.push(line);
+        const cmd=line.split(' ')[0];
+        if(cmd==='PBSZ'||cmd==='PROT'||cmd==='TYPE'||cmd==='NOOP')reply('200 OK');
+        else if(cmd==='USER')reply('331 Password required');
+        else if(cmd==='PASS')reply(line==='PASS TEST_ONLY_FTPS_PASSWORD'?'230 Logged in':'530 Rejected');
+        else if(cmd==='FEAT')reply('211 End');
+        else if(cmd==='PWD')reply('257 "/"');
+        else if(cmd==='CWD')reply('250 Changed');
+        else if(cmd==='PASV'){
+          let resolve;dataReady=new Promise(done=>resolve=done);
+          const data=track(tls.createServer({key,cert:wrongData?wrong:cert,sessionIdContext:wrongData?'wrong-host':'valid-data'},secure=>{tlsDataConnections++;assert.equal(secure.encrypted,true);resolve(secure);data.close();}));
+          data.listen(0,'127.0.0.1',()=>{const port=data.address().port;reply(`227 Entering Passive Mode (127,0,0,1,${Math.floor(port/256)},${port%256})`);});
+        } else if(cmd==='LIST'){
+          reply('150 Listing');dataReady.then(data=>data.end('-rw------- 1 user group 4 Jan 01 2026 secure.txt\r\n',()=>reply('226 Done')));
+        } else if(cmd==='ABOR')reply('225 Aborted');
+        else if(cmd==='QUIT'){reply('221 Bye');socket.end();}
+        else reply('502 Unsupported');
+      }
+    });
+  }));
+  await new Promise(resolve=>control.listen(0,'127.0.0.1',resolve));
+  const proxy=track(net.createServer(peer=>{
+    const upstream=net.connect(control.address().port,'127.0.0.1');sockets.add(upstream);upstream.on('error',()=>peer.destroy());upstream.on('close',()=>sockets.delete(upstream));
+    peer.on('data',chunk=>{wire.push(Buffer.from(chunk));upstream.write(chunk);});upstream.pipe(peer);peer.on('close',()=>upstream.destroy());
+  }));
+  await new Promise(resolve=>proxy.listen(0,'127.0.0.1',resolve));
+  t.after(async()=>{for(const session of sessions)session.service.dispose();for(const socket of sockets)socket.destroy();for(const server of servers)if(server.listening)await new Promise(resolve=>server.close(resolve));fs.rmSync(root,{recursive:true,force:true});});
+  const make=secureOptions=>{const session=engine.createSession(root,{protocol:'ftp',secure:'implicit',secureOptions,host:'127.0.0.1',port:proxy.address().port,username:'TEST_ONLY_FTPS_USER',password:'TEST_ONLY_FTPS_PASSWORD',remotePath:'/',connectTimeout:3000});sessions.push(session);return session;};
+  const good=make({ca:[cert,wrong]});
+  const remote=await good.service.getRemoteFileSystem(good.config);
+  const entries=await remote.list('/');assert.ok(entries.some(item=>item.name==='secure.txt'));
+  assert.ok(commands.includes('PBSZ 0'));assert.ok(commands.includes('PROT P'));assert.ok(commands.includes('PASS TEST_ONLY_FTPS_PASSWORD'));assert.ok(tlsDataConnections>0);
+  const raw=Buffer.concat(wire);assert.equal(raw.includes(Buffer.from('TEST_ONLY_FTPS_USER')),false);assert.equal(raw.includes(Buffer.from('TEST_ONLY_FTPS_PASSWORD')),false);
+  const before=commands.length;const untrusted=make({});
+  await assert.rejects(untrusted.service.getRemoteFileSystem(untrusted.config),/certificate|self.signed|verify/i);assert.equal(commands.length,before,'invalid control certificate sends no credentials');
+  wrongData=true;const lists=commands.filter(line=>line.startsWith('LIST')).length;
+  await assert.rejects(remote.list('/'),/certificate|hostname|altnames|IP/i);
+  assert.equal(commands.filter(line=>line.startsWith('LIST')).length,lists,'invalid data certificate rejects before sending a transfer command');
+});
 test('FTP wire: passive upload, listing and download share the transfer engine',{timeout:20000},async t=>{
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-ftp-'));
   fs.writeFileSync(path.join(root,'local.txt'),'ftp payload');

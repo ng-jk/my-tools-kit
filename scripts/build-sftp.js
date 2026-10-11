@@ -2,6 +2,7 @@
 const esbuild = require('esbuild');
 const fs = require('node:fs');
 const path = require('node:path');
+const {patchFtp}=require('./patch-ftp');
 async function main() {
   const root = path.resolve(__dirname, '..');
   const dependencies = new Set();
@@ -9,6 +10,7 @@ async function main() {
     const result = await esbuild.build({ absWorkingDir: root, entryPoints: [entry], outfile: 'build/sftp/' + name + '.js',
       platform: 'node', target: 'node20', format: 'cjs', bundle: true, sourcemap: false, metafile: true,
       external: ['vscode', '*.node', 'cpu-features'], logLevel: 'warning',
+      plugins:[{name:'ftp-transport-security',setup(build){build.onLoad({filter:/[\\/]ftp[\\/]lib[\\/]connection\.js$/},args=>({contents:patchFtp(fs.readFileSync(args.path,'utf8')),loader:'js'}));}}],
       tsconfigRaw: { compilerOptions: { esModuleInterop: false, useDefineForClassFields: false } } });
     if (name === 'engine' && Object.keys(result.metafile.inputs).some(file => file.startsWith('src/interface/'))) throw new Error('Engine imports interface code');
     for (const input of Object.keys(result.metafile.inputs).filter(file => file.includes('node_modules/'))) {

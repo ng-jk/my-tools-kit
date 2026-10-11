@@ -15,6 +15,9 @@ Client.prototype._send = function(cmd: string, cb: (err: Error) => void, promote
     else this._queue.push({ cmd: cmd, cb: cb });
 
     if (cmd === 'ABOR') {
+      // A failed passive handshake has no active request. Associate the abort
+      // reply now so its callback can reject the failed transfer promptly.
+      if (!this._curReq) this._curReq = this._queue.shift();
       if (this._pasvSocket) this._pasvSocket.aborting = true;
       this._debug && this._debug('[connection] > ' + cmd);
       this._socket.write(cmd + '\r\n');
