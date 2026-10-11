@@ -5,6 +5,7 @@ import {TransferDirection, FileType} from './core';
 import {backupBeforeUpload} from './backup';
 import {assertRemoteAncestors} from './remote-operations';
 import {DirectoryPermissionScope} from './directory-permissions';
+import {cancelPendingOperations} from './cancellation';
 
 async function assertLocalAncestors(fs:any,target:string,root:string) {
   const base=path.resolve(root), relative=path.relative(base,path.resolve(target));
@@ -19,7 +20,7 @@ async function assertLocalAncestors(fs:any,target:string,root:string) {
 }
 
 const active = new Set<() => void>();
-export function cancelActiveTransfers() { for (const cancel of [...active]) cancel(); }
+export function cancelActiveTransfers() { cancelPendingOperations(); for (const cancel of [...active]) cancel(); }
 
 export async function executeTransfer(service: any, config: any, local: string, remote: string, down: boolean, options: any, synchronize = false) {
   const checkCancelled = service.cancellationCheck();

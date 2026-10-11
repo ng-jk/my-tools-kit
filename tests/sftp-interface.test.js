@@ -268,6 +268,38 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     assert.equal(fs.readFileSync(path.join(dir,'remote-other','keep-on-cancel.txt'),'utf8'),'keep','cancelled sync makes no deletion');
     vscode.window.showInformationMessage=confirmSync;
 
+    // Cancel All must invalidate work before a scheduler exists, even if the
+    // user subsequently accepts its outstanding overwrite confirmation.
+    for(const id of ['devkit.sftp.upload.file','devkit.sftp.download.file','devkit.sftp.sync.localToRemote','devkit.sftp.upload.file.to.allProfiles']) {
+      errors.length=0;let prompted=false;
+      const localFile=path.join(root,'nested','incoming.txt'),remoteFile=path.join(dir,'remote-other','incoming.txt');
+      const localBefore=fs.readFileSync(localFile),remoteBefore=fs.readFileSync(remoteFile);
+      vscode.window.showInformationMessage=async(message,...choices)=>{
+        prompted=true;await commands.get('devkit.sftp.cancelAllTransfer')();
+        return choices[0]?.modal?choices[1]:choices[0];
+      };
+      await commands.get(id)(URI.file(id.includes('sync')?path.join(root,'nested'):localFile));
+      assert.equal(prompted,true,id);assert.ok(errors.some(message=>/cancelled/.test(message)),id);
+      assert.deepEqual(fs.readFileSync(localFile),localBefore,id);assert.deepEqual(fs.readFileSync(remoteFile),remoteBefore,id);
+      assert.equal(fs.readFileSync(path.join(dir,'remote-other','keep-on-cancel.txt'),'utf8'),'keep');
+    }
+    vscode.window.showInformationMessage=confirmSync;errors.length=0;
+    const originalStat=fs.lstat;let metadataCancelled=false;
+    const pendingRemote=path.join(dir,'remote-other','incoming.txt');
+    const pendingLocal=path.join(root,'nested','incoming.txt'),pendingBefore=fs.readFileSync(pendingLocal);
+    fs.lstat=function(target,...args){
+      const callback=args.pop();
+      return originalStat.call(this,target,...args,(...result)=>{
+        if(!metadataCancelled && path.resolve(target)===pendingRemote){
+          metadataCancelled=true;commands.get('devkit.sftp.cancelAllTransfer')().then(()=>callback(...result),callback);
+        }else callback(...result);
+      });
+    };
+    try {await commands.get('devkit.sftp.download.file')(URI.file(pendingLocal));}
+    finally {fs.lstat=originalStat;}
+    assert.equal(metadataCancelled,true);assert.ok(errors.some(message=>/cancelled/.test(message)));
+    assert.deepEqual(fs.readFileSync(pendingLocal),pendingBefore);errors.length=0;
+
     const originalRead=nativeReaddir;
     let cancellationCount=0;
     readHook=function(directory,callback){

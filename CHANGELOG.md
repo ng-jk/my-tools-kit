@@ -6,6 +6,8 @@ Extension: **0.5.0**. Pipeline plugin: **0.3.1**.
 
 ### Automated UI/UX release gate and recovery
 
+- Make Cancel All Transfers invalidate pending target selection, confirmation and metadata work, including transient all-profile operations; accepting an old confirmation cannot restart cancelled work.
+
 - Repair implicit FTPS control and data encryption, verify passive TLS certificates before transfer commands, and reject failed handshakes promptly. Local TLS wire tests cover encrypted authentication/data and invalid control/data certificates.
 
 - Distinguish cancelled automatic retries from completed transfers; cancelling a retry retains unresolved failure status and never announces success.

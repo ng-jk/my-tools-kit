@@ -15,6 +15,8 @@ Requires VS Code 1.96+. FTP/SFTP dependencies are bundled. Git comparisons requi
 
 ## Separate FTP/SFTP contexts
 
+**Cancel All Transfers** also cancels operations waiting for a target, confirmation or metadata. Accepting an old confirmation after cancellation does not resume the transfer; start a new command when ready.
+
 For FTPS, set `protocol` to `"ftp"` and `secure` to `true` (explicit TLS) or `"implicit"` (TLS from connection start), with your server's port. Both protect file data as well as authentication. Certificate verification is enabled by default; use a trusted CA through `secureOptions.ca` for private certificates. Invalid certificates stop the transfer before data commands. Plain FTP (`secure: false`) provides no transport encryption.
 
 A context is one complete connection configuration. Give development, staging, production, or different customers their own contexts. Each has its own IP/hostname, protocol, port, username, password/key, local folder, remote path, host verification, ignore rules, watcher and sync settings. Contexts do not inherit settings or credentials from one another.

@@ -5,6 +5,7 @@ import app from '../../app';
 import { reportError } from '../../helper/index';
 import { handleCtxFromUri, allHandleCtxFromUri, FileHandlerContext } from '../../fileHandlers/index';
 import Command from './command';
+import {pendingOperationCheck} from '../../../../logic/sftp/cancellation';
 
 interface BaseCommandOption {
     id: string;
@@ -50,7 +51,9 @@ export function createFileCommand(commandOption: FileCommandOption & { name: str
         }
 
         protected async doCommandRun(...args: unknown[]): Promise<void> {
+            const checkPending = pendingOperationCheck();
             const target = await commandOption.getFileTarget(...args);
+            checkPending();
             if (!target) {
                 logger.warn(`The "${this.name}" command get canceled because of missing targets.`);
                 return;
@@ -83,7 +86,9 @@ export function createFileMultiCommand(commandOption: FileCommandOption & { name
         }
 
         protected async doCommandRun(...args: unknown[]): Promise<void> {
+            const checkPending = pendingOperationCheck();
             const target = await commandOption.getFileTarget(...args);
+            checkPending();
             if (!target) {
                 logger.warn(`The "${this.name}" command get canceled because of missing targets.`);
                 return;

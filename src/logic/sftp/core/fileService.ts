@@ -16,6 +16,7 @@ import Scheduler from './scheduler';
 import { createRemoteIfNoneExist, removeRemoteFs } from '../../../data/sftp/core/remoteFs';
 import TransferTask from './transferTask';
 import {isTransferArtifact} from './staged-replacement';
+import {pendingOperationCheck} from '../cancellation';
 
 type Omit<T, U> = Pick<T, Exclude<keyof T, U>>;
 
@@ -472,7 +473,8 @@ export default class FileService {
 
   cancellationCheck() {
     const generation = this.cancellationGeneration;
-    return () => { if (this.disposed || generation !== this.cancellationGeneration) throw new Error("Transfer cancelled"); };
+    const checkPending = pendingOperationCheck();
+    return () => { checkPending(); if (this.disposed || generation !== this.cancellationGeneration) throw new Error("Transfer cancelled"); };
   }
 
   cancelTransferTasks() {
