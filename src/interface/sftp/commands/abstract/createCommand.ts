@@ -5,7 +5,6 @@ import app from '../../app';
 import { reportError } from '../../helper/index';
 import { handleCtxFromUri, allHandleCtxFromUri, FileHandlerContext } from '../../fileHandlers/index';
 import Command from './command';
-import { COMMAND_UPLOAD_FILE_TO_ALL_PROFILES, COMMAND_UPLOAD_FOLDER_TO_ALL_PROFILES } from '../../../../data/sftp/constants';
 
 interface BaseCommandOption {
     id: string;
@@ -51,11 +50,6 @@ export function createFileCommand(commandOption: FileCommandOption & { name: str
         }
 
         protected async doCommandRun(...args: unknown[]): Promise<void> {
-            if ((this.id === COMMAND_UPLOAD_FILE_TO_ALL_PROFILES || this.id === COMMAND_UPLOAD_FOLDER_TO_ALL_PROFILES)
-                && await window.showInformationMessage('Are you sure you want to upload to all profiles?', 'Yes', 'No').then(answer => answer !== 'Yes')) {
-                return;
-            }
-
             const target = await commandOption.getFileTarget(...args);
             if (!target) {
                 logger.warn(`The "${this.name}" command get canceled because of missing targets.`);
@@ -89,11 +83,6 @@ export function createFileMultiCommand(commandOption: FileCommandOption & { name
         }
 
         protected async doCommandRun(...args: unknown[]): Promise<void> {
-            if ((this.id === COMMAND_UPLOAD_FILE_TO_ALL_PROFILES || this.id === COMMAND_UPLOAD_FOLDER_TO_ALL_PROFILES)
-                && await window.showInformationMessage('Are you sure you want to upload to all profiles?', 'Yes', 'No').then(answer => answer !== 'Yes')) {
-                return;
-            }
-
             const target = await commandOption.getFileTarget(...args);
             if (!target) {
                 logger.warn(`The "${this.name}" command get canceled because of missing targets.`);
@@ -102,26 +91,28 @@ export function createFileMultiCommand(commandOption: FileCommandOption & { name
 
             const targetList: Uri[] = Array.isArray(target) ? target : [target];
             const ownedContexts: FileHandlerContext[] = [];
-            const pendingTasks = targetList.map(async uri => {
-                try {
-                    const contexts = allHandleCtxFromUri(uri);
-                    ownedContexts.push(...contexts);
-                    {
-                        const results = await Promise.allSettled(contexts.map(commandOption.handleFile));
-                        const failure = results.find(result => result.status === 'rejected');
-                        if (failure && failure.status === 'rejected') throw failure.reason;
-                    }
-
-                } catch (error) {
-                    if (error instanceof Error) {
-                        reportError(error);
-                    } else {
-                        reportError(String(error));
-                    }
+            const checks: Array<() => void> = [];
+            try {
+                // Resolve every destination before prompting or starting any transfer.
+                for (const uri of targetList) {
+                    checks.push(handleCtxFromUri(uri).fileService.cancellationCheck());
+                    ownedContexts.push(...allHandleCtxFromUri(uri));
                 }
-            });
-
-            try { await Promise.all(pendingTasks); }
+                if (!ownedContexts.length) throw new Error('No legacy profiles are configured for these targets.');
+                checks.forEach(check => check());
+                const detail = ownedContexts.map(({fileService, config, target}) =>
+                    `${fileService.name || config.host} — profile ${fileService.profile || 'base'} (${config.host}:${config.port})\n${target.localFsPath} → ${target.remoteFsPath}`
+                ).join('\n\n');
+                const answer = await window.showInformationMessage('Upload to all listed profiles?', {
+                    modal: true,
+                    detail: `Existing remote files will be overwritten; folders are uploaded recursively. Recovery requires a backup.${['devkit.sftp.forceUpload.to.allProfiles', 'devkit.sftp.upload.to.allProfiles', 'devkit.sftp.upload.file.to.allProfiles', 'devkit.sftp.upload.activeFile.to.allProfiles'].includes(this.id) ? ' Ignore rules will be bypassed.' : ''}\n\n${detail}`,
+                }, 'Upload', 'Cancel');
+                if (answer !== 'Upload') return;
+                checks.forEach(check => check());
+                const results = await Promise.allSettled(ownedContexts.map(commandOption.handleFile));
+                const failure = results.find(result => result.status === 'rejected');
+                if (failure && failure.status === 'rejected') throw failure.reason;
+            }
             finally { ownedContexts.forEach(ctx => ctx.fileService.dispose()); app.remoteExplorer.refresh(); }
         }
     };

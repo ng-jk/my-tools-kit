@@ -51,3 +51,23 @@ test('pipeline menu follows the target project interface review mode',async()=>{
     }
   } finally {fs.rmSync(root,{recursive:true,force:true});}
 });
+
+test('pipeline menu recovers missing and invalid configuration without overwriting it',async t=>{
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-pipeline-recovery-'));
+  t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+  const {configurePipeline}=require('../src/interface/pipeline-extension');
+  const {URI}=require('vscode-uri');const file=path.join(root,'.devkit-pipeline.json');
+  for(const content of [undefined,'{broken','null','[]']) {
+    if(content!==undefined)fs.writeFileSync(file,content);
+    let opened,shown,guide;
+    const vscode={Uri:URI,workspace:{openTextDocument:async uri=>{opened=uri;return uri;}},env:{openExternal:async uri=>{guide=uri.toString();}},window:{
+      showQuickPick:async(items,options)=>{assert.match(options.placeHolder,/missing|invalid/);assert.ok(items.some(i=>i.command==='status'));assert.ok(!items.some(i=>i.command==='publish'));return items.find(i=>i.command==='edit-config');},
+      showTextDocument:async document=>{shown=document;}
+    }};
+    await configurePipeline(vscode,{},root);
+    assert.equal(opened.scheme,content===undefined?'untitled':'file');assert.equal(opened.fsPath,URI.file(file).fsPath);assert.equal(shown,opened);
+    if(content===undefined)assert.equal(fs.existsSync(file),false);else assert.equal(fs.readFileSync(file,'utf8'),content);
+    vscode.window.showQuickPick=async items=>items.find(i=>i.command==='setup-guide');
+    await configurePipeline(vscode,{},root);assert.match(guide,/docs\/pipeline-usage.md$/);
+  }
+});

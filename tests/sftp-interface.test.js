@@ -28,7 +28,7 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     window:{withProgress:async(options,run)=>{loading.push(options.title);return run();},activeTextEditor:{document:{uri:URI.file(path.join(root,'ui.txt'))}},createStatusBarItem:()=>({set text(value){this.value=value;statusTexts.push(value);},get text(){return this.value;},show(){},hide(){},dispose(){}}),createOutputChannel:()=>({appendLine(){},show(){},hide(){},dispose(){}}),
       showQuickPick:async choices=>choices.find(item=>item.command==='devkit.sftp.upload.file') || choices[0],
       showOpenDialog:async()=>[URI.file(path.join(root,'ui.txt'))],
-      showInformationMessage:async(message,...choices)=>choices[0],showErrorMessage:async message=>{errors.push(message);},registerTreeDataProvider:(id,provider)=>{views.set(id,provider);return disposable();},
+      showInformationMessage:async(message,...choices)=>choices[0]?.modal?choices[1]:choices[0],showErrorMessage:async message=>{errors.push(message);},registerTreeDataProvider:(id,provider)=>{views.set(id,provider);return disposable();},
       createTreeView:(id,options)=>{views.set(id,options.treeDataProvider);return {selection:[],reveal:async()=>{},dispose(){}}}}
   };
   const original=Module._load;let extension;
@@ -140,6 +140,21 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     assert.equal(fs.existsSync(path.join(dir,'remote','missing.txt')),false,'staged modification followed by deletion removes the remote file');
     repository.state.workingTreeChanges=[];
     errors.length=0;
+    const acceptInformation=vscode.window.showInformationMessage;
+    const remoteBefore=fs.readFileSync(path.join(dir,'remote','ui.txt'),'utf8');
+    for(const variant of ['upload','upload.activeFile','upload.activeFolder','upload.file','upload.folder','forceUpload','upload.project']) {
+      let confirmations=0;
+      vscode.window.showInformationMessage=async(message,options)=>{
+        confirmations++;assert.match(message,/all listed profiles/);assert.equal(options.modal,true);
+        for(const text of ['profile dev','profile prod','profile other','fixture:','remote-other','overwritten'])assert.ok(options.detail.includes(text),options.detail);
+        if(variant==='forceUpload')assert.match(options.detail,/Ignore rules will be bypassed/);
+        return undefined;
+      };
+      await commands.get('devkit.sftp.'+variant+'.to.allProfiles')(variant==='upload'?[path.join(root,'ui.txt')]:URI.file(path.join(root,'ui.txt')));
+      assert.equal(confirmations,1,variant);assert.equal(fs.readFileSync(path.join(dir,'remote','ui.txt'),'utf8'),remoteBefore);
+      assert.equal(fs.existsSync(path.join(dir,'remote-other','ui.txt')),false,'cancellation starts no profile transfer');
+    }
+    vscode.window.showInformationMessage=acceptInformation;
     await commands.get('devkit.sftp.upload.activeFile.to.allProfiles')();
     assert.deepEqual(errors,[]);
     assert.equal(fs.readFileSync(path.join(dir,'remote-other','ui.txt'),'utf8'),'from other context');
