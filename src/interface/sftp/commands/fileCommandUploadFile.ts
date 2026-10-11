@@ -1,14 +1,14 @@
 // Adapted from ng-jk/vscode-sftp (MIT); see THIRD-PARTY-NOTICES.md.
 import { COMMAND_UPLOAD_FILE } from '../../../data/sftp/constants';
-import { uploadFile } from '../fileHandlers/index';
+import { uploadSelection } from './uploadSelection';
 import { checkFileCommand } from './abstract/createCommand';
-import { uriFromExplorerContextOrEditorContext } from './shared';
+import { selectLocalFile } from './shared';
 
 export default checkFileCommand({
   id: COMMAND_UPLOAD_FILE,
-  getFileTarget: uriFromExplorerContextOrEditorContext,
+  getFileTarget: selectLocalFile,
 
   async handleFile(ctx) {
-    await uploadFile(ctx, { ignore: null });
+    await uploadSelection(ctx, 'file', false);
   },
 });

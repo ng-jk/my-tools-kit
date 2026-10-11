@@ -2,6 +2,7 @@
 
 ## Unreleased — automated UI/UX release gate
 
+- Restrict Upload File to regular files, preserve configured exclusions for ordinary uploads, and confirm direct upload destinations; force uploads explicitly warn that credential-file exclusions are bypassed.
 - Require one destination-specific confirmation for every all-profile upload, with cancellation before any transfer; expose configuration repair and setup guidance when the pipeline configuration is missing or invalid.
 - Add a final credential scan and AI security review of exact retained release packages before publication, with redacted reports and fail-closed evidence validation.
 - Confirm destination overwrites for every direct download command and show loading feedback while remote browsing connects and lists files.

@@ -1,6 +1,6 @@
 // Adapted from ng-jk/vscode-sftp (MIT); see THIRD-PARTY-NOTICES.md.
 import { COMMAND_UPLOAD } from '../../../data/sftp/constants';
-import { upload } from '../fileHandlers/index';
+import { uploadSelection } from './uploadSelection';
 import { checkFileCommand } from './abstract/createCommand';
 import { uriFromfspath } from './shared';
 
@@ -9,6 +9,6 @@ export default checkFileCommand({
   getFileTarget: uriFromfspath,
 
   async handleFile(ctx) {
-    await upload(ctx, { ignore: null });
+    await uploadSelection(ctx, 'any', false);
   },
 });

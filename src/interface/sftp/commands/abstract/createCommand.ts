@@ -105,7 +105,7 @@ export function createFileMultiCommand(commandOption: FileCommandOption & { name
                 ).join('\n\n');
                 const answer = await window.showInformationMessage('Upload to all listed profiles?', {
                     modal: true,
-                    detail: `Existing remote files will be overwritten; folders are uploaded recursively. Recovery requires a backup.${['devkit.sftp.forceUpload.to.allProfiles', 'devkit.sftp.upload.to.allProfiles', 'devkit.sftp.upload.file.to.allProfiles', 'devkit.sftp.upload.activeFile.to.allProfiles'].includes(this.id) ? ' Ignore rules will be bypassed.' : ''}\n\n${detail}`,
+                    detail: `Existing remote files will be overwritten; folders are uploaded recursively. Recovery requires a backup.${this.id.includes('forceUpload') ? ' Ignore rules will be bypassed, including credential-file exclusions.' : ' Configured ignore rules remain active.'}\n\n${detail}`,
                 }, 'Upload', 'Cancel');
                 if (answer !== 'Upload') return;
                 checks.forEach(check => check());

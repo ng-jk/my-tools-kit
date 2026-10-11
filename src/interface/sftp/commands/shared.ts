@@ -181,6 +181,10 @@ export async function selectLocalFolder(item?: any, items?: any): Promise<undefi
   if (item) return uriFromExplorerContextOrEditorContext(item, items);
   return window.showOpenDialog({canSelectFiles: false, canSelectFolders: true, canSelectMany: true, openLabel: 'Select folder to upload'});
 }
+export async function selectLocalFile(item?: any, items?: any): Promise<undefined | Uri | Uri[]> {
+  if (item || getActiveDocumentUri()) return uriFromExplorerContextOrEditorContext(item, items);
+  return window.showOpenDialog({canSelectFiles: true, canSelectFolders: false, canSelectMany: true, openLabel: 'Select file to upload'});
+}
 export async function selectRemoteFolder(item?: any, items?: any): Promise<undefined | Uri | Uri[]> {
   if (item) return uriFromExplorerContextOrEditorContext(item, items);
   return createFileSelector(undefined, FileType.Directory)();
