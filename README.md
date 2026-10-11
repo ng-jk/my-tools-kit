@@ -74,7 +74,7 @@ SFTP verifies host keys: use a trusted `knownHostsPath` or independently verifie
 | Compare with remote | Choose the SFTP **Diff** action for a local file to open VS Code’s diff editor. |
 | Create or delete | Use **Create File**, **Create Folder**, or **Delete Remote** from the SFTP menu or remote context menu. Select the destination when prompted. |
 | Synchronize | Choose **Sync Local → Remote**, **Sync Remote → Local**, or **Sync Both Directions**. Set `syncOption` within the selected context. `delete: true` can remove destination-only files. |
-| Upload Git changes | Use **Upload Changed Files** for staged/working-tree changes, or **Upload File Changed** to select a commit’s changed files. Review deletions before confirming. |
+| Upload Git changes | Use **Upload Changed Files** for staged/working-tree changes, or **Upload File Changed** to select a commit’s changed files. Review the batch destinations and overwrite/delete/rename scope before confirming. |
 | Watch local changes | Set `watcher.files`, `watcher.autoUpload`, and optionally `watcher.autoDelete` inside the context. Saving its configuration recreates the watcher. |
 | Connect with SSH | Choose the SSH terminal action for the selected SFTP server; requires your system SSH client. |
 | Stop or troubleshoot | Choose **Cancel All Transfers**, **Show Output**, or Remote Explorer’s refresh button. |
@@ -174,7 +174,7 @@ Keep the task running until it reports completion. AI review needs an authentica
 
 Press **Ctrl+Shift+P** (**Cmd+Shift+P** on macOS) to find available palette commands. For SFTP, the toolbox’s **SFTP / FTP** menu includes the functions below, including commands hidden from the palette. File-specific actions also appear in Explorer/Remote Explorer context menus. The command ID is provided for custom keybindings; it is not a terminal command.
 
-Select a context before transferring. “Active file” means the file open in your focused editor; “active folder” is its parent folder; “project” means the configured local context, which may be smaller than the workspace. Sync with `syncOption.delete: true` can delete destination-only files. **To All Profiles** operates on legacy profiles within the active context, not all named contexts.
+Select a context before transferring. “Active file” means the file open in your focused editor; “active folder” is its parent folder; “project” means the configured local context, which may be smaller than the workspace. Every manual sync asks you to confirm the source, destination and possible overwrites. Sync with `syncOption.delete: true` can also delete destination-only files. **To All Profiles** operates on legacy profiles within the active context, not all named contexts.
 
 ### Workspace tools
 
@@ -200,7 +200,7 @@ Select a context before transferring. “Active file” means the file open in y
 | **Cancel All Transfers**<br>`devkit.sftp.cancelAllTransfer` | Choose while transfers are running to cancel pending and active operations. Inspect output for any partially completed work. |
 | **Upload File**<br>`devkit.sftp.upload.file` | Select a local file in Explorer, or focus its editor, then choose this. Without either selection, pick the file when prompted. Only regular files are accepted. Review the destination and choose Upload. Ignore rules remain active; excluded files show a skipped message. |
 | **Upload Changed Files**<br>`devkit.sftp.upload.changedFiles` | Open a configured Git project, select changes in Source Control or run this command for its changes. It uploads current local contents and applies supported rename/delete changes after confirmation. |
-| **Upload File Changed (Pick Commit)**<br>`devkit.sftp.upload.fileChanged` | Choose the repository, then a recent commit or uncommitted changes. It uploads current local versions of the created/modified paths in that selection—not historical file contents; deleted paths are skipped. |
+| **Upload File Changed (Pick Commit)**<br>`devkit.sftp.upload.fileChanged` | Choose the repository, then a recent commit or uncommitted changes. It uploads current local versions of the created/modified paths in that selection—not historical file contents; deleted paths are skipped. Review the destination summary before confirming. Transfer errors show a separate failed count: choose Show details to inspect output or Retry failed to confirm and retry only those files. |
 | **Upload Active File**<br>`devkit.sftp.upload.activeFile` | Focus the saved local file’s editor and choose this command to upload that file to the configured remote path. |
 | **Upload Folder**<br>`devkit.sftp.upload.folder` | Select a local folder, or pick it in the dialog. Its contents are uploaded recursively, respecting ignore rules. |
 | **Upload Active Folder**<br>`devkit.sftp.upload.activeFolder` | Focus a local file’s editor and run this to upload its containing folder recursively. |

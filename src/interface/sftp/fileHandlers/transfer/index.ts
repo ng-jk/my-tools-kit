@@ -9,11 +9,12 @@ import {executeTransfer} from '../../../../logic/sftp/transfer-operation';
 function createTransferHandle(direction: TransferDirection, synchronize = false) {
   return async function handle(this: FileHandlerContext, option: TransferOption) {
     const check = this.fileService.cancellationCheck();
-    if (synchronize && (option as SyncOption).delete) {
-      const remote = `${this.fileService.name} (${this.config.host}:${this.config.port}) ${this.target.remoteFsPath}`;
+    if (synchronize) {
+      const remote = `${this.fileService.name} (profile ${this.fileService.profile || 'base'}, ${this.config.host}:${this.config.port}) ${this.target.remoteFsPath}`;
       const destination = (option as SyncOption).bothDiretions ? `${remote} and local ${this.target.localFsPath}`
         : direction === TransferDirection.REMOTE_TO_LOCAL ? `local ${this.target.localFsPath}` : remote;
-      if (!await showConfirmMessage(`Synchronize and delete destination-only files at ${destination}?`, 'Sync and delete', 'Cancel')) return;
+      const deletes = (option as SyncOption).delete;
+      if (!await showConfirmMessage(`Synchronize${deletes ? ' and delete destination-only files' : ''} at ${destination}? Local source/destination: ${this.target.localFsPath}. Remote source/destination: ${remote}. Existing destination files may be overwritten; recovery requires a backup.`, deletes ? 'Sync and delete' : 'Synchronize', 'Cancel')) return;
     }
     check();
     return executeTransfer(this.fileService, this.config, this.target.localFsPath, this.target.remoteFsPath,

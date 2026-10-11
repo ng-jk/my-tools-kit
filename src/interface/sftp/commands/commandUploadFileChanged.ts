@@ -15,6 +15,8 @@ import { showWarningMessage, showInformationMessage } from '../host';
 import { simplifyPath } from '../helper/index';
 import logger from '../logger';
 import {handleCtxFromUri} from '../fileHandlers/createFileHandler';
+import {confirmBatch} from './confirmBatch';
+import * as output from '../ui/output';
 
 const COMMIT_DEPTH = 30;
 const UNCOMMITTED = '__uncommitted__';
@@ -57,29 +59,40 @@ export default checkCommand({
       const ctx=getFileService(uri)?handleCtxFromUri(uri):undefined;
       return {rel,fsPath,ctx,check:ctx?.fileService.cancellationCheck()};
     });
-    for (const {rel,fsPath,ctx,check} of selected) {
-        // Only files that belong to an SFTP service can be uploaded.
-        if (!ctx) {
-          skipped.push(rel);
-          continue;
-        }
+    let pending=selected.filter(({rel,fsPath,ctx})=>{
+      if (!ctx || ctx.config.ignore?.(fsPath,'local')) {skipped.push(rel);return false;}
+      return true;
+    });
+    while(pending.length) {
+      pending.forEach(item=>item.check!());
+      if (!await confirmBatch(pending.map(item=>({ctx:item.ctx!,description:'upload current local content'})))) return;
+      pending.forEach(item=>item.check!());
+      const failed: typeof pending=[];
+      for (const item of pending) {
+        const {rel,ctx,check}=item;
         try {
           check!();
-          if (ctx.config.ignore?.(fsPath, 'local')) { skipped.push(rel); continue; }
-          await uploadFile(ctx);
+          await uploadFile(ctx!);
           uploaded.push(rel);
         } catch (error) {
-          skipped.push(rel);
+          failed.push(item);
           logger.error(error as Error, `upload failed for ${rel}`);
         }
+      }
+      if (!failed.length) break;
+      outputGroup('failed',failed.map(item=>item.rel));
+      const action=await vscode.window.showErrorMessage(`SFTP: uploaded ${uploaded.length} file(s), skipped ${skipped.length}, failed ${failed.length}. Fix the connection or file error, then retry failed files.`, 'Show details', 'Retry failed', 'Close');
+      if (action==='Show details') {output.show();return;}
+      if (action!=='Retry failed') return;
+      pending=failed;
     }
 
     logger.log('');
     logger.log('------ Upload File Changed Result ------');
     outputGroup('uploaded', uploaded);
-    outputGroup('skipped (ignored / no SFTP config / failed)', skipped);
+    outputGroup('skipped (ignored / no SFTP config)', skipped);
 
-    showInformationMessage(
+    await showInformationMessage(
       `SFTP: uploaded ${uploaded.length} file(s)` +
         (skipped.length ? `, skipped ${skipped.length}.` : '.')
     );

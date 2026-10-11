@@ -2,6 +2,7 @@
 
 ## Unreleased — automated UI/UX release gate
 
+- Confirm every Git transfer batch and sync overwrite destination, including sync without deletion; distinguish failed commit-selected uploads from skipped files and offer details or retry of failed files only.
 - Restrict Upload File to regular files, preserve configured exclusions for ordinary uploads, and confirm direct upload destinations; force uploads explicitly warn that credential-file exclusions are bypassed.
 - Require one destination-specific confirmation for every all-profile upload, with cancellation before any transfer; expose configuration repair and setup guidance when the pipeline configuration is missing or invalid.
 - Add a final credential scan and AI security review of exact retained release packages before publication, with redacted reports and fail-closed evidence validation.

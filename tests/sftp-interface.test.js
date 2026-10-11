@@ -137,18 +137,32 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     const batchPut=batchFs.put;let activeBatch=0,peakBatch=0;
     batchFs.put=async function(...args){activeBatch++;peakBatch=Math.max(peakBatch,activeBatch);try{await new Promise(resolve=>setTimeout(resolve,20));return await batchPut.apply(this,args);}finally{activeBatch--;}};
     const resultMessages=[];const previousInfo=vscode.window.showInformationMessage;
-    vscode.window.showInformationMessage=async message=>{resultMessages.push(message);};
+    vscode.window.showInformationMessage=async(message,...choices)=>{resultMessages.push(message);return choices[0]?.modal?choices[1]:undefined;};
     try{await commands.get('devkit.sftp.upload.fileChanged')();}finally{batchFs.put=batchPut;}
     assert.equal(peakBatch,1,'changed-file batch bounds concurrent transfers');
     vscode.window.showInformationMessage=previousInfo;
     assert.ok(resultMessages.some(message=>/uploaded 2 file\(s\), skipped 1/.test(message)),JSON.stringify(resultMessages));
     assert.equal(fs.existsSync(path.join(dir,'remote','.env')),false);
     assert.equal(fs.readFileSync(path.join(dir,'remote','ui.txt'),'utf8'),'included change');
+    const batchBefore=fs.readFileSync(path.join(dir,'remote','ui.txt'),'utf8');
+    fs.writeFileSync(path.join(root,'ui.txt'),'must wait for batch approval');
+    repository.state.indexChanges=[{status:0,uri:URI.file(path.join(root,'ui.txt'))}];
+    for(const command of ['devkit.sftp.upload.changedFiles','devkit.sftp.upload.fileChanged']) {
+      let prompts=0;
+      vscode.window.showInformationMessage=async(message,options)=>{prompts++;assert.equal(options.modal,true);assert.match(options.detail,/profile prod/);assert.match(options.detail,/overwrite remote files/);assert.match(options.detail,/ui.txt/);return 'Cancel';};
+      await commands.get(command)();assert.equal(prompts,1);assert.equal(fs.readFileSync(path.join(dir,'remote','ui.txt'),'utf8'),batchBefore);
+    }
+    vscode.window.showInformationMessage=previousInfo;
+    const priorBatchError=vscode.window.showErrorMessage;const sent=[];let failedNotice=0;
+    batchFs.put=async function(input,target,...args){sent.push(target.replaceAll('\\','/'));if(target.replaceAll('\\','/').includes('/ui.txt.devkit-')&&sent.filter(x=>x.includes('/ui.txt.devkit-')).length===1)throw new Error('Synthetic transfer interruption');return batchPut.call(this,input,target,...args);};
+    vscode.window.showErrorMessage=async(message,...choices)=>{if(message==='Synthetic transfer interruption')return undefined;failedNotice++;assert.match(message,/failed 1/);assert.match(message,/skipped 1/);assert.ok(choices.includes('Show details'));assert.ok(choices.includes('Retry failed'));return 'Retry failed';};
+    try {await commands.get('devkit.sftp.upload.fileChanged')();} finally {batchFs.put=batchPut;vscode.window.showErrorMessage=priorBatchError;}
+    assert.equal(failedNotice,1,JSON.stringify(sent));assert.equal(sent.filter(x=>x.includes('/ui.txt.devkit-')).length,2);assert.equal(sent.filter(x=>x.includes('/batch-second.txt.devkit-')).length,1,'retry only failed files');
     fs.writeFileSync(path.join(dir,'remote','missing.txt'),'staged then deleted locally');
     repository.state.indexChanges=[{status:0,uri:URI.file(path.join(root,'missing.txt'))}];
     repository.state.workingTreeChanges=[{status:6,uri:URI.file(path.join(root,'missing.txt'))}];
     const confirmChanges=vscode.window.showInformationMessage;
-    vscode.window.showInformationMessage=async message=>{assert.match(message,/remote deletions/);assert.match(message,/missing.txt/);return undefined;};
+    vscode.window.showInformationMessage=async(message,options)=>{assert.match(options.detail,/remote deletions/);assert.match(options.detail,/missing.txt/);return undefined;};
     await commands.get('devkit.sftp.upload.changedFiles')();
     assert.equal(fs.existsSync(path.join(dir,'remote','missing.txt')),true,'cancelled Git deletion preserves remote file');
     vscode.window.showInformationMessage=confirmChanges;
@@ -342,6 +356,14 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     await commands.get('devkit.sftp.upload.file')(URI.file(path.join(root,'context-switch.txt')));assert.deepEqual(errors,[]);
     assert.equal(fs.existsSync(path.join(dir,'remote','context-switch.txt')),false);assert.equal(fs.readFileSync(path.join(dir,'remote-other','context-switch.txt'),'utf8'),'only beta');
     const betaRoot=roots[0];
+    const betaConfirm=vscode.window.showInformationMessage;
+    for(const command of ['sync.localToRemote','sync.remoteToLocal','sync.bothDirections']) {
+      let prompts=0;
+      vscode.window.showInformationMessage=async message=>{prompts++;assert.match(message,/overwritten/);assert.match(message,/beta-host/);assert.doesNotMatch(message,/delete destination-only/);return undefined;};
+      await commands.get('devkit.sftp.'+command)([root]);assert.equal(prompts,1,command);
+      assert.equal(fs.readFileSync(path.join(dir,'remote-other','context-switch.txt'),'utf8'),'only beta');
+    }
+    vscode.window.showInformationMessage=betaConfirm;
     const provider=views.get('devkit.remoteExplorer'),changingPath=path.join(dir,'remote-other','changing-type');
     fs.writeFileSync(changingPath,'file');
     let changing=(await provider.getChildren(betaRoot)).find(item=>path.basename(item.resource.fsPath)==='changing-type');

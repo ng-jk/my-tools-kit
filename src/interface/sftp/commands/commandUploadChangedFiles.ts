@@ -7,7 +7,7 @@ import { uploadFile, renameRemote, removeRemote } from '../fileHandlers/index';
 import { getGitService, GitAPI, Repository, Status, Change } from '../modules/git/index';
 import { checkCommand } from './abstract/createCommand';
 import logger from '../logger';
-import {showConfirmMessage} from '../host';
+import {confirmBatch} from './confirmBatch';
 import {handleCtxFromUri} from '../fileHandlers/createFileHandler';
 import {localEntryExists} from '../../../data/sftp/local-events';
 import {reconcileGitChanges, planGitTransfers, executeGitTransfers, GitChange} from '../../../logic/sftp/git-transfer';
@@ -86,14 +86,10 @@ async function handleCommand(hint: any) {
     const ctx = handleCtxFromUri(vscode.Uri.file(operation.path));
     return [operation.path, {ctx, check:ctx.fileService.cancellationCheck()}] as const;
   }));
-  const destructive = plan.filter(operation => operation.kind !== 'upload');
-  if (destructive.length) {
-    const details = destructive.map(operation => {
-      const {ctx} = contexts.get(operation.path)!;
-      return `${operation.kind}: ${ctx.fileService.name} (${ctx.config.host}:${ctx.config.port}) ${ctx.target.remoteFsPath}`;
-    }).join('\n');
-    if (!await showConfirmMessage(`Apply Git changes including remote deletions or renames?\n${details}`, 'Apply changes', 'Cancel')) return;
-  }
+  contexts.forEach(({check}) => check());
+  if (!await confirmBatch(plan.map(operation => ({ctx:contexts.get(operation.path)!.ctx,
+    description: operation.kind + (operation.kind === 'rename' ? ` from ${operation.oldPath}` : '')})))) return;
+  contexts.forEach(({check}) => check());
   const selected = (file: string) => { const {ctx,check}=contexts.get(file)!;check();return ctx; };
   await executeGitTransfers(plan, {
     upload: file => uploadFile(selected(file)),
