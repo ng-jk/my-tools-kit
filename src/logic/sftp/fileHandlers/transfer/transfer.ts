@@ -15,6 +15,7 @@ import { getOpenTextDocuments } from '../../../../data/sftp/ports';
 import { checkedEntries } from '../../../../data/sftp/path-safety';
 import {ensureTransferDirectory, DirectoryPermissionScope} from '../../directory-permissions';
 import {transferPermissions} from '../../transfer-permissions';
+import {trackLocalChanges} from '../../../../data/sftp/local-events';
 
 interface InternalTransferOption extends FileHandleOption, TransferTaskTransferOption {}
 
@@ -490,7 +491,8 @@ async function saveDirtyDocuments(config: TransferHandleConfig<SyncOption>) {
     const relative = fs.pathResolver.relative(root, document.fileName);
     if (relative === '..' || relative.startsWith('../') || relative.startsWith('..\\') || fs.pathResolver.isAbsolute(relative)) continue;
     if (config.transferOption.ignore?.(document.fileName, 'local')) continue;
-    if (await document.save() !== true) throw new Error('Could not save dirty document before transfer: ' + document.fileName);
+    const saved=await trackLocalChanges([document.uri?.fsPath || document.fileName],()=>document.save());
+    if (saved !== true) throw new Error('Could not save dirty document before transfer: ' + document.fileName);
   }
 }
 

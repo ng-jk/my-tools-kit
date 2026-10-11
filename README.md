@@ -174,7 +174,7 @@ Keep the task running until it reports completion. AI review needs an authentica
 
 Press **Ctrl+Shift+P** (**Cmd+Shift+P** on macOS) to find available palette commands. For SFTP, the toolbox’s **SFTP / FTP** menu includes the functions below, including commands hidden from the palette. File-specific actions also appear in Explorer/Remote Explorer context menus. The command ID is provided for custom keybindings; it is not a terminal command.
 
-Select a context before transferring. “Active file” means the file open in your focused editor; “active folder” is its parent folder; “project” means the configured local context, which may be smaller than the workspace. Every manual sync asks you to confirm the source, destination and possible overwrites. Sync with `syncOption.delete: true` can also delete destination-only files. **To All Profiles** operates on legacy profiles within the active context, not all named contexts.
+Select a context before transferring. “Active file” means the file open in your focused editor; “active folder” is its parent folder; “project” means the configured local context, which may be smaller than the workspace. Every manual sync asks you to confirm the source, destination and possible overwrites. Dirty editors in scope are saved before planning; those programmatic saves do not trigger independent upload-on-save or watcher transfers, so the chosen sync options remain authoritative. Sync with `syncOption.delete: true` can also delete destination-only files. **To All Profiles** operates on legacy profiles within the active context, not all named contexts.
 
 ### Workspace tools
 

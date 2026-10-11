@@ -4,6 +4,7 @@ import * as path from 'path';
 import {handleCtxFromUri} from '../fileHandlers/createFileHandler';
 import logger from '../logger';
 import { nativeRealpath } from '../../../data/sftp/local-path';
+import {isOwnLocalChange} from '../../../data/sftp/local-events';
 import {reportAutomaticFailure} from './automaticFailure';
 import app from '../app';
 import { onDidOpenTextDocument, onDidSaveTextDocument, showConfirmMessage } from '../host';
@@ -25,6 +26,7 @@ async function handleConfigSave(uri: vscode.Uri) {
 }
 
 async function handleFileSave(uri: vscode.Uri) {
+  if(isOwnLocalChange(uri.fsPath))return;
   const fileService = getFileService(uri);
   if (!fileService) {
     return;

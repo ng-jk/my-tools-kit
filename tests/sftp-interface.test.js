@@ -455,13 +455,34 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     const nestedA=path.join(dir,'remote','nested');fs.mkdirSync(nestedA,{recursive:true});
     fs.writeFileSync(path.join(nestedA,'wrong-server.txt'),'delete only A');fs.writeFileSync(path.join(dir,'remote-other','wrong-server.txt'),'preserve B');
     fs.writeFileSync(contextFile,JSON.stringify([
-      {name:'Server A',uploadOnSave:true,downloadOnOpen:'confirm',watcher:{files:'**/*',autoUpload:true,autoDelete:true},context:'.',protocol:'local',host:'server-a',username:'alice',remotePath:path.join(dir,'remote').replaceAll('\\','/')},
+      {name:'Server A',uploadOnSave:true,downloadOnOpen:'confirm',syncOption:{ignoreExisting:true},watcher:{files:'**/*',autoUpload:true,autoDelete:true},context:'.',protocol:'local',host:'server-a',username:'alice',remotePath:path.join(dir,'remote').replaceAll('\\','/')},
       {name:'Server B',watcher:{files:false,autoUpload:false,autoDelete:false},context:'nested',protocol:'local',host:'server-b',username:'bob',remotePath:path.join(dir,'remote-other').replaceAll('\\','/')}
     ]));
     await extension.activate(context);
 
     const autoRoot=(await views.get('devkit.remoteExplorer').getChildren()).find(item=>item.explorerContext.config.host==='server-a');
     const autoFs=await autoRoot.explorerContext.fileService.getRemoteFileSystem(autoRoot.explorerContext.config);
+    const policyLocal=path.join(root,'policy-sync'),policyRemote=path.join(dir,'remote','policy-sync');fs.mkdirSync(policyLocal);fs.mkdirSync(policyRemote);
+    const policyFile=path.join(policyLocal,'dirty.txt'),policyTarget=path.join(policyRemote,'dirty.txt');
+    fs.writeFileSync(policyFile,'old local');fs.writeFileSync(policyTarget,'preserve remote under ignoreExisting');
+    const policyWatcher=watchers.filter(item=>!item.disposed).at(-1);
+    const dirty={uri:URI.file(policyFile),fileName:URI.file(policyFile).fsPath,isDirty:true,isClosed:false,save:async()=>{fs.writeFileSync(policyFile,'programmatically saved editor');dirty.isDirty=false;await savedDocument(dirty);policyWatcher.handlers.change(dirty.uri);return true;}};
+    vscode.workspace.textDocuments=[dirty];
+    const policyPut=autoFs.put;let policyUploads=0;autoFs.put=async function(...args){policyUploads++;return policyPut.apply(this,args);};
+    const policyLocalFs=autoRoot.explorerContext.fileService.getLocalFileSystem(),policyList=policyLocalFs.list;
+    try {
+      await commands.get('devkit.sftp.sync.localToRemote')([policyLocal]);
+      await savedDocument(dirty);policyWatcher.handlers.change(dirty.uri);await new Promise(resolve=>setTimeout(resolve,700));
+      assert.equal(policyUploads,0);assert.equal(fs.readFileSync(policyTarget,'utf8'),'preserve remote under ignoreExisting');
+      dirty.isDirty=true;policyLocalFs.list=async()=>{throw new Error('Synthetic sync planning failure');};
+      await commands.get('devkit.sftp.sync.localToRemote')([policyLocal]);
+      policyWatcher.handlers.change(dirty.uri);await new Promise(resolve=>setTimeout(resolve,700));
+      assert.ok(errors.some(message=>message.includes('Synthetic sync planning failure')));errors.length=0;
+      assert.equal(policyUploads,0);assert.equal(fs.readFileSync(policyTarget,'utf8'),'preserve remote under ignoreExisting');
+      policyLocalFs.list=policyList;vscode.workspace.textDocuments=[];
+      fs.writeFileSync(policyFile,'subsequent real user edit');await savedDocument(dirty);
+      assert.equal(policyUploads,1);assert.equal(fs.readFileSync(policyTarget,'utf8'),'subsequent real user edit');
+    } finally {autoFs.put=policyPut;policyLocalFs.list=policyList;vscode.workspace.textDocuments=[];}
     const autoPut=autoFs.put,autoError=vscode.window.showErrorMessage;let automaticFailures=0;
     fs.writeFileSync(path.join(root,'auto-failure.txt'),'retry payload');
     autoFs.put=async()=>{throw new Error('Synthetic automatic interruption');};

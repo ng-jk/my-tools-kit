@@ -2,6 +2,7 @@
 
 ## Unreleased — automated UI/UX release gate
 
+- Suppress save/watch automation for transfer-owned dirty-editor saves, preserving restrictive sync policies and preventing independent uploads after planning failure; later user edits still trigger configured automation.
 - Enforce file/folder download scope before confirmation and in shared transfer planning; show target-specific automatic failure notifications, persistent error indicators, details and context-bound retry.
 - Confirm every Git transfer batch and sync overwrite destination, including sync without deletion; distinguish failed commit-selected uploads from skipped files and offer details or retry of failed files only.
 - Restrict Upload File to regular files, preserve configured exclusions for ordinary uploads, and confirm direct upload destinations; force uploads explicitly warn that credential-file exclusions are bypassed.
