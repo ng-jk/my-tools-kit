@@ -16,6 +16,6 @@ export async function tryLoadConfigs(workspace:string):Promise<any[]> {
 }
 export async function newConfig(basePath:string) {
   const configPath=path.join(basePath,CONFIG_PATH);
-  try {await ensureConfiguration(configPath,initialContexts());return showTextDocument(vscode.Uri.file(configPath));}
+  try {await ensureConfiguration(configPath,initialContexts());return await showTextDocument(vscode.Uri.file(configPath));}
   catch(error){reportError(error);}
 }

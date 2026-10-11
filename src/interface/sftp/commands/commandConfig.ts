@@ -56,7 +56,7 @@ export default checkCommand({
     }
 
     if (workspaceFolders.length === 1) {
-      newConfig(workspaceFolders[0].uri.fsPath);
+      await newConfig(workspaceFolders[0].uri.fsPath);
       return;
     }
 
@@ -66,16 +66,7 @@ export default checkCommand({
       description: folder.uri.fsPath,
     }));
 
-    vscode.window
-      .showQuickPick(initDirs, {
-        placeHolder: 'Select a folder...',
-      })
-      .then(item => {
-        if (item === undefined) {
-          return;
-        }
-
-        newConfig(item.value);
-      });
+    const item=await vscode.window.showQuickPick(initDirs, {placeHolder:'Select a folder...'});
+    if(item)await newConfig(item.value);
   },
 });

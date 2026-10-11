@@ -51,6 +51,18 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     assert.equal((await views.get('devkit.remoteExplorer').getChildren()).length,2);
     await changedFolders({added:[],removed:[{uri:URI.file(addedRoot)}]});
     assert.equal((await views.get('devkit.remoteExplorer').getChildren()).length,1);
+    const configBefore=fs.readFileSync(path.join(root,'.vscode','sftp.json'),'utf8');
+    const setupPick=vscode.window.showQuickPick;
+    vscode.window.showTextDocument=async()=>{await Promise.resolve();throw new Error('Synthetic configuration editor failure');};
+    for(const folders of [[{uri:URI.file(root)}],[{uri:URI.file(root)},{uri:URI.file(addedRoot)}]]) {
+      vscode.workspace.workspaceFolders=folders;vscode.window.showQuickPick=async choices=>choices[0];
+      await commands.get('devkit.sftp.config')();
+      assert.deepEqual(errors,['Synthetic configuration editor failure']);errors.length=0;
+      assert.equal(fs.readFileSync(path.join(root,'.vscode','sftp.json'),'utf8'),configBefore);
+    }
+    vscode.window.showQuickPick=async()=>{throw new Error('Synthetic configuration picker failure');};
+    await commands.get('devkit.sftp.config')();assert.deepEqual(errors,['Synthetic configuration picker failure']);errors.length=0;
+    vscode.workspace.workspaceFolders=[{uri:URI.file(root)}];vscode.window.showQuickPick=setupPick;delete vscode.window.showTextDocument;
 
     await commands.get('devkit.sftp.upload.activeFile')();
     assert.deepEqual(errors,[]);

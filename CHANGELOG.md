@@ -2,6 +2,7 @@
 
 ## Unreleased — automated UI/UX release gate
 
+- Await SFTP configuration pickers and editor opening in single- and multi-folder workspaces so asynchronous setup failures reach normal error feedback without replacing saved configuration.
 - Suppress save/watch automation for transfer-owned dirty-editor saves, preserving restrictive sync policies and preventing independent uploads after planning failure; later user edits still trigger configured automation.
 - Enforce file/folder download scope before confirmation and in shared transfer planning; show target-specific automatic failure notifications, persistent error indicators, details and context-bound retry.
 - Confirm every Git transfer batch and sync overwrite destination, including sync without deletion; distinguish failed commit-selected uploads from skipped files and offer details or retry of failed files only.
