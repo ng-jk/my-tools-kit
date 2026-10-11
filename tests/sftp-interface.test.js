@@ -506,6 +506,8 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     try {await savedDocument({uri:URI.file(path.join(root,'auto-failure.txt'))});} finally {autoFs.put=autoPut;vscode.window.showErrorMessage=autoError;}
     assert.equal(automaticFailures,1);assert.equal(fs.readFileSync(path.join(dir,'remote','auto-failure.txt'),'utf8'),'retry payload');
     assert.ok(statusTexts.some(text=>text.includes('issue-opened')&&text.includes('Automatic upload failed')));
+    assert.equal(statusTexts.at(-1).includes('issue-opened'),false,'successful retry clears error status');
+    assert.match(statusTexts.at(-1),/retry completed/);
     fs.writeFileSync(path.join(root,'auto-download-failure.txt'),'preserve local');
     let downloadFailure;
     vscode.window.showErrorMessage=async(message,...choices)=>{if(message.startsWith('Automatic download failed')){downloadFailure=message;assert.ok(choices.includes('Retry'));}return undefined;};
@@ -536,11 +538,14 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     fs.writeFileSync(path.join(root,'watcher-failure.txt'),'keep local on failure');
     let notified;const watcherNotice=new Promise(resolve=>notified=resolve);
     watcherFs.put=async()=>{throw new Error('Synthetic watcher interruption');};
-    vscode.window.showErrorMessage=async(message,...choices)=>{if(message.startsWith('Automatic watcher upload failed')){assert.match(message,/server-a/);assert.match(message,/watcher-failure.txt/);assert.ok(choices.includes('Show details'));assert.ok(choices.includes('Retry'));notified();}return undefined;};
+    vscode.window.showErrorMessage=async(message,...choices)=>{if(message.startsWith('Automatic watcher upload failed')){assert.match(message,/server-a/);assert.match(message,/watcher-failure.txt/);assert.ok(choices.includes('Show details'));assert.ok(choices.includes('Retry'));notified();return 'Show details';}return undefined;};
     let watchdog;
     try {parentWatcher.handlers.change(URI.file(path.join(root,'watcher-failure.txt')));await Promise.race([watcherNotice,new Promise((_,reject)=>{watchdog=setTimeout(()=>reject(new Error('Missing watcher failure notification')),5000);})]);}
     finally {clearTimeout(watchdog);watcherFs.put=watcherPut;vscode.window.showErrorMessage=watcherError;}
     assert.equal(fs.existsSync(path.join(dir,'remote','watcher-failure.txt')),false);
+    assert.ok(statusTexts.at(-1).includes('issue-opened'),'opening details does not claim the error was resolved');
+    await commands.get('devkit.sftp.upload.file')(URI.file(path.join(root,'watcher-failure.txt')));
+    assert.equal(statusTexts.at(-1).includes('issue-opened'),false,'later successful upload clears automatic error status');
     fs.writeFileSync(path.join(root,'nested','automation.txt'),'local change');
     fs.writeFileSync(path.join(dir,'remote-other','automation.txt'),'preserve B');
     parentWatcher.handlers.change(URI.file(path.join(root,'nested','automation.txt')));

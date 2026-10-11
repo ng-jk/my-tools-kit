@@ -15,7 +15,7 @@ export async function reportAutomaticFailure(ctx:FileHandlerContext, operation:s
     const action=await window.showErrorMessage(`Automatic ${operation} failed (${destination}). Completion is not confirmed. Check the output and connection, then retry.`, 'Show details', 'Retry', 'Dismiss');
     if(action==='Show details'){output.show();return;}
     if(action!=='Retry')return;
-    try {check();await retry();await window.showInformationMessage(`Automatic ${operation} retry completed (${destination}).`);return;}
+    try {check();await retry();app.sftpBarItem.updateStatus(StatusBarItem.Status.ok);app.sftpBarItem.showMsg(`Automatic ${operation} retry completed`,destination,4000);await window.showInformationMessage(`Automatic ${operation} retry completed (${destination}).`);return;}
     catch(next){error=next;}
   }
 }

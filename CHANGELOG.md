@@ -1,7 +1,12 @@
 # Release notes
 
-## Unreleased — automated UI/UX release gate
+## 0.5.0 — 2026-10-11
 
+Extension: **0.5.0**. Pipeline plugin: **0.3.1**.
+
+### Automated UI/UX release gate and recovery
+
+- Clear transfer error status after successful recovery while keeping it when opening details; apply ignore exclusions before case-collision checks without allowing excluded counterparts to be overwritten or deleted.
 - Await SFTP configuration pickers and editor opening in single- and multi-folder workspaces so asynchronous setup failures reach normal error feedback without replacing saved configuration.
 - Suppress save/watch automation for transfer-owned dirty-editor saves, preserving restrictive sync policies and preventing independent uploads after planning failure; later user edits still trigger configured automation.
 - Enforce file/folder download scope before confirmation and in shared transfer planning; show target-specific automatic failure notifications, persistent error indicators, details and context-bound retry.
@@ -30,13 +35,13 @@
 - Added Review UI/UX and release / `release` to run the complete lifecycle without human acceptance records.
 - Fail closed on rejected, incomplete, stale or unavailable review; preserve artifact hashes and publication verification. Legacy human-mode projects remain supported through the CLI.
 
-## Unreleased — Marketplace command manual
+### Marketplace command manual
 
 - Documented every contributed VS Code command with selection requirements, usage and results, plus all eight CI/CD menu actions.
 - Removed publisher setup, deployment recipes and source-build commands from the Marketplace README; kept them in developer documentation.
 - Clarified that SFTP List commands download the selected target and that commit-based upload uses current local file contents.
 
-## Unreleased — isolated FTP/SFTP contexts and usage guide
+### Isolated FTP/SFTP contexts and usage guide
 
 - Added independent named FTP/SFTP contexts with per-context host/IP, port, credentials, local/remote paths, authentication and transfer settings. Contexts can share a local folder without overwriting one another.
 - Added SFTP: Select Context in the sidebar function menu and Command Palette. Switching saves the selection and reloads connections/watchers. CLI --context selects one context without changing the saved selection.
@@ -47,9 +52,7 @@
 
 This file records implemented functionality and its verification limits. Extension and pipeline-plugin versions are independent.
 
-## 0.5.0 — 2026-10-04
-
-Extension: **0.5.0**. Pipeline plugin: **0.3.1**.
+### Transfer safety and compatibility
 
 - Scope remote-picker directory caches by configuration identity as well as pathname, preventing navigation between servers with identical remote roots from retaining the previous server selection.
 

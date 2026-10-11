@@ -99,7 +99,8 @@ async function transferFolder(
     return;
   }
 
-  const fileEntries = checkedEntries(srcFs, srcFsPath, await srcFs.list(srcFsPath));
+  const fileEntries = checkedEntries(srcFs, srcFsPath, await srcFs.list(srcFsPath)).filter(file =>
+    !transferOption.ignore?.(file.fspath,config.transferDirection===TransferDirection.LOCAL_TO_REMOTE?'local':'remote'));
   rejectDestinationCollisions(fileEntries,targetFs,targetFsPath);
 
   // Need this to make sure file can correct transfer
@@ -228,12 +229,16 @@ async function _sync(
     const matchingFs=transferOption.bothDiretions && sourceIgnoresCase ? srcFs : targetFs;
     const matchingRoot=matchingFs===srcFs ? srcFsPath : targetFsPath;
     const matchName=(name:string) => {const pathname=matchingFs.pathResolver.join(matchingRoot,name);return matchingFs.pathIdentity ? matchingFs.pathIdentity(pathname) : matchingFs.pathResolver.normalize(pathname);};
-    const srcFileTable = toHash(srcFileEntries, 'id', fileEntry => ({
+    const ignoredSource=new Set(srcFileEntries.filter(file=>transferOption.ignore?.(file.fspath,transferDirection===TransferDirection.LOCAL_TO_REMOTE?'local':'remote')).map(file=>matchName(file.name)));
+    const ignoredTarget=new Set(desFileEntries.filter(file=>transferOption.ignore?.(file.fspath,transferDirection===TransferDirection.LOCAL_TO_REMOTE?'remote':'local')).map(file=>matchName(file.name)));
+    const activeSource=srcFileEntries.filter(file=>!transferOption.ignore?.(file.fspath,transferDirection===TransferDirection.LOCAL_TO_REMOTE?'local':'remote'));
+    const activeTarget=desFileEntries.filter(file=>!transferOption.ignore?.(file.fspath,transferDirection===TransferDirection.LOCAL_TO_REMOTE?'remote':'local'));
+    const srcFileTable = toHash(activeSource, 'id', fileEntry => ({
       ...fileEntry,
       id: matchName(fileEntry.name),
     }));
 
-    const desFileTable = toHash(desFileEntries, 'id', fileEntry => ({
+    const desFileTable = toHash(activeTarget, 'id', fileEntry => ({
       ...fileEntry,
       id: matchName(fileEntry.name),
     }));
@@ -249,6 +254,7 @@ async function _sync(
       const srcFile = srcFileTable[id];
       const desFile = desFileTable[id];
       delete desFileTable[id];
+      if(!desFile && ignoredTarget.has(id))return;
       if (transferOption.ignore && (transferOption.ignore(srcFile.fspath, transferDirection === TransferDirection.LOCAL_TO_REMOTE ? 'local' : 'remote') || (desFile && transferOption.ignore(desFile.fspath, transferDirection === TransferDirection.LOCAL_TO_REMOTE ? 'remote' : 'local')))) return;
 
       // files exist on both side
@@ -339,6 +345,7 @@ async function _sync(
     if (transferOption.bothDiretions) {
       if (transferOption.skipCreate !== true) {
         Object.keys(desFileTable).forEach(id => {
+          if(ignoredSource.has(id))return;
           const file = desFileTable[id];
           const fspath = srcFs.pathResolver.join(srcFsPath, file.name);
           switch (file.type) {
@@ -367,6 +374,7 @@ async function _sync(
       }
     } else if (transferOption.delete) {
       Object.keys(desFileTable).forEach(id => {
+        if(ignoredSource.has(id))return;
         const file = desFileTable[id];
         deleted.push(file);
         switch (file.type) {
@@ -441,10 +449,10 @@ async function _sync(
 
   if ((await srcFs.lstat(srcFsPath)).type !== FileType.Directory) throw new Error('Sync source must be a real directory, not a symlink: ' + srcFsPath);
   const sourceEntries=checkedEntries(srcFs,srcFsPath,await srcFs.list(srcFsPath));
-  rejectDestinationCollisions(sourceEntries,targetFs,targetFsPath);
+  rejectDestinationCollisions(sourceEntries.filter(file=>!transferOption.ignore?.(file.fspath,transferDirection===TransferDirection.LOCAL_TO_REMOTE?'local':'remote')),targetFs,targetFsPath);
   await ensureTransferDirectory(srcFs, targetFs, srcFsPath, targetFsPath, transferPermissions(transferOption, config.transferDirection === TransferDirection.LOCAL_TO_REMOTE).dirPerm, config.directoryScope);
   const targetEntries=checkedEntries(targetFs,targetFsPath,await targetFs.list(targetFsPath));
-  if(transferOption.bothDiretions) rejectDestinationCollisions(targetEntries,srcFs,srcFsPath);
+  if(transferOption.bothDiretions) rejectDestinationCollisions(targetEntries.filter(file=>!transferOption.ignore?.(file.fspath,transferDirection===TransferDirection.LOCAL_TO_REMOTE?'remote':'local')),srcFs,srcFsPath);
   await syncFiles(sourceEntries,targetEntries);
 }
 

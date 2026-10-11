@@ -11,6 +11,7 @@ import { CONFIG_PATH } from '../../../../data/sftp/constants';
 import watcherService from '../fileWatcher';
 import Trie from './trie';
 import {setContextValue} from '../../host';
+import StatusBarItem from '../../ui/statusBarItem';
 
 const WIN_DRIVE_REGEX = /^([a-zA-Z]):/;
 const isWindows = process.platform === 'win32';
@@ -127,11 +128,13 @@ export function createFileService(
       logger.info(`cancel transfer ${localFsPath}`);
       app.sftpBarItem.showMsg(`cancelled ${filename}`, filepath, 2000 * 2);
     } else if (error) {
+      app.sftpBarItem.updateStatus(StatusBarItem.Status.error);
       // if ((error as any).reported !== true) {
       reportError(error, `when ${transferType} ${localFsPath}`);
       // }
       app.sftpBarItem.showMsg(`failed ${filename}`, filepath, 2000 * 2);
     } else {
+      app.sftpBarItem.updateStatus(StatusBarItem.Status.ok);
       logger.info(`${transferType} ${localFsPath}`);
       app.sftpBarItem.showMsg(`done ${filename}`, filepath, 2000 * 2);
     }

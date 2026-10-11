@@ -531,6 +531,17 @@ test('downloads and sync reject case-colliding source names before mutations',as
     assert.equal(mutations,0);
   }
 });
+test('ignored case-colliding names do not hide eligible transfer and sync entries',async()=>{
+  for(const operation of [engine.transfer,engine.sync])for(const reverseOrder of [false,true]) {
+    const names=reverseOrder?['README','Readme']:['Readme','README'];
+    const entries=names.map(name=>({name,fspath:'/source/'+name,type:engine.FileType.File,mode:0o644,size:1,mtime:1000}));
+    const source={pathResolver:path.posix,lstat:async()=>({type:engine.FileType.Directory,mode:0o755}),list:async()=>entries};
+    const target={pathResolver:path.posix,pathIdentity:name=>name.toLowerCase(),list:async()=>[],lstat:async()=>({type:engine.FileType.Directory}),ensureDir:async()=>{}};
+    const tasks=[];
+    await operation({srcFsPath:'/source',targetFsPath:'/destination',srcFs:source,targetFs:target,transferDirection:engine.TransferDirection.REMOTE_TO_LOCAL,transferOption:{ignore:(file,side)=>side==='remote'&&file==='/source/README'}},task=>tasks.push(task));
+    assert.equal(tasks.length,1);assert.equal(tasks[0].srcFsPath,'/source/Readme');
+  }
+});
 test('Git commit and working changes resolve linked worktrees',async t=>{
   const {dir,local}=fixture(t);const linked=path.join(dir,'linked');
   const git=(...args)=>{const result=spawnSync('git',['-c','user.name=Fixture','-c','user.email=fixture@example.test',...args],{cwd:local,encoding:'utf8'});assert.equal(result.status,0,result.stderr);return result.stdout;};
