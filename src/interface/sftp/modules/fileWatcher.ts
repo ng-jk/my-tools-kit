@@ -43,7 +43,7 @@ function doUpload() {
     const fspath = uri.fsPath;
     logger.info(`[watcher/updated] ${fspath}`);
     const check=ctx.fileService.cancellationCheck();
-    const attempt=async()=>{check();if(!event.current())throw new Error('Watcher context changed; retry from the current configuration');await upload(ctx);};
+    const attempt=async()=>{check();if(!event.current())throw new Error('Watcher context changed; retry from the current configuration');await upload(ctx);return true;};
     try {
       await attempt();
     } catch (error) {
@@ -64,8 +64,8 @@ function doDelete() {
     const check=ctx.fileService.cancellationCheck();
     const attempt=async(retry=false)=>{check();if(!event.current() || localEntryExists(uri.fsPath)){
       if(retry)throw new Error('Watcher context or local file changed; inspect before deleting');
-      return; // Ignore an obsolete filesystem event, including an atomic replacement.
-    }await removeRemote(ctx);};
+      return false; // Ignore an obsolete filesystem event, including an atomic replacement.
+    }await removeRemote(ctx);return true;};
     try {
       await attempt();
     } catch (error) {

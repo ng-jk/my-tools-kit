@@ -513,6 +513,13 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     vscode.window.showErrorMessage=async(message,...choices)=>{if(message.startsWith('Automatic download failed')){downloadFailure=message;assert.ok(choices.includes('Retry'));}return undefined;};
     await openedDocument({uri:URI.file(path.join(root,'auto-download-failure.txt'))});vscode.window.showErrorMessage=autoError;
     assert.match(downloadFailure,/server-a/);assert.match(downloadFailure,/auto-download-failure.txt/);assert.equal(fs.readFileSync(path.join(root,'auto-download-failure.txt'),'utf8'),'preserve local');
+    const retryInfo=vscode.window.showInformationMessage;let retryPrompts=0;const retryMessages=[];
+    vscode.window.showInformationMessage=async(message,...choices)=>{retryMessages.push(message);if(message.startsWith('Download from'))return ++retryPrompts===1?choices[0]:undefined;return undefined;};
+    vscode.window.showErrorMessage=async message=>message.startsWith('Automatic download failed')?'Retry':undefined;
+    try {await openedDocument({uri:URI.file(path.join(root,'auto-download-failure.txt'))});}
+    finally {vscode.window.showInformationMessage=retryInfo;vscode.window.showErrorMessage=autoError;}
+    assert.equal(retryPrompts,2);assert.ok(retryMessages.some(message=>message.includes('retry cancelled')));assert.equal(retryMessages.some(message=>message.includes('retry completed')),false);
+    assert.match(statusTexts.at(-1),/issue-opened.*retry cancelled/);assert.equal(fs.readFileSync(path.join(root,'auto-download-failure.txt'),'utf8'),'preserve local');
     const linkedFolder=path.join(root,'save-link');fs.symlinkSync(path.join(root,'nested'),linkedFolder,'junction');
     fs.writeFileSync(path.join(root,'nested','save-check.txt'),'must not transfer');
     await savedDocument({uri:URI.file(path.join(linkedFolder,'save-check.txt'))});

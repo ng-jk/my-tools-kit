@@ -6,6 +6,7 @@ Extension: **0.5.0**. Pipeline plugin: **0.3.1**.
 
 ### Automated UI/UX release gate and recovery
 
+- Distinguish cancelled automatic retries from completed transfers; cancelling a retry retains unresolved failure status and never announces success.
 - Clear transfer error status after successful recovery while keeping it when opening details; apply ignore exclusions before case-collision checks without allowing excluded counterparts to be overwritten or deleted.
 - Await SFTP configuration pickers and editor opening in single- and multi-folder workspaces so asynchronous setup failures reach normal error feedback without replacing saved configuration.
 - Suppress save/watch automation for transfer-owned dirty-editor saves, preserving restrictive sync policies and preventing independent uploads after planning failure; later user edits still trigger configured automation.

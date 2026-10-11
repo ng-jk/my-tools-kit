@@ -42,6 +42,7 @@ async function handleFileSave(uri: vscode.Uri) {
       if(path.relative(fspath,resolved)!=='' || getFileService(vscode.Uri.file(resolved))!==fileService) throw new Error('Automatic upload cannot follow a symlink or change context');
       logger.info(`[file-save] ${fspath}`);
       await uploadFile(ctx);
+      return true;
     };
     try {await attempt();}
     catch(error){await reportAutomaticFailure(ctx,'upload',error,attempt);}
@@ -61,11 +62,12 @@ async function downloadOnOpen(uri: vscode.Uri) {
     const attempt=async()=>{
       if(config.downloadOnOpen==='confirm') {
         const message=`Download from ${ctx.fileService.name || config.host} (${config.host}:${config.port}, profile ${ctx.fileService.profile || 'base'}) ${ctx.target.remoteFsPath} and overwrite ${ctx.target.localFsPath}?`;
-        if(!await showConfirmMessage(message,'Download','Cancel'))return;
+        if(!await showConfirmMessage(message,'Download','Cancel'))return false;
       }
       check();
       logger.info(`[file-open] ${fspath}`);
       await downloadFile(ctx);
+      return true;
     };
     try {await attempt();}
     catch(error){await reportAutomaticFailure(ctx,'download',error,attempt);}
