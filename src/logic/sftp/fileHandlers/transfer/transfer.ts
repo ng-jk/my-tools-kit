@@ -455,6 +455,10 @@ export async function transfer(
 ) {
   await saveDirtyDocuments(config);
   const stat = await config.srcFs.lstat(config.srcFsPath);
+  const expected=config.transferOption.expectedSourceType;
+  if (expected && stat.type !== (expected==='file' ? FileType.File : FileType.Directory)) {
+    throw new Error(`Transfer source must remain a regular ${expected}: ${config.srcFsPath}`);
+  }
   const transferOption = {
     ...config.transferOption,
     fallbackMode: stat.mode,

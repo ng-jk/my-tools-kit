@@ -110,7 +110,7 @@ export default class StatusBarItem {
   private _render() {
     if (this.isSpinning()) {
       this.statusBarItem.text = this.spinner.frames[this.curFrameOfSpinner] + ' ' + this.activeOperations + ' operation(s) running: ' + this.text;
-    } else if (this.name === this.text) {
+    } else {
       switch (this.status) {
         case Status.ok:
           this.statusBarItem.text = this.text;
@@ -124,8 +124,6 @@ export default class StatusBarItem {
         default:
           this.statusBarItem.text = this.text;
       }
-    } else {
-      this.statusBarItem.text = this.text;
     }
   }
 

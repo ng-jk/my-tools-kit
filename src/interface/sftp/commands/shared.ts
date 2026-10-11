@@ -150,6 +150,10 @@ export async function selectRemoteTarget(item?: any, items?: any): Promise<undef
   if (item || getActiveDocumentUri()) return uriFromExplorerContextOrEditorContext(item, items);
   return selectFileFromAll();
 }
+export async function selectRemoteFileTarget(item?: any, items?: any): Promise<undefined | Uri | Uri[]> {
+  if (item || getActiveDocumentUri()) return uriFromExplorerContextOrEditorContext(item, items);
+  return selectRemoteFileOnly();
+}
 
 // selected folder or configContext
 export function selectFolderFallbackToConfigContext(item: any, items: any): Promise<undefined | Uri | Uri[]> {

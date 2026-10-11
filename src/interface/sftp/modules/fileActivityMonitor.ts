@@ -4,8 +4,8 @@ import * as path from 'path';
 import {handleCtxFromUri} from '../fileHandlers/createFileHandler';
 import logger from '../logger';
 import { nativeRealpath } from '../../../data/sftp/local-path';
+import {reportAutomaticFailure} from './automaticFailure';
 import app from '../app';
-import StatusBarItem from '../ui/statusBarItem';
 import { onDidOpenTextDocument, onDidSaveTextDocument, showConfirmMessage } from '../host';
 import { getFileService, reloadWorkspaceServices } from './serviceManager/index';
 import { isValidFile, isConfigFile, isInWorkspace } from '../helper/index';
@@ -34,16 +34,15 @@ async function handleFileSave(uri: vscode.Uri) {
   if (config.uploadOnSave) {
     const ctx=handleCtxFromUri(uri),check=ctx.fileService.cancellationCheck();
     const fspath=uri.fsPath;
-    try {
+    const attempt=async()=>{
       const resolved=await nativeRealpath(fspath);
       check();
       if(path.relative(fspath,resolved)!=='' || getFileService(vscode.Uri.file(resolved))!==fileService) throw new Error('Automatic upload cannot follow a symlink or change context');
       logger.info(`[file-save] ${fspath}`);
       await uploadFile(ctx);
-    } catch (error) {
-      logger.error(error, `upload ${fspath}`);
-      app.sftpBarItem.updateStatus(StatusBarItem.Status.error);
-    }
+    };
+    try {await attempt();}
+    catch(error){await reportAutomaticFailure(ctx,'upload',error,attempt);}
   }
 }
 
@@ -57,7 +56,7 @@ async function downloadOnOpen(uri: vscode.Uri) {
   if (config.downloadOnOpen) {
     const ctx=handleCtxFromUri(uri),check=ctx.fileService.cancellationCheck();
     const fspath=uri.fsPath;
-    try {
+    const attempt=async()=>{
       if(config.downloadOnOpen==='confirm') {
         const message=`Download from ${ctx.fileService.name || config.host} (${config.host}:${config.port}, profile ${ctx.fileService.profile || 'base'}) ${ctx.target.remoteFsPath} and overwrite ${ctx.target.localFsPath}?`;
         if(!await showConfirmMessage(message,'Download','Cancel'))return;
@@ -65,10 +64,9 @@ async function downloadOnOpen(uri: vscode.Uri) {
       check();
       logger.info(`[file-open] ${fspath}`);
       await downloadFile(ctx);
-    } catch (error) {
-      logger.error(error, `download ${fspath}`);
-      app.sftpBarItem.updateStatus(StatusBarItem.Status.error);
-    }
+    };
+    try {await attempt();}
+    catch(error){await reportAutomaticFailure(ctx,'download',error,attempt);}
   }
 }
 

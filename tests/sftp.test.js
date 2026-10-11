@@ -15,6 +15,20 @@ function fixture(t, extra={}) {
   const session=engine.createSession(local,raw);t.after(()=>session.service.dispose());
   return {dir,local,remote,raw,session};
 }
+
+test('typed file transfers reject directories before recursion or destination mutation',async t=>{
+  const {local,remote,session}=fixture(t);
+  fs.writeFileSync(path.join(local,'keep.txt'),'local');fs.writeFileSync(path.join(remote,'keep.txt'),'remote');
+  const localFs=session.service.getLocalFileSystem(),remoteFs=await session.service.getRemoteFileSystem(session.config);
+  for(const down of [false,true]) {
+    let collected=0;
+    await assert.rejects(engine.transfer({srcFsPath:down?remote:local,targetFsPath:down?local:remote,
+      srcFs:down?remoteFs:localFs,targetFs:down?localFs:remoteFs,
+      transferDirection:down?engine.TransferDirection.REMOTE_TO_LOCAL:engine.TransferDirection.LOCAL_TO_REMOTE,
+      transferOption:{expectedSourceType:'file'}},()=>{collected++;}),/regular file/);
+    assert.equal(collected,0);assert.equal(fs.readFileSync(path.join(local,'keep.txt'),'utf8'),'local');assert.equal(fs.readFileSync(path.join(remote,'keep.txt'),'utf8'),'remote');
+  }
+});
 test('shared engine uploads/downloads nested files, ignores patterns, compares and creates remote files',async t=>{
   const {local,remote,session}=fixture(t);
   fs.mkdirSync(path.join(local,'nested'));fs.writeFileSync(path.join(local,'nested','a.txt'),'original');fs.writeFileSync(path.join(local,'ignored.txt'),'ignore');

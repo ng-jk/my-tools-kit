@@ -21,5 +21,5 @@ export async function uploadSelection(ctx: FileHandlerContext, kind: 'file' | 'f
     if (answer !== 'Upload') return;
   }
   check();
-  await upload(ctx, force ? {ignore: null} : {});
+  await upload(ctx, {...(force ? {ignore: null} : {}), expectedSourceType:kind==='any'?undefined:kind==='folder'?'directory':'file'});
 }

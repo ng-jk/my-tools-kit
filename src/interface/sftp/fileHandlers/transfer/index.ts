@@ -91,6 +91,7 @@ export const uploadFile = createFileHandler<TransferOption>({
   transformOption() {
     const config = this.config;
     return {
+      expectedSourceType: 'file',
       perserveTargetMode: config.protocol === 'sftp' && !config.filePerm,
       useTempFile: config.useTempFile,
       openSsh: config.openSsh,
@@ -109,6 +110,7 @@ export const uploadFolder = createFileHandler<TransferOption>({
   transformOption() {
     const config = this.config;
     return {
+      expectedSourceType: 'directory',
       perserveTargetMode: config.protocol === 'sftp' && !config.dirPerm,
       useTempFile: config.useTempFile,
       openSsh: config.openSsh,
@@ -140,6 +142,7 @@ export const downloadFile = createFileHandler<TransferOption>({
   transformOption() {
     const config = this.config;
     return {
+      expectedSourceType: 'file',
       perserveTargetMode: false,
       // remoteTimeOffsetInHours: config.remoteTimeOffsetInHours,
       ignore: config.ignore,
@@ -153,6 +156,7 @@ export const downloadFolder = createFileHandler<TransferOption>({
   transformOption() {
     const config = this.config;
     return {
+      expectedSourceType: 'directory',
       perserveTargetMode: false,
       // remoteTimeOffsetInHours: config.remoteTimeOffsetInHours,
       ignore: config.ignore,

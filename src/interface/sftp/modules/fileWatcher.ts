@@ -6,8 +6,7 @@ import logger from '../logger';
 import { isValidFile, fileDepth } from '../helper/index';
 import { upload, removeRemote } from '../fileHandlers/index';
 import { WatcherService, TransferDirection } from '../../../logic/sftp/core/index';
-import app from '../app';
-import StatusBarItem from '../ui/statusBarItem';
+import {reportAutomaticFailure} from './automaticFailure';
 import { getFileService, getRunningTransformTasks } from './serviceManager/index';
 import {isOwnLocalChange, localEntryExists} from '../../../data/sftp/local-events';
 import {isTransferArtifact} from '../../../logic/sftp/core/staged-replacement';
@@ -43,11 +42,12 @@ function doUpload() {
 
     const fspath = uri.fsPath;
     logger.info(`[watcher/updated] ${fspath}`);
+    const check=ctx.fileService.cancellationCheck();
+    const attempt=async()=>{check();if(!event.current())throw new Error('Watcher context changed; retry from the current configuration');await upload(ctx);};
     try {
-      await upload(ctx);
+      await attempt();
     } catch (error) {
-      logger.error(error, `upload ${fspath}`);
-      app.sftpBarItem.updateStatus(StatusBarItem.Status.error);
+      await reportAutomaticFailure(ctx,'watcher upload',error,attempt);
     }
   });
 }
@@ -61,11 +61,16 @@ function doDelete() {
     if (isOwnLocalChange(uri.fsPath) || isTransferArtifact(uri.fsPath) || localEntryExists(uri.fsPath)) return;
     const fspath = uri.fsPath;
     logger.info(`[watcher/removed] ${fspath}`);
+    const check=ctx.fileService.cancellationCheck();
+    const attempt=async(retry=false)=>{check();if(!event.current() || localEntryExists(uri.fsPath)){
+      if(retry)throw new Error('Watcher context or local file changed; inspect before deleting');
+      return; // Ignore an obsolete filesystem event, including an atomic replacement.
+    }await removeRemote(ctx);};
     try {
-      await removeRemote(ctx);
+      await attempt();
     } catch (error) {
-      logger.error(error, `remove ${fspath}`);
-      app.sftpBarItem.updateStatus(StatusBarItem.Status.error);
+      if (error.code==='ENOENT' || error.code===2) return; // Duplicate deletion event: destination is already absent.
+      await reportAutomaticFailure(ctx,'watcher deletion',error,()=>attempt(true));
     }
   });
 }

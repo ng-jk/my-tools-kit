@@ -356,6 +356,13 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     await commands.get('devkit.sftp.upload.file')(URI.file(path.join(root,'context-switch.txt')));assert.deepEqual(errors,[]);
     assert.equal(fs.existsSync(path.join(dir,'remote','context-switch.txt')),false);assert.equal(fs.readFileSync(path.join(dir,'remote-other','context-switch.txt'),'utf8'),'only beta');
     const betaRoot=roots[0];
+    const beforeFolderDownload=fs.readFileSync(path.join(root,'context-switch.txt'),'utf8');
+    const folderInfo=vscode.window.showInformationMessage;let folderConfirmations=0;
+    vscode.window.showInformationMessage=async()=>{folderConfirmations++;return undefined;};
+    await commands.get('devkit.sftp.download.file')(betaRoot);
+    assert.ok(errors.some(message=>message.includes('Download File requires a regular file')));errors.length=0;
+    assert.equal(folderConfirmations,0);assert.equal(fs.readFileSync(path.join(root,'context-switch.txt'),'utf8'),beforeFolderDownload);
+    vscode.window.showInformationMessage=folderInfo;
     const betaConfirm=vscode.window.showInformationMessage;
     for(const command of ['sync.localToRemote','sync.remoteToLocal','sync.bothDirections']) {
       let prompts=0;
@@ -453,11 +460,30 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     ]));
     await extension.activate(context);
 
+    const autoRoot=(await views.get('devkit.remoteExplorer').getChildren()).find(item=>item.explorerContext.config.host==='server-a');
+    const autoFs=await autoRoot.explorerContext.fileService.getRemoteFileSystem(autoRoot.explorerContext.config);
+    const autoPut=autoFs.put,autoError=vscode.window.showErrorMessage;let automaticFailures=0;
+    fs.writeFileSync(path.join(root,'auto-failure.txt'),'retry payload');
+    autoFs.put=async()=>{throw new Error('Synthetic automatic interruption');};
+    vscode.window.showErrorMessage=async(message,...choices)=>{
+      if(message==='Synthetic automatic interruption')return undefined;
+      automaticFailures++;assert.match(message,/Automatic upload failed/);assert.match(message,/server-a/);assert.match(message,/auto-failure.txt/);assert.ok(choices.includes('Show details'));assert.ok(choices.includes('Retry'));
+      autoFs.put=autoPut;return 'Retry';
+    };
+    try {await savedDocument({uri:URI.file(path.join(root,'auto-failure.txt'))});} finally {autoFs.put=autoPut;vscode.window.showErrorMessage=autoError;}
+    assert.equal(automaticFailures,1);assert.equal(fs.readFileSync(path.join(dir,'remote','auto-failure.txt'),'utf8'),'retry payload');
+    assert.ok(statusTexts.some(text=>text.includes('issue-opened')&&text.includes('Automatic upload failed')));
+    fs.writeFileSync(path.join(root,'auto-download-failure.txt'),'preserve local');
+    let downloadFailure;
+    vscode.window.showErrorMessage=async(message,...choices)=>{if(message.startsWith('Automatic download failed')){downloadFailure=message;assert.ok(choices.includes('Retry'));}return undefined;};
+    await openedDocument({uri:URI.file(path.join(root,'auto-download-failure.txt'))});vscode.window.showErrorMessage=autoError;
+    assert.match(downloadFailure,/server-a/);assert.match(downloadFailure,/auto-download-failure.txt/);assert.equal(fs.readFileSync(path.join(root,'auto-download-failure.txt'),'utf8'),'preserve local');
     const linkedFolder=path.join(root,'save-link');fs.symlinkSync(path.join(root,'nested'),linkedFolder,'junction');
     fs.writeFileSync(path.join(root,'nested','save-check.txt'),'must not transfer');
     await savedDocument({uri:URI.file(path.join(linkedFolder,'save-check.txt'))});
     assert.equal(fs.existsSync(path.join(dir,'remote-other','save-check.txt')),false);
     assert.equal(fs.existsSync(path.join(nestedA,'save-check.txt')),false);
+    assert.ok(errors.some(message=>message.includes('Automatic upload failed')));errors.length=0;
     fs.rmdirSync(linkedFolder);
     fs.writeFileSync(path.join(root,'open-check.txt'),'keep local');
     const oldConfirm=vscode.window.showInformationMessage;let confirmOpen,promptOpen;
@@ -469,7 +495,19 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     confirmOpen();await pendingOpen;
     vscode.window.showInformationMessage=oldConfirm;
     assert.equal(fs.readFileSync(path.join(root,'open-check.txt'),'utf8'),'keep local','stale download confirmation cannot overwrite after config replacement');
+    assert.ok(errors.some(message=>message.includes('Automatic download failed')));errors.length=0;
     const parentWatcher=watchers.filter(item=>!item.disposed).at(-1);
+    const watcherRoot=(await views.get('devkit.remoteExplorer').getChildren()).find(item=>item.explorerContext.config.host==='server-a');
+    const watcherFs=await watcherRoot.explorerContext.fileService.getRemoteFileSystem(watcherRoot.explorerContext.config);
+    const watcherPut=watcherFs.put,watcherError=vscode.window.showErrorMessage;
+    fs.writeFileSync(path.join(root,'watcher-failure.txt'),'keep local on failure');
+    let notified;const watcherNotice=new Promise(resolve=>notified=resolve);
+    watcherFs.put=async()=>{throw new Error('Synthetic watcher interruption');};
+    vscode.window.showErrorMessage=async(message,...choices)=>{if(message.startsWith('Automatic watcher upload failed')){assert.match(message,/server-a/);assert.match(message,/watcher-failure.txt/);assert.ok(choices.includes('Show details'));assert.ok(choices.includes('Retry'));notified();}return undefined;};
+    let watchdog;
+    try {parentWatcher.handlers.change(URI.file(path.join(root,'watcher-failure.txt')));await Promise.race([watcherNotice,new Promise((_,reject)=>{watchdog=setTimeout(()=>reject(new Error('Missing watcher failure notification')),5000);})]);}
+    finally {clearTimeout(watchdog);watcherFs.put=watcherPut;vscode.window.showErrorMessage=watcherError;}
+    assert.equal(fs.existsSync(path.join(dir,'remote','watcher-failure.txt')),false);
     fs.writeFileSync(path.join(root,'nested','automation.txt'),'local change');
     fs.writeFileSync(path.join(dir,'remote-other','automation.txt'),'preserve B');
     parentWatcher.handlers.change(URI.file(path.join(root,'nested','automation.txt')));
