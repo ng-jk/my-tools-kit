@@ -1,6 +1,7 @@
 // Adapted from ng-jk/vscode-sftp (MIT); see THIRD-PARTY-NOTICES.md.
 import * as fs from 'fs';
 import {localPathIdentity} from '../../local-path-identity';
+import {assertLocalPath} from '../../path-safety';
 import {protectWindowsDirectory, protectWindowsStagingFile} from '../../windows-directory-permissions';
 import * as fse from 'fs-extra';
 import * as paths from 'path';
@@ -22,6 +23,7 @@ export default class LocalFileSystem extends FileSystem {
   }
 
   private assertWritable(target: string, includeLeaf = true) {
+    assertLocalPath(target);
     if (!this.root) return;
     const root = paths.resolve(this.root), absolute = paths.resolve(target);
     const relative = paths.relative(root, absolute);
@@ -65,6 +67,7 @@ export default class LocalFileSystem extends FileSystem {
 
   lstat(path: string): Promise<FileStats> {
     return new Promise((resolve, reject) => {
+      assertLocalPath(path);
       fs.lstat(path, (err, stat: fs.Stats) => {
         if (err) {
           reject(err);
@@ -78,6 +81,7 @@ export default class LocalFileSystem extends FileSystem {
 
   readFile(path: string, option?: FileOption): Promise<string | Buffer> {
     return new Promise((resolve, reject) => {
+      assertLocalPath(path);
       fs.readFile(path, option as any, (err, data) => {
         if (err) {
           return reject(err);
@@ -89,6 +93,7 @@ export default class LocalFileSystem extends FileSystem {
   }
 
   open(path: string, flags: string, mode?: number): Promise<number> {
+    assertLocalPath(path);
     if (/[wa+]/.test(flags)) this.assertWritable(path);
     return fse.open(path, flags, mode);
   }
@@ -123,6 +128,7 @@ export default class LocalFileSystem extends FileSystem {
   get(path: string, option?: FileOption): Promise<fs.ReadStream> {
     return new Promise((resolve, reject) => {
       try {
+        assertLocalPath(path);
         const stream = fs.createReadStream(path, option as any);
         stream.once('error', reject);
         resolve(stream);

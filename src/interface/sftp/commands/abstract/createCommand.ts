@@ -111,7 +111,7 @@ export function createFileMultiCommand(commandOption: FileCommandOption & { name
                 const answer = await window.showInformationMessage('Upload to all listed profiles?', {
                     modal: true,
                     detail: `Existing remote files will be overwritten; folders are uploaded recursively. Recovery requires a backup.${this.id.includes('forceUpload') ? ' Ignore rules will be bypassed, including credential-file exclusions.' : ' Configured ignore rules remain active.'}\n\n${detail}`,
-                }, 'Upload', 'Cancel');
+                }, 'Upload'); // VS Code supplies the modal Cancel button.
                 if (answer !== 'Upload') return;
                 checks.forEach(check => check());
                 const results = await Promise.allSettled(ownedContexts.map(commandOption.handleFile));

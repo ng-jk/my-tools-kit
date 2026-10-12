@@ -112,6 +112,21 @@ test('malicious directory entries cannot schedule writes outside the destination
     assert.equal(tasks.length,0);
   }
 });
+test('remote device-like names remain valid while Windows local device paths are rejected',async()=>{
+  const ftp=new engine.FTPFileSystem(path.posix,{client:{}}),sftp=new engine.SFTPFileSystem(path.posix,{client:{}});
+  const local=new engine.LocalFileSystem(path);
+  for(const name of ['nul','NUL.txt','CON','prn.log','aux','COM1','LPT9']) {
+    assert.equal(ftp.toFileEntry('/remote/'+name,{name,type:'-',date:new Date(),size:1}).name,name);
+    assert.equal(sftp.toFileEntry('/remote/'+name,{filename:name,attrs:{isDirectory:()=>false,isFile:()=>true,mode:0o644,size:1,mtime:0,atime:0}}).name,name);
+    if(process.platform==='win32') {
+      const target=path.join(os.tmpdir(),name);
+      await assert.rejects(local.lstat(target),/Windows reserved device name/);
+      assert.throws(()=>local.open(target,'w'),/Windows reserved device name/);
+      assert.throws(()=>local.ensureDir(path.join(target,'child')),/Windows reserved device name/);
+    }
+  }
+});
+
 test('FTP recursive removal rejects malicious listings before deleting anything',async()=>{
   for(const name of ['../../victim.txt','/outside.txt','bad\r\nDELE victim']) {
     const removed=[];

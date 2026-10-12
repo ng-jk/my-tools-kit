@@ -2,7 +2,7 @@
   "name": "development-tools-kit",
   "displayName": "Development Tools Kit",
   "description": "API debugging, JSON formatting, text/file/Git comparison, and project-aware CI/CD configuration.",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "publisher": "NGJUNKAI",
   "repository": {
     "type": "git",

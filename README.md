@@ -15,6 +15,8 @@ Requires VS Code 1.96+. FTP/SFTP dependencies are bundled. Git comparisons requi
 
 ## Separate FTP/SFTP contexts
 
+Remote entries such as `nul` do not block unrelated uploads. Windows reserves certain local filenames; rename those remote entries before downloading them to Windows. Upload confirmations use one native Cancel button.
+
 **Cancel All Transfers** also cancels operations waiting for a target, confirmation or metadata. Accepting an old confirmation after cancellation does not resume the transfer; start a new command when ready.
 
 For FTPS, set `protocol` to `"ftp"` and `secure` to `true` (explicit TLS) or `"implicit"` (TLS from connection start), with your server's port. Both protect file data as well as authentication. Certificate verification is enabled by default; use a trusted CA through `secureOptions.ca` for private certificates. Invalid certificates stop the transfer before data commands. Plain FTP (`secure: false`) provides no transport encryption.

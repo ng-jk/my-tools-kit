@@ -17,7 +17,7 @@ export async function uploadSelection(ctx: FileHandlerContext, kind: 'file' | 'f
     const answer = await window.showInformationMessage('Upload to this destination?', {
       modal: true,
       detail: `${fileService.name || config.host} — profile ${fileService.profile || 'base'} (${config.host}:${config.port})\n${target.localFsPath} → ${target.remoteFsPath}\n${entry.type === FileType.Directory ? 'This folder will be uploaded recursively. ' : ''}Existing remote files will be overwritten; recovery requires a backup.${force ? ' Ignore rules will be bypassed, including credential-file exclusions.' : ' Configured ignore rules remain active.'}`,
-    }, 'Upload', 'Cancel');
+    }, 'Upload'); // VS Code supplies the modal Cancel button.
     if (answer !== 'Upload') return;
   }
   check();

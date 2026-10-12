@@ -61,7 +61,7 @@ test('implicit FTPS keeps authentication and passive data in verified TLS',{time
 test('FTP wire: passive upload, listing and download share the transfer engine',{timeout:20000},async t=>{
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-ftp-'));
   fs.writeFileSync(path.join(root,'local.txt'),'ftp payload');
-  const files=new Map(),modes=new Map(),appendModes=[],sockets=new Set(),servers=new Set();let permissionsSupported=true,permissionsHonored=true;
+  const files=new Map([['/nul',Buffer.from('valid remote sibling')]]),modes=new Map(),appendModes=[],sockets=new Set(),servers=new Set();let permissionsSupported=true,permissionsHonored=true;
   const rights=mode=>[6,3,0].map(shift=>[4,2,1].map((bit,index)=>((mode>>shift)&bit)?'rwx'[index]:'-').join('')).join('');
   const server=net.createServer(socket=>{
     sockets.add(socket);socket.on('close',()=>sockets.delete(socket));socket.on('error',()=>{});
@@ -104,6 +104,8 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
   const session=engine.createSession(root,{protocol:'ftp',host:'127.0.0.1',port:server.address().port,username:'fixture',password:'fixture',remotePath:'/'});
   t.after(async()=>{session.service.dispose();for(const socket of sockets)socket.destroy();for(const data of servers)if(data.listening)data.close();await new Promise(resolve=>server.close(resolve));fs.rmSync(root,{recursive:true,force:true});});
   await engine.operate(session,'upload','local.txt');assert.equal(files.get('/local.txt').toString(),'ftp payload');
+  assert.equal(files.get('/nul').toString(),'valid remote sibling','reserved Windows names on the server do not block or change uploads');
+  if(process.platform==='win32')await assert.rejects(engine.operate(session,'download','nul'),/Windows reserved device name/);
   modes.set('/local.txt',0o600);fs.writeFileSync(path.join(root,'local.txt'),'ftp payload');
   await engine.operate(session,'upload','local.txt');assert.equal(modes.get('/local.txt'),0o600);assert.equal(appendModes.at(-1),0o600);
   modes.set('/local.txt',0o644);session.config.filePerm=600;

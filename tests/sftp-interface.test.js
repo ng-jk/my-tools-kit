@@ -28,7 +28,7 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     window:{withProgress:async(options,run)=>{loading.push(options.title);return run();},activeTextEditor:{document:{uri:URI.file(path.join(root,'ui.txt'))}},createStatusBarItem:()=>({set text(value){this.value=value;statusTexts.push(value);},get text(){return this.value;},show(){},hide(){},dispose(){}}),createOutputChannel:()=>({appendLine(){},show(){},hide(){},dispose(){}}),
       showQuickPick:async choices=>choices.find(item=>item.command==='devkit.sftp.upload.file') || choices[0],
       showOpenDialog:async()=>[URI.file(path.join(root,'ui.txt'))],
-      showInformationMessage:async(message,...choices)=>choices[0]?.modal?choices[1]:choices[0],showErrorMessage:async message=>{errors.push(message);},registerTreeDataProvider:(id,provider)=>{views.set(id,provider);return disposable();},
+      showInformationMessage:async(message,...choices)=>{if(choices[0]?.modal && /^Upload to (this destination|all listed profiles)/.test(message))assert.equal(choices.slice(1).includes('Cancel'),false,'VS Code supplies modal Cancel');return choices[0]?.modal?choices[1]:choices[0];},showErrorMessage:async message=>{errors.push(message);},registerTreeDataProvider:(id,provider)=>{views.set(id,provider);return disposable();},
       createTreeView:(id,options)=>{views.set(id,options.treeDataProvider);return {selection:[],reveal:async()=>{},dispose(){}}}}
   };
   const original=Module._load;let extension;

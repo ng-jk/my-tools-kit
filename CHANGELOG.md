@@ -1,5 +1,10 @@
 # Release notes
 
+## 0.5.1 — 2026-10-12
+
+- Fix FTP/SFTP listings rejecting valid remote device-like names such as `nul`, which could block unrelated uploads. Apply device-name restrictions at the Windows local filesystem boundary instead, with an actionable download error.
+- Remove duplicate Cancel buttons from single-destination and all-profile upload dialogs; retain VS Code's native modal Cancel action.
+
 ## 0.5.0 — 2026-10-11
 
 Extension: **0.5.0**. Pipeline plugin: **0.3.1**.
