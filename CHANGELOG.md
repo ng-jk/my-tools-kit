@@ -1,5 +1,15 @@
 # Release notes
 
+## 0.6.0 — 2026-10-18
+
+- Integrate the MIT Database Client MySQL/MariaDB and PostgreSQL connection/dialect source into shared data/logic layers.
+- Add Database sidebar/menu commands for independent remote connections, connection tests, database/schema/table/view/column browsing, row previews and SQL editor execution.
+- Store UI passwords only in VS Code SecretStorage; resolve CLI passwords through a named environment variable. Require verified TLS by default and explicit plaintext/SQL execution confirmation.
+- Add bounded result collection, timeouts, redacted driver errors, parameterized metadata and escaped identifiers. Disable MySQL local infile. Verify MySQL IP certificate SANs before authentication.
+- Add CLI equivalents and protocol-level, TLS, credential-storage and cancellation regression coverage.
+- Document every new UI command and terminal action; retain upstream provenance and licenses.
+
+
 ## 0.5.1 — 2026-10-12
 
 - Fix FTP/SFTP listings rejecting valid remote device-like names such as `nul`, which could block unrelated uploads. Apply device-name restrictions at the Windows local filesystem boundary instead, with an actionable download error.

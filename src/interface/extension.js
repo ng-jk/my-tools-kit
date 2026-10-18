@@ -17,6 +17,7 @@ async function selectRoot() {
 }
 function activate(context) {
   require('./sidebar').activateSidebar(vscode, context);
+  require('./database-extension').activateDatabase(vscode, context);
   const sftp = require('../../build/sftp/extension');
   sftp.activate(context).catch(error => vscode.window.showErrorMessage('SFTP: ' + error.message));
   context.subscriptions.push({ dispose: () => sftp.deactivate() });

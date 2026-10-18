@@ -5,6 +5,7 @@ const tools = [
   ['Compare Text / Files', 'devkit.textTools', 'diff'],
   ['Compare Git Revisions', 'devkit.compareGit', 'git-compare'],
   ['SFTP / FTP', 'devkit.sftp.menu', 'cloud-upload'],
+  ['Database', 'devkit.database.menu', 'database'],
   ['CI/CD Pipeline', 'devkit.pipeline', 'gear']
 ];
 function activateSidebar(vscode, context) {

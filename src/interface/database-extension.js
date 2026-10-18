@@ -1,0 +1,86 @@
+'use strict';
+const crypto=require('node:crypto');
+const {connection,run}=require('../../build/sftp/database');
+function activateDatabase(vscode,context) {
+  const key='devkit.database.connections',secret=id=>'devkit.database.password.'+id;
+  const profiles=()=>context.globalState?.get(key,[])||[];
+  const trust=()=>{if(!vscode.workspace.isTrusted)throw new Error('Trust the workspace before connecting to a database');};
+  const save=items=>context.globalState.update(key,items);
+  async function pick(){return vscode.window.showQuickPick(profiles().map(p=>({label:p.name,description:`${p.config.type} ${p.config.host}:${p.config.port} / ${p.config.database||'(choose database)'}`,profile:p})),{title:'Database — choose a connection',placeHolder:'Add Connection from the Database menu if none are saved'}).then(p=>p?.profile);}
+  async function invoke(p,action,args={},config=p.config) {
+    trust();
+    if(config.tls===false && await vscode.window.showWarningMessage(`Connect to ${config.host}:${config.port} without TLS? Credentials and data can be read on the network.`,{modal:true},'Connect without TLS')!=='Connect without TLS')return;
+    const password=await context.secrets.get(secret(p.id));
+    return vscode.window.withProgress({location:vscode.ProgressLocation.Notification,title:`Database: ${action} — ${p.name} (${config.host}/${config.database||'server'})`,cancellable:false},()=>run(config,password,action,args));
+  }
+  async function result(value,title){if(!value)return;const doc=await vscode.workspace.openTextDocument({language:'json',content:JSON.stringify(value,null,2)});await vscode.window.showTextDocument(doc,{preview:false});if(value.truncated)await vscode.window.showWarningMessage(`${title}: result truncated at the row or 8 MiB limit. Refine SQL with WHERE/LIMIT; terminal configurations also support maxRows up to 5000.`);}
+  async function add(existing) {
+    trust();
+    const current=existing?.config||{},input=async(prompt,value,password=false)=>vscode.window.showInputBox({prompt,value:value||'',password,ignoreFocusOut:true});
+    const name=await input('Connection name',existing?.name);if(!name?.trim())return;
+    const type=await vscode.window.showQuickPick(['mysql','mariadb','postgres'],{title:'Database engine'});if(!type)return;
+    const host=await input('Database hostname or IP address',current.host||'localhost');if(host===undefined)return;
+    const port=await input('Database port',String(current.port||(type==='postgres'?5432:3306)));if(port===undefined)return;
+    const user=await input('Database username',current.user);if(user===undefined)return;
+    const database=await input('Initial database (PostgreSQL usually postgres; MySQL may be empty)',current.database||(type==='postgres'?'postgres':''));if(database===undefined)return;
+    const security=await vscode.window.showQuickPick(['Verified TLS (recommended)','Plaintext (trusted private network only)'],{title:'Database transport security'});if(!security)return;
+    let caPath='';if(security.startsWith('Verified')){caPath=await input('CA certificate file path (empty uses system trusted roots)',current.caPath);if(caPath===undefined)return;}
+    const password=await input('Database password (stored only in VS Code SecretStorage; re-enter when editing)','',true);if(password===undefined)return;
+    const config=connection({type,host,port,user,database,tls:security.startsWith('Verified'),caPath});
+    const p={id:existing?.id||crypto.randomUUID(),name:name.trim(),config};
+    for(;;){
+      try {
+        trust();
+        if(config.tls===false&&await vscode.window.showWarningMessage(`Test ${host}:${port} without TLS? This sends credentials and data without transport encryption.`,{modal:true},'Test without TLS')!=='Test without TLS')return;
+        await vscode.window.withProgress({location:vscode.ProgressLocation.Notification,title:'Testing database connection',cancellable:false},()=>run(config,password,'test'));
+        trust();await context.secrets.store(secret(p.id),password);await save([...profiles().filter(x=>x.id!==p.id),p]);
+        await vscode.window.showInformationMessage('Database connection tested and saved: '+p.name);return;
+      }catch(error){const choice=await vscode.window.showErrorMessage(error.message,'Retry','Edit connection');if(choice==='Retry')continue;if(choice==='Edit connection')return add({...p});return;}
+    }
+  }
+  async function chooseDatabase(p) {
+    const found=await invoke(p,'databases');if(!found)return;
+    const selected=await vscode.window.showQuickPick(found.rows.map(row=>String(row[0])),{title:`Database on ${p.name}`});if(!selected)return;
+    return {...p.config,database:selected};
+  }
+  async function query(p,config=p.config,initial) {
+    let sql=initial;
+    if(sql===undefined){const editor=vscode.window.activeTextEditor;if(editor?.document.languageId==='sql')sql=editor.selection.isEmpty?editor.document.getText():editor.document.getText(editor.selection);}
+    if(!sql?.trim()) {
+      const doc=await vscode.workspace.openTextDocument({language:'sql',content:'-- Write SQL here, then run Database: Execute SQL.\n'});await vscode.window.showTextDocument(doc);return;
+    }
+    trust();
+    const confirm=await vscode.window.showWarningMessage(`Execute SQL on ${p.name} (${config.host}:${config.port}/${config.database||'server default'})? SQL can modify or delete data. Only the selected text is run when a selection exists.`,{modal:true},'Execute SQL');if(confirm!=='Execute SQL')return;
+    await result(await invoke(p,'query',{sql,confirmed:true},config),'SQL');
+  }
+  async function browse(p) {
+    const config=await chooseDatabase(p);if(!config)return;
+    let schema=config.database;
+    if(config.type==='postgres') {
+      const found=await invoke(p,'schemas',{},config);if(!found)return;
+      schema=await vscode.window.showQuickPick(found.rows.map(row=>String(row[0])),{title:`Schema in ${config.database}`});if(!schema)return;
+    }
+    for(;;){
+      const found=await invoke(p,'tables',{schema},config);if(!found)return;
+      const table=await vscode.window.showQuickPick(found.rows.map(row=>({label:String(row[0]),description:String(row[1])})),{title:`Tables and views — ${p.name}/${config.database}/${schema}`,placeHolder:'Escape returns to the editor'});if(!table)return;
+      const action=await vscode.window.showQuickPick(['Preview rows','Browse columns','Execute SQL in this database','Back to tables'],{title:table.label});
+      if(!action)return;if(action==='Back to tables')continue;
+      if(action==='Execute SQL in this database')await query(p,config);
+      else await result(await invoke(p,action==='Preview rows'?'preview':'columns',{schema,table:table.label},config),table.label);
+    }
+  }
+  const handlers={
+    'devkit.database.add':()=>add(),
+    'devkit.database.browse':async()=>{const p=await pick();if(p)await browse(p);},
+    'devkit.database.query':async()=>{const p=await pick();if(p){const config=await chooseDatabase(p);if(config)await query(p,config);}},
+    'devkit.database.edit':async()=>{const p=await pick();if(p)await add(p);},
+    'devkit.database.remove':async()=>{const p=await pick();if(p&&await vscode.window.showWarningMessage(`Remove saved connection ${p.name}? This deletes its stored password, not the remote database.`,{modal:true},'Remove connection')==='Remove connection'){trust();await context.secrets.delete(secret(p.id));await save(profiles().filter(x=>x.id!==p.id));}},
+    'devkit.database.test':async()=>{const p=await pick();if(p)await result(await invoke(p,'test'),'Connection test');},
+    'devkit.database.menu':async()=>{
+      const actions=[['Add Connection','add'],['Browse Databases / Schemas / Tables','browse'],['Execute SQL','query'],['Test Connection','test'],['Edit Connection','edit'],['Remove Connection','remove']];
+      const chosen=await vscode.window.showQuickPick(actions.map(([label,id])=>({label,id})),{title:'Database — choose a function'});if(chosen)await handlers['devkit.database.'+chosen.id]();
+    }
+  };
+  for(const [id,fn]of Object.entries(handlers))context.subscriptions.push(vscode.commands.registerCommand(id,async()=>{try{trust();await fn();}catch(error){await vscode.window.showErrorMessage(error.message);}}));
+}
+module.exports={activateDatabase};

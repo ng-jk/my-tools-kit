@@ -1,8 +1,8 @@
 {
   "name": "development-tools-kit",
   "displayName": "Development Tools Kit",
-  "description": "API debugging, JSON formatting, text/file/Git comparison, and project-aware CI/CD configuration.",
-  "version": "0.5.1",
+  "description": "Remote databases, SQL queries, FTP/SFTP, API debugging, JSON/text/Git tools, and Python CI/CD.",
+  "version": "0.6.0",
   "publisher": "NGJUNKAI",
   "repository": {
     "type": "git",
@@ -20,7 +20,8 @@
   },
   "categories": [
     "Other",
-    "Testing"
+    "Testing",
+    "Database"
   ],
   "main": "./extension.js",
   "bin": {
@@ -347,6 +348,34 @@
       {
         "command": "devkit.sftp.selectContext",
         "title": "SFTP: Select Context"
+      },
+      {
+        "command": "devkit.database.menu",
+        "title": "Development Tools Kit Database: Database Tools"
+      },
+      {
+        "command": "devkit.database.add",
+        "title": "Development Tools Kit Database: Add Connection"
+      },
+      {
+        "command": "devkit.database.browse",
+        "title": "Development Tools Kit Database: Browse Databases"
+      },
+      {
+        "command": "devkit.database.query",
+        "title": "Development Tools Kit Database: Execute SQL"
+      },
+      {
+        "command": "devkit.database.test",
+        "title": "Development Tools Kit Database: Test Connection"
+      },
+      {
+        "command": "devkit.database.edit",
+        "title": "Development Tools Kit Database: Edit Connection"
+      },
+      {
+        "command": "devkit.database.remove",
+        "title": "Development Tools Kit Database: Remove Connection"
       }
     ],
     "menus": {
@@ -815,5 +844,9 @@
     "tmp": "^0.2.5",
     "upath": "^2.0.1",
     "vscode-uri": "^3.1.0"
+  },
+  "dependencies": {
+    "mysql2": "3.24.6",
+    "pg": "8.23.1"
   }
 }

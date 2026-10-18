@@ -43,7 +43,7 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     assert.deepEqual(errors,[]);
     for(const entry of require('../vendor/sftp/package.json').contributes.commands)assert.ok(commands.has('devkit.'+entry.command),entry.command);
     assert.ok(views.has('devkit.remoteExplorer'));
-    assert.deepEqual(views.get('devkit.tools').getChildren().map(item=>item.label),['API Debugger','JSON Formatter','Compare Text / Files','Compare Git Revisions','SFTP / FTP','CI/CD Pipeline']);
+    assert.deepEqual(views.get('devkit.tools').getChildren().map(item=>item.label),['API Debugger','JSON Formatter','Compare Text / Files','Compare Git Revisions','SFTP / FTP','Database','CI/CD Pipeline']);
     assert.equal((await views.get('devkit.remoteExplorer').getChildren()).length,1);
     const addedRoot=path.join(dir,'added-workspace');fs.mkdirSync(path.join(addedRoot,'.vscode'),{recursive:true});
     fs.writeFileSync(path.join(addedRoot,'.vscode','sftp.json'),JSON.stringify({name:'added',protocol:'local',host:'fixture',username:'fixture',remotePath:path.join(dir,'remote-other').replaceAll('\\','/')}));

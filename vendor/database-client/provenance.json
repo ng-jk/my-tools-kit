@@ -1,0 +1,13 @@
+{
+  "repository": "https://github.com/cweijan/vscode-database-client",
+  "revision": "0451793fb0eab0e10d0781787270e68fc9f73732",
+  "license": "MIT",
+  "upstreamVersion": "3.9.8",
+  "adaptations": {
+    "src/service/connect/mysqlConnection.ts": "src/data/database/driver.js",
+    "src/service/connect/postgreSqlConnection.ts": "src/data/database/driver.js",
+    "src/service/dialect/mysqlDialect.ts": "src/logic/database.js",
+    "src/service/dialect/postgreSqlDialect.ts": "src/logic/database.js"
+  },
+  "scope": "MySQL/MariaDB and PostgreSQL connections, metadata browsing and SQL execution; native toolkit UI/CLI replace the upstream VS Code/Vue host. Other upstream database engines and administration features are not bundled."
+}

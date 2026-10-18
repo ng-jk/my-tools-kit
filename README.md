@@ -8,7 +8,7 @@ Open the **Development Tools Kit** toolbox icon in VS Code’s Activity Bar, the
 
 1. In VS Code, open **Extensions** and search for **Development Tools Kit** by **NGJUNKAI**. Install the available Marketplace version.
 2. To test a newer local build, use **Extensions → … → Install from VSIX…**, choose `development-tools-kit.vsix`, then reload VS Code.
-3. Click the toolbox icon in the Activity Bar. The Tools list contains **API Debugger**, **JSON Formatter**, **Compare Text / Files**, **Compare Git Revisions**, **SFTP / FTP**, and **CI/CD Pipeline**.
+3. Click the toolbox icon in the Activity Bar. The Tools list contains **API Debugger**, **JSON Formatter**, **Compare Text / Files**, **Compare Git Revisions**, **SFTP / FTP**, **Database**, and **CI/CD Pipeline**.
 4. Alternatively, press **Ctrl+Shift+P** (macOS: **Cmd+Shift+P**) and search for **Development Tools Kit** or **SFTP**.
 
 Requires VS Code 1.96+. FTP/SFTP dependencies are bundled. Git comparisons require Git. CI/CD requires Python 3.11+ and the test/build CLIs configured for your project. Trust your workspace to enable the extension. If a command described below is missing, check which extension version is installed.
@@ -244,10 +244,68 @@ Select a context before transferring. “Active file” means the file open in y
 | **Development Tools Kit: SFTP / FTP Functions**<br>`devkit.sftp.menu` | Choose SFTP / FTP in the toolbox to open the complete SFTP function list. Choose a function below; supply a file/folder selection where required. |
 | **SFTP: Select Context**<br>`devkit.sftp.selectContext` | Save sftp.json first, run this command and choose a named context. The selected connection and watchers replace the previous active context. |
 
-## Database tools and licensing
+## Remote database connections and SQL
 
-Database Client is currently an upstream reference, not a bundled database UI. This extension does not yet provide database connections or query execution. SFTP is bundled from the MIT-licensed vscode-sftp source with the toolkit’s data/logic/interface separation.
+The toolkit bundles a maintained adaptation of the MIT Database Client connection/dialect source for **MySQL, MariaDB and PostgreSQL**. Database tools use the same engine in VS Code and the terminal. This release includes remote connections, database/schema/table/view browsing, column metadata, row previews and SQL execution. Other upstream engines, table designers, data editing grids, imports and exports are not included.
 
-Licensed under [MIT](LICENSE). See [third-party notices](THIRD-PARTY-NOTICES.md) and [release notes](CHANGELOG.md).
+### Connect from VS Code
 
-Download commands, listing commands, and **Edit in Local** ask you to confirm the source and local overwrite destination before downloading a selected file or folder. Cancel leaves local content unchanged. **List All** also warns that ignore rules are bypassed.
+1. Click the toolbox Activity Bar icon, then **Database → Add Connection**.
+2. Enter a name, engine, hostname/IP, port, username and initial database. For PostgreSQL, use `postgres` if you need to discover other databases.
+3. Choose **Verified TLS**, and optionally enter a private CA certificate file path. Certificate and hostname/IP verification are required. Plaintext is available for trusted private networks only and requires an explicit warning confirmation each time.
+4. Enter the password in the masked prompt. **Test and save** completes automatically after the connection succeeds. Passwords stay in VS Code SecretStorage; connection metadata stays in VS Code global state. Neither is written into the workspace or Git.
+5. On failure, use **Retry** or **Edit connection**. Cancel at any prompt to leave the connection unsaved. Editing requires re-entering the password.
+
+### Browse and execute SQL
+
+- **Database → Browse Databases / Schemas / Tables**: choose a connection, database, PostgreSQL schema, then a table or view. Choose **Browse columns** or **Preview rows**. Choose **Back to tables** to continue browsing, or Escape to leave.
+- **Database → Execute SQL**: choose a connection and database. Write SQL in a `.sql` editor first, or use the blank SQL document opened by the command. Run the command again after writing SQL. If text is selected, only that selection runs; otherwise the entire document runs.
+- Confirm **Execute SQL** after checking the destination. SQL can change or delete database data. Queries are not wrapped in automatic rollback. Each operation uses a new connection, so session state and transactions do not span separate command runs. MySQL/MariaDB allow one statement per run; PostgreSQL batch behavior follows its protocol.
+- Results open as an unsaved JSON document with `columns`, positional `rows`, `affectedRows`, and `truncated`. They remain in the editor until closed; saving them is your choice. No SQL history or results are automatically saved by the toolkit. VS Code's own unsaved-editor recovery settings still apply.
+- Defaults: 15-second operation timeout, 500 rows and 8 MiB of accumulated result data. A truncated result is clearly marked; refine the query using `WHERE` and `LIMIT`. These caps bound collected results, not server-side work or a single protocol field. Use database permissions and server resource limits appropriate for your connection.
+
+| Command palette entry | Command ID | Use |
+|---|---|---|
+| Database Tools | `devkit.database.menu` | Open the database function menu. |
+| Add Connection | `devkit.database.add` | Create, test and save an independent connection. |
+| Browse Databases | `devkit.database.browse` | Browse databases, schemas, tables, views, columns and row previews. |
+| Execute SQL | `devkit.database.query` | Execute selected/all SQL from the active SQL document after destination confirmation. |
+| Test Connection | `devkit.database.test` | Connect and run `SELECT 1`. |
+| Edit Connection | `devkit.database.edit` | Reconfigure and re-test an existing connection. |
+| Remove Connection | `devkit.database.remove` | Remove saved metadata and password after confirmation; the server database is untouched. |
+
+All palette titles begin **Development Tools Kit Database:**. Database connections require a trusted workspace. Operations report progress, return bounded errors without raw SQL/passwords, and fail on timeout or certificate errors. Direct database TCP/TLS connections are supported; for an SSH-only database, establish a trusted system SSH tunnel separately and connect through it using a certificate matching the configured endpoint. This release does not configure database tunnels automatically.
+
+### Use from the terminal
+
+Create `connection.local.json` with no password value:
+
+```json
+{
+  "type": "postgres",
+  "host": "db.example.com",
+  "port": 5432,
+  "user": "reader",
+  "database": "app",
+  "tls": true,
+  "passwordEnv": "APP_DB_PASSWORD",
+  "timeout": 15000,
+  "maxRows": 500
+}
+```
+
+Set `APP_DB_PASSWORD` using your local environment/secret manager. The toolkit never prints it. Use `caPath` for a private CA certificate. For MySQL/MariaDB, use type `mysql`/`mariadb`, port `3306` and your database name.
+
+```sh
+node cli.js database test --config connection.local.json
+node cli.js database databases --config connection.local.json
+node cli.js database schemas --config connection.local.json
+node cli.js database tables --config connection.local.json --schema public
+node cli.js database columns --config connection.local.json --schema public --table users
+node cli.js database preview --config connection.local.json --schema public --table users
+node cli.js database query --config connection.local.json --sql-file query.sql --yes
+```
+
+For MySQL/MariaDB, `--schema` means the database name. Query execution requires `--yes` because arbitrary SQL may modify data. A configuration with `tls: false` additionally requires `--allow-plaintext`. CLI failures exit nonzero, including missing credentials and TLS/SQL errors. JSON results go to stdout; redirect them only when you intend to save database data. `node cli.js database --help` lists every terminal action. Row limits accept 1–5000 and timeouts 1000–120000 ms.
+
+The original copyright/license and precise upstream revision mapping are retained in `vendor/database-client/LICENSE` and `vendor/database-client/provenance.json`. The toolkit remains MIT-licensed; bundled runtime dependencies retain their own licenses in the packaged third-party license file.

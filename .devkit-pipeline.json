@@ -83,6 +83,11 @@
         "node",
         "--test",
         "tests/sftp.test.js"
+      ],
+      [
+        "node",
+        "--test",
+        "tests/database.test.js"
       ]
     ],
     "integration": [
@@ -110,6 +115,12 @@
         "tests/ftp-wire.test.js",
         "tests/sftp-interface.test.js",
         "tests/extension.test.js"
+      ],
+      [
+        "node",
+        "--test",
+        "tests/database-wire.test.js",
+        "tests/database-interface.test.js"
       ]
     ],
     "build": [
