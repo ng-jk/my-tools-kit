@@ -1,11 +1,18 @@
 """Check enforced dependencies of the three product and pipeline layers."""
 import ast
+import json
 from pathlib import Path
 import re
 
 
 def violations(root):
     errors = []
+    manifest_file = root / "package.json"
+    if manifest_file.is_file():
+        manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
+        allowed = {"Programming Languages", "Snippets", "Linters", "Themes", "Debuggers", "Formatters", "Keymaps", "SCM Providers", "Other", "Extension Packs", "Language Packs", "Data Science", "Machine Learning", "Visualization", "Notebooks", "Education", "Testing"}
+        if any(category not in allowed for category in manifest.get("categories", [])):
+            errors.append("package.json: unsupported VS Code Marketplace category")
     for layer in ("data", "logic", "interface"):
         for file in (root / "src" / layer).rglob("*"):
             if file.suffix not in (".js", ".ts"):

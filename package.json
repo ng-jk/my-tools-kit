@@ -2,7 +2,7 @@
   "name": "development-tools-kit",
   "displayName": "Development Tools Kit",
   "description": "Remote databases, SQL queries, FTP/SFTP, API debugging, JSON/text/Git tools, and Python CI/CD.",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "publisher": "NGJUNKAI",
   "repository": {
     "type": "git",
@@ -20,8 +20,7 @@
   },
   "categories": [
     "Other",
-    "Testing",
-    "Database"
+    "Testing"
   ],
   "main": "./extension.js",
   "bin": {
@@ -848,5 +847,12 @@
   "dependencies": {
     "mysql2": "3.24.6",
     "pg": "8.23.1"
-  }
+  },
+  "keywords": [
+    "database",
+    "mysql",
+    "mariadb",
+    "postgresql",
+    "sql"
+  ]
 }

@@ -1,6 +1,8 @@
 # Release notes
 
-## 0.6.0 — 2026-10-18
+## 0.6.1 — 2026-10-18
+
+Version 0.6.0 did not reach verified publication. Version 0.6.1 uses supported Marketplace categories and database search keywords.
 
 - Integrate the MIT Database Client MySQL/MariaDB and PostgreSQL connection/dialect source into shared data/logic layers.
 - Add Database sidebar/menu commands for independent remote connections, connection tests, database/schema/table/view/column browsing, row previews and SQL editor execution.
