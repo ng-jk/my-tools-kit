@@ -8,7 +8,7 @@ const msg=(type,...data)=>{const body=Buffer.concat(data);return Buffer.concat([
 const str=s=>Buffer.from(s+'\0');
 function cli(args,env){return new Promise(resolve=>{const p=spawn(process.execPath,['cli.js','database',...args],{cwd:path.resolve(__dirname,'..'),env:{...process.env,...env}});let out='',err='';p.stdout.on('data',b=>out+=b);p.stderr.on('data',b=>err+=b);p.on('close',code=>resolve({code,out,err}));});}
 test('PostgreSQL wire and CLI connect, browse, execute, limit and redact failures',{timeout:20000},async t=>{
-  const sockets=new Set(),queries=[],auth=[];
+  const sockets=new Set(),queries=[],auth=[];let completedWrite=false;
   const server=net.createServer(socket=>{
     sockets.add(socket);socket.on('close',()=>sockets.delete(socket));socket.on('error',()=>{});let pending=Buffer.alloc(0),startup=true;
     socket.on('data',chunk=>{pending=Buffer.concat([pending,chunk]);
@@ -17,6 +17,18 @@ test('PostgreSQL wire and CLI connect, browse, execute, limit and redact failure
         if(type==='p'){auth.push(body.toString().replace(/\0$/,''));socket.write(Buffer.concat([msg('R',i32(0)),msg('Z',Buffer.from('I'))]));}
         if(type==='Q'){
           const sql=body.toString().replace(/\0$/,'');queries.push(sql);
+          if(['DELAYED_BATCH','ERROR_AFTER_LIMIT'].includes(sql)) {
+            const field=Buffer.concat([str('first'),i32(0),i16(0),i32(25),i16(-1),i32(-1),i16(0)]);
+            socket.write(Buffer.concat([msg('T',i16(1),field),...['1','2','3'].map(v=>msg('D',i16(1),i32(1),Buffer.from(v)))]));
+            setTimeout(()=>{
+              if(sql==='ERROR_AFTER_LIMIT')socket.write(Buffer.concat([msg('E',str('SERROR'),str('C42601'),str('Mfailure after result cutoff'),Buffer.from([0])),msg('Z',Buffer.from('I'))]));
+              else {completedWrite=true;socket.write(Buffer.concat([msg('C',str('SELECT 3')),msg('C',str('UPDATE 1')),msg('Z',Buffer.from('I'))]));}
+            },60);continue;
+          }
+          if(sql==='TWO_SHAPES') {
+            const set=(name,value)=>{const field=Buffer.concat([str(name),i32(0),i16(0),i32(25),i16(-1),i32(-1),i16(0)]);return Buffer.concat([msg('T',i16(1),field),msg('D',i16(1),i32(1),Buffer.from(value)),msg('C',str('SELECT 1'))]);};
+            socket.write(Buffer.concat([set('left','1'),set('right','2'),msg('Z',Buffer.from('I'))]));continue;
+          }
           if(sql==='FAIL'){socket.write(Buffer.concat([msg('E',str('SERROR'),str('C42601'),str('MTEST_ONLY_PASSWORD should never escape'),Buffer.from([0])),msg('Z',Buffer.from('I'))]));continue;}
           const rows=sql==='MANY'?['1','2','3']:sql.includes('pg_database')?['app']:['1'];
           const field=Buffer.concat([str('name'),i32(0),i16(0),i32(25),i16(-1),i32(-1),i16(0)]);
@@ -31,6 +43,9 @@ test('PostgreSQL wire and CLI connect, browse, execute, limit and redact failure
   assert.deepEqual((await run(config,'TEST_ONLY_PASSWORD','test')).rows,[['1']]);
   assert.deepEqual((await run(config,'TEST_ONLY_PASSWORD','databases')).rows,[['app']]);
   assert.equal((await run(config,'TEST_ONLY_PASSWORD','query',{sql:'MANY',confirmed:true})).truncated,true);
+  const batch=await run(config,'TEST_ONLY_PASSWORD','query',{sql:'DELAYED_BATCH',confirmed:true});assert.equal(completedWrite,true,'truncation waits for the final write completion');assert.equal(batch.truncated,true);assert.equal(batch.results.length,2);assert.equal(batch.results[1].affectedRows,1);
+  await assert.rejects(run(config,'TEST_ONLY_PASSWORD','query',{sql:'ERROR_AFTER_LIMIT',confirmed:true}),/42601/);
+  const shapes=await run(config,'TEST_ONLY_PASSWORD','query',{sql:'TWO_SHAPES',confirmed:true});assert.deepEqual(shapes.results.map(r=>r.columns),[['left'],['right']]);assert.deepEqual(shapes.results.map(r=>r.rows),[[['1']],[['2']]]);
   await assert.rejects(run(config,'TEST_ONLY_PASSWORD','query',{sql:'FAIL',confirmed:true}),error=>!error.message.includes('TEST_ONLY_PASSWORD')&&/42601/.test(error.message));
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-db-cli-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
   const file=path.join(dir,'db.json');fs.writeFileSync(file,JSON.stringify({...config,passwordEnv:'DEVKIT_DB_FIXTURE_PASSWORD'}));const sql=path.join(dir,'query.sql');fs.writeFileSync(sql,'SELECT 1');
