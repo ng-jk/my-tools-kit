@@ -254,11 +254,11 @@ The toolkit bundles a maintained adaptation of the MIT Database Client connectio
 2. Enter a name, engine, hostname/IP, port, username and initial database. For PostgreSQL, use `postgres` if you need to discover other databases.
 3. Choose **Verified TLS**, and optionally enter a private CA certificate file path. Certificate and hostname/IP verification are required. Plaintext is available for trusted private networks only and requires an explicit warning confirmation each time.
 4. Enter the password in the masked prompt. **Test and save** completes automatically after the connection succeeds. Passwords stay in VS Code SecretStorage; connection metadata stays in VS Code global state. Neither is written into the workspace or Git.
-5. On failure, use **Retry** or **Edit connection**. Cancel at any prompt to leave the connection unsaved. Editing requires re-entering the password.
+5. Invalid connection fields show inline validation so you can correct them without losing the earlier inputs. On connection-test failure, use **Retry** or **Edit connection**. Cancel at any prompt to leave the connection unsaved. Editing requires re-entering the password.
 
 ### Browse and execute SQL
 
-- **Database → Browse Databases / Schemas / Tables**: choose a connection, database, PostgreSQL schema, then a table or view. Choose **Browse columns** or **Preview rows**. Choose **Back to tables** to continue browsing, or Escape to leave.
+- **Database → Browse Databases / Schemas / Tables**: choose a connection, database, PostgreSQL schema, then a table or view. Choose **Browse columns** or **Preview rows**. Choose **Back to tables** to continue browsing, or Escape to leave. Empty or truncated lists explain their status and offer **Filter list** (server-side SQL LIKE patterns: `%` any text, `_` one character), **Enter exact name**, or **Use listed entries** when available. Exact-name entry lets you browse a known object even when it is not present in the capped list.
 - **Database → Execute SQL**: choose a connection and database. Write SQL in a `.sql` editor first, or use the blank SQL document opened by the command. Run the command again after writing SQL. If text is selected, only that selection runs; otherwise the entire document runs.
 - Confirm **Execute SQL** after checking the destination. SQL can change or delete database data. Queries are not wrapped in automatic rollback. Each operation uses a new connection, so session state and transactions do not span separate command runs. MySQL/MariaDB allow one statement per run; PostgreSQL batch behavior follows its protocol.
 - Results open as an unsaved JSON document with `columns`, positional `rows`, `affectedRows`, and `truncated`. Multi-result operations include a `results` array so each statement retains its own columns, rows and affected-row count. They remain in the editor until closed; saving them is your choice. No SQL history or results are automatically saved by the toolkit. VS Code's own unsaved-editor recovery settings still apply.
@@ -301,6 +301,7 @@ node cli.js database test --config connection.local.json
 node cli.js database databases --config connection.local.json
 node cli.js database schemas --config connection.local.json
 node cli.js database tables --config connection.local.json --schema public
+node cli.js database tables --config connection.local.json --schema public --filter "user%"
 node cli.js database columns --config connection.local.json --schema public --table users
 node cli.js database preview --config connection.local.json --schema public --table users
 node cli.js database query --config connection.local.json --sql-file query.sql --yes

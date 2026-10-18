@@ -14,6 +14,9 @@ test('metadata values are bound and preview identifiers cannot inject SQL',()=>{
   const [sql,values]=statement(c,'columns',{schema:evil,table:evil});assert.equal(sql.includes(evil),false);assert.deepEqual(values,[evil,evil]);
   assert.match(statement(c,'preview',{schema:'public',table:evil})[0],/"x""; DROP TABLE victim; --" LIMIT 501$/);
   assert.deepEqual(statement(c,'tables')[1],['public']);
+  assert.deepEqual(statement(c,'tables',{schema:'public',filter:'%name%'} )[1],['public','%name%']);
+  assert.deepEqual(statement(c,'databases',{filter:'app%'} )[1],['app%']);
+  assert.equal(statement(c,'databases',{filter:"bad'"})[0].includes("bad'"),false);
   assert.match(statement(connection({...raw,type:'mysql'}),'preview',{schema:'app',table:'a`b'})[0],/`a``b`/);
   assert.throws(()=>statement(c,'query',{sql:'DELETE FROM t'}),/confirmation/);
 });

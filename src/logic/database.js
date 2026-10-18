@@ -20,12 +20,14 @@ function identifier(type,name) {
 function statement(c,action,args={}) {
   const pg=c.type==='postgres',p=pg?'$1':'?',q=pg?'$2':'?';
   const schema=args.schema||(pg?'public':c.database);
+  if(args.filter!==undefined&&(typeof args.filter!=='string'||args.filter.length>256||/[\x00-\x1f]/.test(args.filter)))throw new Error('Metadata filter must be text up to 256 characters');
+  const filter=args.filter;
   if(['tables','columns','preview'].includes(action)&&!schema)throw new Error('Choose a database/schema before browsing');
   if(['columns','preview'].includes(action))identifier(c.type,args.table);
   if(action==='test')return ['SELECT 1 AS connected',[]];
-  if(action==='databases')return [pg?'SELECT datname AS name FROM pg_database WHERE datistemplate = false ORDER BY datname':'SHOW DATABASES',[]];
-  if(action==='schemas')return [pg?'SELECT schema_name AS name FROM information_schema.schemata ORDER BY schema_name':'SHOW DATABASES',[]];
-  if(action==='tables')return [`SELECT table_name AS name, table_type AS type FROM information_schema.tables WHERE table_schema = ${p} ORDER BY table_name`,[schema]];
+  if(action==='databases')return filter?[pg?'SELECT datname AS name FROM pg_database WHERE datistemplate = false AND datname ILIKE $1 ORDER BY datname':'SELECT schema_name AS name FROM information_schema.schemata WHERE schema_name LIKE ? ORDER BY schema_name',[filter]]:[pg?'SELECT datname AS name FROM pg_database WHERE datistemplate = false ORDER BY datname':'SHOW DATABASES',[]];
+  if(action==='schemas')return filter?[`SELECT schema_name AS name FROM information_schema.schemata WHERE schema_name ${pg?'ILIKE $1':'LIKE ?'} ORDER BY schema_name`,[filter]]:[pg?'SELECT schema_name AS name FROM information_schema.schemata ORDER BY schema_name':'SHOW DATABASES',[]];
+  if(action==='tables')return [`SELECT table_name AS name, table_type AS type FROM information_schema.tables WHERE table_schema = ${p}${filter?` AND table_name ${pg?'ILIKE $2':'LIKE ?'}`:''} ORDER BY table_name`,filter?[schema,filter]:[schema]];
   if(action==='columns')return [`SELECT column_name AS name, data_type AS type, is_nullable AS nullable, column_default AS default_value FROM information_schema.columns WHERE table_schema = ${p} AND table_name = ${q} ORDER BY ordinal_position`,[schema,args.table]];
   if(action==='preview')return ['SELECT * FROM '+identifier(c.type,schema)+'.'+identifier(c.type,args.table)+' LIMIT '+(c.maxRows+1),[]];
   if(action==='query') {

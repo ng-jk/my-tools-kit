@@ -7,6 +7,7 @@
 - Store UI passwords only in VS Code SecretStorage; resolve CLI passwords through a named environment variable. Require verified TLS by default and explicit plaintext/SQL execution confirmation.
 - Preserve separate statement result sets and wait for SQL completion after row truncation; propagate later errors and report uncertain outcomes on connection failure.
 - Add bounded result collection, timeouts, redacted driver errors, parameterized metadata and escaped identifiers. Disable MySQL local infile. Verify MySQL IP certificate SANs before authentication.
+- Validate connection fields inline and explain empty/truncated metadata lists, with parameterized server-side filtering and exact-name browsing.
 - Add CLI equivalents and protocol-level, TLS, credential-storage and cancellation regression coverage.
 - Document every new UI command and terminal action; retain upstream provenance and licenses.
 
