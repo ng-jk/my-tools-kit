@@ -18,7 +18,7 @@ function activateDatabase(vscode,context) {
     return vscode.window.withProgress({location:vscode.ProgressLocation.Notification,title:`Database: ${action} — ${p.name} (${config.host}/${config.database||'server'})`,cancellable:false},()=>{trust();current();return run(config,password,action,args);});
   }
   async function result(value,title){if(!value)return;const doc=await vscode.workspace.openTextDocument({language:'json',content:JSON.stringify(value,null,2)});await vscode.window.showTextDocument(doc,{preview:false});if(value.truncated)await vscode.window.showWarningMessage(`${title}: result truncated at the row or 8 MiB limit. Refine SQL with WHERE/LIMIT; terminal configurations also support maxRows up to 5000.`);}
-  async function add(existing) {
+  async function add(existing,original={id:existing?.id}) {
     trust();
     const current=existing?.config||{},input=async(prompt,value,password=false,validateInput)=>vscode.window.showInputBox({prompt,value:value||'',password,ignoreFocusOut:true,validateInput});
     const text=value=>/[\x00-\x1f]/.test(value)?'Use one line without control characters':undefined;
@@ -41,10 +41,12 @@ function activateDatabase(vscode,context) {
         trust();
         if(config.tls===false&&await vscode.window.showWarningMessage(`Test ${host}:${port} without TLS? This sends credentials and data without transport encryption.`,{modal:true},'Test without TLS')!=='Test without TLS')return;
         await vscode.window.withProgress({location:vscode.ProgressLocation.Notification,title:'Testing database connection',cancellable:false},()=>run(config,password,'test'));
-        trust();await context.secrets.store(secret(p.id),password);await save([...profiles().filter(x=>x.id!==p.id&&x.id!==existing?.id),p]);
-        if(existing)try{await context.secrets.delete(secret(existing.id));}catch{await vscode.window.showWarningMessage('Connection saved, but the previous unused password could not be removed from SecretStorage.');}
+        trust();await context.secrets.store(secret(p.id),password);
+        try {await save([...profiles().filter(x=>x.id!==p.id&&x.id!==original.id),p]);}
+        catch(error){await context.secrets.delete(secret(p.id));throw error;}
+        if(original.id)try{await context.secrets.delete(secret(original.id));}catch{await vscode.window.showWarningMessage('Connection saved, but the previous unused password could not be removed from SecretStorage.');}
         await vscode.window.showInformationMessage('Database connection tested and saved: '+p.name);return;
-      }catch(error){const choice=await vscode.window.showErrorMessage(error.message,'Retry','Edit connection');if(choice==='Retry')continue;if(choice==='Edit connection')return add({...p});return;}
+      }catch(error){const choice=await vscode.window.showErrorMessage(error.message,'Retry','Edit connection');if(choice==='Retry')continue;if(choice==='Edit connection')return add({...p},original);return;}
     }
   }
   async function chooseMetadata(p,action,args,config,title) {

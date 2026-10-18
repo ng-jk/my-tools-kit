@@ -2,7 +2,7 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),Module=require('node:module');
 test('database UI saves credentials only in secrets and cancels SQL before execution',async()=>{
   const commands=new Map(),stored=new Map(),passwords=new Map(),calls=[],errors=[],documents=[];
-  let trusted=true,confirm='Execute SQL',cancelInput=false,responses=[];const validations=[];
+  let trusted=true,confirm='Execute SQL',cancelInput=false,responses=[];const validations=[];let failTest=false;
   const inputs=['Fixture connection','db.example.test','5432','reader','app','','TEST_ONLY_DB_PASSWORD'];
   const v={ProgressLocation:{Notification:1},commands:{registerCommand:(id,fn)=>{commands.set(id,fn);return {dispose(){}};}},
     workspace:{get isTrusted(){return trusted;},openTextDocument:async value=>{documents.push(value);return value;}},
@@ -13,7 +13,7 @@ test('database UI saves credentials only in secrets and cancels SQL before execu
   const context={subscriptions:[],globalState:{get:(key,fallback)=>stored.get(key)||fallback,update:async(k,val)=>stored.set(k,val)},secrets:{get:async k=>passwords.get(k),store:async(k,val)=>passwords.set(k,val),delete:async k=>passwords.delete(k)}};
   const original=Module._load;
   try {
-    Module._load=function(id,...rest){if(id==='../../build/sftp/database')return {connection:require('../src/logic/database').connection,run:async(...args)=>{calls.push(args);return responses.length?responses.shift():{columns:['name'],rows:[['app']],truncated:false};}};return original.call(this,id,...rest);};
+    Module._load=function(id,...rest){if(id==='../../build/sftp/database')return {connection:require('../src/logic/database').connection,run:async(...args)=>{calls.push(args);if(failTest&&args[2]==='test'){failTest=false;throw new Error('Synthetic connection failure');}return responses.length?responses.shift():{columns:['name'],rows:[['app']],truncated:false};}};return original.call(this,id,...rest);};
     const file=require.resolve('../src/interface/database-extension');delete require.cache[file];require(file).activateDatabase(v,context);
     await commands.get('devkit.database.add')();assert.equal(passwords.size,1);assert.equal(JSON.stringify([...stored]).includes('TEST_ONLY_DB_PASSWORD'),false);assert.equal(calls[0][2],'test');
     const port=validations.find(o=>o.prompt==='Database port');assert.ok(port.validateInput('invalid'));assert.ok(port.validateInput('0'));assert.equal(port.validateInput('5432'),undefined);
@@ -38,6 +38,10 @@ test('database UI saves credentials only in secrets and cancels SQL before execu
     assert.ok(calls.some(c=>c[2]==='databases'&&c[3].filter==='%last%'),'truncated metadata can be filtered on server');
     assert.ok(calls.some(c=>c[2]==='preview'&&c[3].table==='known_table'),'empty metadata supports exact-name browsing');
     v.window.showInputBox=oldInput;v.window.showWarningMessage=oldWarning;v.window.showQuickPick=oldPick;
+    const beforeRecovery=[...passwords.keys()][0],oldError=v.window.showErrorMessage;
+    inputs.push('Retry draft','first-edit.example.test','5432','reader','app','','TEST_ONLY_FAILED_PASSWORD','Final edit','final.example.test','5432','reader','app','','TEST_ONLY_FINAL_PASSWORD');
+    failTest=true;v.window.showErrorMessage=async()=> 'Edit connection';await commands.get('devkit.database.edit')();v.window.showErrorMessage=oldError;
+    assert.equal([...stored.values()][0].length,1,'failed edit recovery replaces original rather than duplicating it');assert.equal([...stored.values()][0][0].config.host,'final.example.test');assert.equal(passwords.size,1);assert.equal(passwords.has(beforeRecovery),false);assert.equal([...passwords.values()][0],'TEST_ONLY_FINAL_PASSWORD');
     cancelInput=true;await commands.get('devkit.database.add')();assert.equal(passwords.size,1);
     const credential=[...passwords][0];passwords.clear();const beforeMissing=calls.length;await commands.get('devkit.database.test')();assert.equal(calls.length,beforeMissing);assert.match(errors.at(-1),/password is missing/);passwords.set(...credential);
     trusted=false;const count=calls.length;await commands.get('devkit.database.test')();assert.equal(calls.length,count);assert.match(errors.at(-1),/Trust/);
