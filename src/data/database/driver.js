@@ -64,7 +64,7 @@ async function execute(config,password,text,values=[]) {
           });
         }
         client.on('error',error=>finish(error));
-        const query=client.query({sql:text,values,timeout:config.timeout});
+        const query=values.length?client.execute({sql:text,values,timeout:config.timeout}):client.query({sql:text,timeout:config.timeout});
         query.on('fields',fields=>columns.push(...(fields||[]).map(f=>f.name)));
         query.on('result',value=>{if(Array.isArray(value))row(value);else affectedRows=value.affectedRows||0;});
         query.on('error',error=>finish(error));query.on('end',()=>finish());

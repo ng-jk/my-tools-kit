@@ -41,9 +41,20 @@ test('PostgreSQL wire and CLI connect, browse, execute, limit and redact failure
 });
 test('MySQL wire connects and browses through the upstream-derived adapter',{timeout:15000},async t=>{
   const mysql=require('mysql2'),server=mysql.createServer(),clients=new Set();
+  const base=path.dirname(require.resolve('mysql2')),Packets=require(path.join(base,'lib/packets')),Packet=require(path.join(base,'lib/packets/packet'));
+  const column={catalog:'def',schema:'app',table:'',orgTable:'',name:'name',orgName:'name',characterSet:45,columnLength:128,columnType:253,flags:0,decimals:0};
+  const bound=[];
   server.on('connection',client=>{clients.add(client);client.on('error',()=>{});client.serverHandshake({serverVersion:'8.0.0-fixture',connectionId:1,characterSet:45,statusFlags:2,capabilityFlags:0x00088209,authCallback:(_,done)=>{done(null);queueMicrotask(()=>client._resetSequenceId());}});
     client.on('query',sql=>{client._sequenceId=1;assert.equal(client.clientHelloReply.clientFlags & 128,0,'local infile capability disabled');client.writeColumns([{catalog:'def',schema:'app',table:'',orgTable:'',name:'name',orgName:'name',characterSet:45,columnLength:128,columnType:253,flags:0,decimals:0}]);client.writeTextRow([sql.includes('DATABASES')?'app':'1']);client.writeEof();client._resetSequenceId();});
     client.on('quit',()=>client.close());
+    client.on('stmt_prepare',sql=>{
+      assert.match(sql,/information_schema/);assert.ok(sql.includes('?'));assert.equal(sql.includes('injected'),false);
+      const count=(sql.match(/\?/g)||[]).length,buffer=Buffer.alloc(16);buffer[4]=0;buffer.writeUInt32LE(1,5);buffer.writeUInt16LE(1,9);buffer.writeUInt16LE(count,11);
+      client._sequenceId=1;client.writePacket(new Packet(0,buffer,0,buffer.length));
+      for(let i=0;i<count;i++)client.writePacket(Packets.ColumnDefinition.toPacket(column,client.serverConfig.encoding));client.writeEof();
+      client.writePacket(Packets.ColumnDefinition.toPacket(column,client.serverConfig.encoding));client.writeEof();client._resetSequenceId();
+    });
+    client.on('stmt_execute',(_id,_flags,_count,values)=>{bound.push(values);client._sequenceId=1;client.writeColumns([column]);client.writeBinaryRow(['1']);client.writeEof();client._resetSequenceId();});
   });
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(async()=>{for(const c of clients)c.destroy();await new Promise(resolve=>server.close(resolve));});
   const config={type:'mysql',host:'127.0.0.1',port:server._server.address().port,user:'fixture',database:'app',tls:false,timeout:2000};
@@ -51,6 +62,7 @@ test('MySQL wire connects and browses through the upstream-derived adapter',{tim
   assert.deepEqual((await run(config,'TEST_ONLY_PASSWORD','databases')).rows,[['app']]);
   assert.deepEqual((await run(config,'TEST_ONLY_PASSWORD','tables',{schema:'app'})).rows,[['1']]);
   assert.deepEqual((await run(config,'TEST_ONLY_PASSWORD','columns',{schema:'app',table:'t'})).rows,[['1']]);
+  await run(config,'TEST_ONLY_PASSWORD','columns',{schema:'app',table:"injected'\\; DROP TABLE t; --"});assert.equal(bound.at(-1)[1],"injected'\\; DROP TABLE t; --");
   assert.deepEqual((await run(config,'TEST_ONLY_PASSWORD','query',{sql:'SELECT 1',confirmed:true})).rows,[['1']]);
 });
 test('PostgreSQL verified TLS encrypts authentication and rejects an untrusted certificate',{timeout:15000},async t=>{
