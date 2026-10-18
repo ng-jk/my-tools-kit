@@ -68,7 +68,13 @@ test('MySQL wire connects and browses through the upstream-derived adapter',{tim
   const column={catalog:'def',schema:'app',table:'',orgTable:'',name:'name',orgName:'name',characterSet:45,columnLength:128,columnType:253,flags:0,decimals:0};
   const bound=[];
   server.on('connection',client=>{clients.add(client);client.on('error',()=>{});client.serverHandshake({serverVersion:'8.0.0-fixture',connectionId:1,characterSet:45,statusFlags:2,capabilityFlags:0x00088209,authCallback:(_,done)=>{done(null);queueMicrotask(()=>client._resetSequenceId());}});
-    client.on('query',sql=>{client._sequenceId=1;assert.equal(client.clientHelloReply.clientFlags & 128,0,'local infile capability disabled');client.writeColumns([{catalog:'def',schema:'app',table:'',orgTable:'',name:'name',orgName:'name',characterSet:45,columnLength:128,columnType:253,flags:0,decimals:0}]);client.writeTextRow([sql.includes('DATABASES')?'app':'1']);client.writeEof();client._resetSequenceId();});
+    client.on('query',sql=>{client._sequenceId=1;assert.equal(client.clientHelloReply.clientFlags & 128,0,'local infile capability disabled');
+      if(sql==='CALL fixture()'){
+        client.writeColumns([{...column,name:'left'}]);client.writeTextRow(['1']);client.writeEof(0,10);
+        client.writeColumns([{...column,name:'right'}]);client.writeTextRow(['2']);client.writeEof(0,10);
+        client.writeOk({affectedRows:7,serverStatus:2});client._resetSequenceId();return;
+      }
+      client.writeColumns([column]);client.writeTextRow([sql.includes('DATABASES')?'app':'1']);client.writeEof();client._resetSequenceId();});
     client.on('quit',()=>client.close());
     client.on('stmt_prepare',sql=>{
       assert.match(sql,/information_schema/);assert.ok(sql.includes('?'));assert.equal(sql.includes('injected'),false);
@@ -87,6 +93,7 @@ test('MySQL wire connects and browses through the upstream-derived adapter',{tim
   assert.deepEqual((await run(config,'TEST_ONLY_PASSWORD','columns',{schema:'app',table:'t'})).rows,[['1']]);
   await run(config,'TEST_ONLY_PASSWORD','columns',{schema:'app',table:"injected'\\; DROP TABLE t; --"});assert.equal(bound.at(-1)[1],"injected'\\; DROP TABLE t; --");
   assert.deepEqual((await run(config,'TEST_ONLY_PASSWORD','query',{sql:'SELECT 1',confirmed:true})).rows,[['1']]);
+  const procedure=await run(config,'TEST_ONLY_PASSWORD','query',{sql:'CALL fixture()',confirmed:true});assert.deepEqual(procedure.results.map(r=>r.columns),[['left'],['right'],[]]);assert.deepEqual(procedure.results.map(r=>r.rows),[[['1']],[['2']],[]]);assert.equal(procedure.results[2].affectedRows,7);assert.equal(procedure.affectedRows,7);
 });
 test('PostgreSQL verified TLS encrypts authentication and rejects an untrusted certificate',{timeout:15000},async t=>{
   const fixture=name=>fs.readFileSync(path.join(__dirname,'fixtures/ftps',name));

@@ -71,9 +71,12 @@ async function execute(config,password,text,values=[]) {
         }
         client.on('error',error=>finish(error));
         const query=values.length?client.execute({sql:text,values,timeout:config.timeout}):client.query({sql:text,timeout:config.timeout});
+        let mysqlIndex=-1;
         const group=index=>{if(!mysqlSets.has(index))mysqlSets.set(index,{columns:[],rows:[],affectedRows:0});return mysqlSets.get(index);};
-        query.on('fields',(fields,index=0)=>{const names=(fields||[]).map(f=>f.name);group(index).columns=names;if(!columns.length)columns.push(...names);});
-        query.on('result',(value,index=0)=>{const set=group(index);if(Array.isArray(value))row(value,undefined,set.rows);else set.affectedRows=value.affectedRows||0;});
+        // Every result set (including an OK completion header) emits fields;
+        // only row events carry an index in mysql2. Count field boundaries.
+        query.on('fields',fields=>{mysqlIndex++;const names=(fields||[]).map(f=>f.name);group(mysqlIndex).columns=names;if(!columns.length)columns.push(...names);});
+        query.on('result',(value,index)=>{const set=group(index??mysqlIndex);if(Array.isArray(value))row(value,undefined,set.rows);else set.affectedRows=value.affectedRows||0;});
         query.on('error',error=>finish(error));query.on('end',()=>{const sets=[...mysqlSets.values()];completedResult=sets.length===1?{...sets[0],truncated}:{columns:[],rows:[],affectedRows:sets.reduce((n,r)=>n+r.affectedRows,0),truncated,results:sets};finish();});
       }
     }catch(error){finish(error);}

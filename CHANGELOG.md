@@ -1,5 +1,11 @@
 # Release notes
 
+## 0.6.2 — 2026-10-18
+
+- Correct MySQL stored-procedure result boundaries so each result keeps its own columns and rows, including the final affected-row header. Add a real MySQL multi-result wire regression.
+- Include the complete remote MySQL/MariaDB and PostgreSQL integration documented below, with all required release reviews repeated for this patch.
+
+
 ## 0.6.1 — 2026-10-18
 
 Version 0.6.0 did not reach verified publication. Version 0.6.1 uses supported Marketplace categories and database search keywords.
