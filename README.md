@@ -254,7 +254,7 @@ The toolkit bundles a maintained adaptation of the MIT Database Client connectio
 2. Enter a name, engine, hostname/IP, port, username and initial database. For PostgreSQL, use `postgres` if you need to discover other databases.
 3. Choose **Verified TLS**, and optionally enter a private CA certificate file path. Certificate and hostname/IP verification are required. Plaintext is available for trusted private networks only and requires an explicit warning confirmation each time.
 4. Enter the password in the masked prompt. **Test and save** completes automatically after the connection succeeds. Passwords stay in VS Code SecretStorage; connection metadata stays in VS Code global state. Neither is written into the workspace or Git.
-5. Invalid connection fields show inline validation so you can correct them without losing the earlier inputs. On connection-test failure, use **Retry** or **Edit connection**. Cancel at any prompt to leave the connection unsaved. Editing requires re-entering the password.
+5. Invalid connection fields show inline validation so you can correct them without losing the earlier inputs. On connection-test failure, use **Retry** or **Edit connection**. Cancel at any prompt to leave the connection unsaved. Editing requires re-entering the password. Edits rotate the credential identity; commands awaiting confirmation for the old connection are cancelled and must select it again.
 
 ### Browse and execute SQL
 

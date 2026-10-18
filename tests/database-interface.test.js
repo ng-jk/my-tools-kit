@@ -21,6 +21,14 @@ test('database UI saves credentials only in secrets and cancels SQL before execu
     assert.ok(validations.find(o=>o.prompt==='Database username').validateInput(''));
     confirm=undefined;const before=calls.filter(c=>c[2]==='query').length;await commands.get('devkit.database.query')();assert.equal(calls.filter(c=>c[2]==='query').length,before);
     confirm='Execute SQL';await commands.get('devkit.database.query')();assert.equal(calls.at(-1)[2],'query');assert.equal(calls.at(-1)[3].confirmed,true);assert.equal(calls.at(-1)[1],'TEST_ONLY_DB_PASSWORD');
+    const oldId=[...passwords.keys()][0],savedWarning=v.window.showWarningMessage;let edited=false;
+    const queryCount=calls.filter(c=>c[2]==='query').length;
+    v.window.showWarningMessage=async message=>{
+      if(!edited&&message.startsWith('Execute SQL on')){edited=true;inputs.push('Edited connection','new.example.test','5432','reader','app','','TEST_ONLY_REPLACEMENT_PASSWORD');await commands.get('devkit.database.edit')();}
+      return 'Execute SQL';
+    };
+    await commands.get('devkit.database.query')();assert.equal(edited,true);assert.equal(calls.filter(c=>c[2]==='query').length,queryCount,'stale confirmation cannot connect with replacement credentials');assert.match(errors.at(-1),/connection changed/);assert.equal(passwords.has(oldId),false);assert.equal(passwords.size,1);
+    v.window.showWarningMessage=savedWarning;
     const oldInput=v.window.showInputBox,oldWarning=v.window.showWarningMessage,oldPick=v.window.showQuickPick;
     const extraInput=['%last%','known_table'],choices=['Filter list','Enter exact name'];
     responses=[{rows:[['first']],truncated:true},{rows:[['last_database']],truncated:false},{rows:[['public']],truncated:false},{rows:[],truncated:false},{columns:['value'],rows:[[1]],truncated:false},{rows:[['table']],truncated:false}];

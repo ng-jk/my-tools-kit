@@ -4,6 +4,7 @@
 
 - Integrate the MIT Database Client MySQL/MariaDB and PostgreSQL connection/dialect source into shared data/logic layers.
 - Add Database sidebar/menu commands for independent remote connections, connection tests, database/schema/table/view/column browsing, row previews and SQL editor execution.
+- Rotate database credential identities on edit and reject stale pending selections, preventing new passwords from being sent to a captured old server.
 - Prevent PostgreSQL from using unrelated ambient credentials/password files; require re-entry when a UI secret is missing.
 - Store UI passwords only in VS Code SecretStorage; resolve CLI passwords through a named environment variable. Require verified TLS by default and explicit plaintext/SQL execution confirmation.
 - Preserve separate statement result sets and wait for SQL completion after row truncation; propagate later errors and report uncertain outcomes on connection failure.

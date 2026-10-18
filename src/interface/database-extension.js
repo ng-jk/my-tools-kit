@@ -9,10 +9,13 @@ function activateDatabase(vscode,context) {
   async function pick(){return vscode.window.showQuickPick(profiles().map(p=>({label:p.name,description:`${p.config.type} ${p.config.host}:${p.config.port} / ${p.config.database||'(choose database)'}`,profile:p})),{title:'Database — choose a connection',placeHolder:'Add Connection from the Database menu if none are saved'}).then(p=>p?.profile);}
   async function invoke(p,action,args={},config=p.config) {
     trust();
+    const current=()=>{if(!profiles().some(value=>value.id===p.id))throw new Error('Database connection changed or was removed. Choose the connection again.');};
+    current();
     if(config.tls===false && await vscode.window.showWarningMessage(`Connect to ${config.host}:${config.port} without TLS? Credentials and data can be read on the network.`,{modal:true},'Connect without TLS')!=='Connect without TLS')return;
     const password=await context.secrets.get(secret(p.id));
     if(password===undefined)throw new Error('The stored database password is missing. Use Database: Edit Connection to re-enter it; no connection was attempted.');
-    return vscode.window.withProgress({location:vscode.ProgressLocation.Notification,title:`Database: ${action} — ${p.name} (${config.host}/${config.database||'server'})`,cancellable:false},()=>run(config,password,action,args));
+    current();
+    return vscode.window.withProgress({location:vscode.ProgressLocation.Notification,title:`Database: ${action} — ${p.name} (${config.host}/${config.database||'server'})`,cancellable:false},()=>{trust();current();return run(config,password,action,args);});
   }
   async function result(value,title){if(!value)return;const doc=await vscode.workspace.openTextDocument({language:'json',content:JSON.stringify(value,null,2)});await vscode.window.showTextDocument(doc,{preview:false});if(value.truncated)await vscode.window.showWarningMessage(`${title}: result truncated at the row or 8 MiB limit. Refine SQL with WHERE/LIMIT; terminal configurations also support maxRows up to 5000.`);}
   async function add(existing) {
@@ -30,13 +33,16 @@ function activateDatabase(vscode,context) {
     let caPath='';if(security.startsWith('Verified')){caPath=await input('CA certificate file path (empty uses system trusted roots)',current.caPath,false,text);if(caPath===undefined)return;}
     const password=await input('Database password (stored only in VS Code SecretStorage; re-enter when editing)','',true);if(password===undefined)return;
     const config=connection({type,host,port,user,database,tls:security.startsWith('Verified'),caPath});
-    const p={id:existing?.id||crypto.randomUUID(),name:name.trim(),config};
+    // New immutable credential identity on edit: pending commands must never
+    // combine a captured old host with replacement credentials.
+    const p={id:crypto.randomUUID(),name:name.trim(),config};
     for(;;){
       try {
         trust();
         if(config.tls===false&&await vscode.window.showWarningMessage(`Test ${host}:${port} without TLS? This sends credentials and data without transport encryption.`,{modal:true},'Test without TLS')!=='Test without TLS')return;
         await vscode.window.withProgress({location:vscode.ProgressLocation.Notification,title:'Testing database connection',cancellable:false},()=>run(config,password,'test'));
-        trust();await context.secrets.store(secret(p.id),password);await save([...profiles().filter(x=>x.id!==p.id),p]);
+        trust();await context.secrets.store(secret(p.id),password);await save([...profiles().filter(x=>x.id!==p.id&&x.id!==existing?.id),p]);
+        if(existing)try{await context.secrets.delete(secret(existing.id));}catch{await vscode.window.showWarningMessage('Connection saved, but the previous unused password could not be removed from SecretStorage.');}
         await vscode.window.showInformationMessage('Database connection tested and saved: '+p.name);return;
       }catch(error){const choice=await vscode.window.showErrorMessage(error.message,'Retry','Edit connection');if(choice==='Retry')continue;if(choice==='Edit connection')return add({...p});return;}
     }
