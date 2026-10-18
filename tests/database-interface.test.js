@@ -31,6 +31,7 @@ test('database UI saves credentials only in secrets and cancels SQL before execu
     assert.ok(calls.some(c=>c[2]==='preview'&&c[3].table==='known_table'),'empty metadata supports exact-name browsing');
     v.window.showInputBox=oldInput;v.window.showWarningMessage=oldWarning;v.window.showQuickPick=oldPick;
     cancelInput=true;await commands.get('devkit.database.add')();assert.equal(passwords.size,1);
+    const credential=[...passwords][0];passwords.clear();const beforeMissing=calls.length;await commands.get('devkit.database.test')();assert.equal(calls.length,beforeMissing);assert.match(errors.at(-1),/password is missing/);passwords.set(...credential);
     trusted=false;const count=calls.length;await commands.get('devkit.database.test')();assert.equal(calls.length,count);assert.match(errors.at(-1),/Trust/);
     trusted=true;confirm='Remove connection';await commands.get('devkit.database.remove')();assert.equal(passwords.size,0);assert.deepEqual([...stored.values()][0],[]);
   } finally {Module._load=original;}

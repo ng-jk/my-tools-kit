@@ -11,6 +11,7 @@ function activateDatabase(vscode,context) {
     trust();
     if(config.tls===false && await vscode.window.showWarningMessage(`Connect to ${config.host}:${config.port} without TLS? Credentials and data can be read on the network.`,{modal:true},'Connect without TLS')!=='Connect without TLS')return;
     const password=await context.secrets.get(secret(p.id));
+    if(password===undefined)throw new Error('The stored database password is missing. Use Database: Edit Connection to re-enter it; no connection was attempted.');
     return vscode.window.withProgress({location:vscode.ProgressLocation.Notification,title:`Database: ${action} — ${p.name} (${config.host}/${config.database||'server'})`,cancellable:false},()=>run(config,password,action,args));
   }
   async function result(value,title){if(!value)return;const doc=await vscode.workspace.openTextDocument({language:'json',content:JSON.stringify(value,null,2)});await vscode.window.showTextDocument(doc,{preview:false});if(value.truncated)await vscode.window.showWarningMessage(`${title}: result truncated at the row or 8 MiB limit. Refine SQL with WHERE/LIMIT; terminal configurations also support maxRows up to 5000.`);}

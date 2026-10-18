@@ -294,7 +294,7 @@ Create `connection.local.json` with no password value:
 }
 ```
 
-Set `APP_DB_PASSWORD` using your local environment/secret manager. The toolkit never prints it. Use `caPath` for a private CA certificate. For MySQL/MariaDB, use type `mysql`/`mariadb`, port `3306` and your database name.
+Set `APP_DB_PASSWORD` using your local environment/secret manager. The toolkit never prints it. PostgreSQL does not fall back to `PGPASSWORD`, `.pgpass` or ambient database/SSL settings; an omitted CLI password reference means an explicitly empty password. Missing UI SecretStorage entries require re-entering the password before any connection. Use `caPath` for a private CA certificate. For MySQL/MariaDB, use type `mysql`/`mariadb`, port `3306` and your database name.
 
 ```sh
 node cli.js database test --config connection.local.json

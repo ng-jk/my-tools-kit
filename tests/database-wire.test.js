@@ -53,6 +53,14 @@ test('PostgreSQL wire and CLI connect, browse, execute, limit and redact failure
   const denied=await cli(args,{DEVKIT_DB_FIXTURE_PASSWORD:'TEST_ONLY_PASSWORD'});assert.equal(denied.code,1);assert.match(denied.err,/confirmation/);
   const success=await cli([...args,'--yes'],{DEVKIT_DB_FIXTURE_PASSWORD:'TEST_ONLY_PASSWORD'});assert.equal(success.code,0,success.err);assert.deepEqual(JSON.parse(success.out).rows,[['1']]);
   assert.ok(auth.every(p=>p==='TEST_ONLY_PASSWORD'));assert.ok(queries.includes('SELECT 1'));
+  const previous={PGPASSWORD:process.env.PGPASSWORD,PGPASSFILE:process.env.PGPASSFILE,PGSSLMODE:process.env.PGSSLMODE};
+  const passfile=path.join(dir,'fixture.pgpass');fs.writeFileSync(passfile,'*:*:*:*:TEST_ONLY_UNRELATED_FILE_PASSWORD\n',{mode:0o600});
+  try {
+    process.env.PGPASSWORD='TEST_ONLY_UNRELATED_ENV_PASSWORD';process.env.PGPASSFILE=passfile;process.env.PGSSLMODE='require';
+    const before=auth.length;
+    await run(config,'','test');await run(config,undefined,'test');
+    assert.deepEqual(auth.slice(before),['',''],'empty/missing credentials never fall back to ambient PostgreSQL secrets or transport settings');
+  } finally {for(const [key,value]of Object.entries(previous))if(value===undefined)delete process.env[key];else process.env[key]=value;}
 });
 test('MySQL wire connects and browses through the upstream-derived adapter',{timeout:15000},async t=>{
   const mysql=require('mysql2'),server=mysql.createServer(),clients=new Set();

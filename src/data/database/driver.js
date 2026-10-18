@@ -38,8 +38,9 @@ async function execute(config,password,text,values=[]) {
     try {
       if(config.type==='postgres') {
         const pg=require('pg');
-        client=new pg.Client({host:config.host,port:config.port,user:config.user,password,database:config.database,
-          ssl,connectionTimeoutMillis:config.timeout,statement_timeout:config.timeout});
+        client=new pg.Client({host:config.host,port:config.port,user:config.user,password:()=>password??'',database:config.database||config.user,
+          ssl:ssl||false,sslnegotiation:'postgres',application_name:'Development Tools Kit',client_encoding:'UTF8',options:' ',
+          connectionTimeoutMillis:config.timeout,statement_timeout:config.timeout});
         client.on('error',error=>finish(error));
         client.connect().then(()=>{
           if(done)return;
