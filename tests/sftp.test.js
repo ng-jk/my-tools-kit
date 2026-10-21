@@ -613,7 +613,10 @@ test('SSH final jump destination receives default port without mutating configur
 
 test('incomplete FTP listing semantics cannot delete omitted local dotfiles',async t=>{
   const {local,session}=fixture(t,{syncOption:{delete:true}});fs.writeFileSync(path.join(local,'.htaccess'),'keep');
-  const ftp=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({list:(_,cb)=>cb(null,[]),_send:(command,cb)=>cb(null,'type=dir;unix.mode=0755; '+command.slice(5))})}});
+  const ftp=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({list:(_,cb)=>cb(null,[])})}});
+  // This test starts from a known real directory; unknown-type traversal is
+  // tested separately. Its subject is the incomplete-list deletion guard.
+  ftp.lstat=async()=>({type:engine.FileType.Directory,mode:0o755,size:0,mtime:0,atime:0});
   session.service.getRemoteFileSystem=async()=>ftp;
   await assert.rejects(engine.operate(session,'sync-down','.',{yes:true}),/complete source directory listing/);
   assert.equal(fs.readFileSync(path.join(local,'.htaccess'),'utf8'),'keep');
