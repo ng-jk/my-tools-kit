@@ -1044,3 +1044,17 @@ test('FTP omitted originals are read directly and unreadable ambiguity stops rep
  fs.writeFileSync(path.join(local,'.htaccess'),'must not replace');await assert.rejects(engine.operate(session,'upload','.htaccess'),/FTP could not read the exact destination/);
  assert.equal(fs.readFileSync(destination,'utf8'),'replacement');
 });
+
+test('backup Git ignores never omit overwritten originals from verified history',async t=>{
+ const {local,remote,session}=fixture(t,{ignore:[]}),git=require('isomorphic-git');
+ const backup=engine.defaultBackupPath(session.service.workspace,session.service.baseDir,session.config,session.service.profile);
+ t.after(()=>fs.rmSync(backup,{recursive:true,force:true}));
+ fs.writeFileSync(path.join(local,'.gitignore'),'ignored.txt');fs.writeFileSync(path.join(remote,'.gitignore'),'ignored.txt');
+ await engine.operate(session,'upload','.gitignore');
+ for(const original of ['A','B']){
+   fs.writeFileSync(path.join(remote,'ignored.txt'),original);fs.writeFileSync(path.join(local,'ignored.txt'),'replacement '+original);
+   await engine.operate(session,'upload','ignored.txt');
+   const oid=await git.resolveRef({fs,dir:backup,ref:'HEAD'});assert.equal(Buffer.from((await git.readBlob({fs,dir:backup,oid,filepath:'ignored.txt'})).blob).toString(),original);
+ }
+ const commits=await git.log({fs,dir:backup});assert.equal(Buffer.from((await git.readBlob({fs,dir:backup,oid:commits[1].oid,filepath:'ignored.txt'})).blob).toString(),'A');
+});

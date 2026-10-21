@@ -60,9 +60,11 @@ export default class MirrorService {
     for(const file of touched) await this.repository.add(file);
     for(const [file,target] of links)await this.repository.stageLink(file,target);
     const matrix=await this.repository.status(touched);
-    if(!links.size&&!matrix.some(([,head,work,stage])=>head!==1||work!==1||stage!==1)) return;
-    const oid=await this.repository.commit(option.message||`before upload ${new Date().toISOString()}`,{name:'vscode-sftp mirror',email:'sftp@localhost'});
-    logger.info(`mirror: committed ${touched.size+links.size} file(s) (${oid.slice(0,7)})`);
+    if(links.size||matrix.some(([,head,work,stage])=>head!==1||work!==1||stage!==1)){
+      const oid=await this.repository.commit(option.message||`before upload ${new Date().toISOString()}`,{name:'vscode-sftp mirror',email:'sftp@localhost'});
+      logger.info(`mirror: committed ${touched.size+links.size} file(s) (${oid.slice(0,7)})`);
+    }
+    await this.repository.verify(touched,links);
   }
 }
 const instances=new Map<string,MirrorService>();

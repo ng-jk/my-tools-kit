@@ -51,7 +51,20 @@ export class MirrorRepository {
     const oid=await git.writeBlob({fs,dir:this.root,blob:Buffer.from(target,'utf8')});
     await git.updateIndex({fs,dir:this.root,filepath,oid,mode:0o120000,add:true});
   }
-  add(filepath: string) { return git.add({fs,dir:this.root,filepath}); }
+  add(filepath: string) { return git.add({fs,dir:this.root,filepath,force:true}); }
+  async verify(files:Set<string>,links:Map<string,string>) {
+    const oid=await git.resolveRef({fs,dir:this.root,ref:'HEAD'});
+    for(const file of [...files,...links.keys()]){
+      const expected=links.has(file)?Buffer.from(links.get(file)!,'utf8'):await fse.readFile(path.join(this.root,file));
+      const saved=await git.readBlob({fs,dir:this.root,oid,filepath:file});
+      if(!Buffer.from(saved.blob).equals(expected))throw new Error('Backup commit verification failed: '+file);
+      if(links.has(file)){
+        const parent=path.posix.dirname(file);
+        const tree=await git.readTree({fs,dir:this.root,oid,...(parent==='.'?{}:{filepath:parent})});
+        if(tree.tree.find(entry=>entry.path===path.posix.basename(file))?.mode!=='120000')throw new Error('Backup link mode verification failed: '+file);
+      }
+    }
+  }
   status(files: Set<string>) { return git.statusMatrix({fs,dir:this.root,filter:file=>files.has(file)}); }
   commit(message: string, author: {name:string;email:string}) { return git.commit({fs,dir:this.root,message,author}); }
 }
