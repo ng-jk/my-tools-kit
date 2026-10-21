@@ -92,7 +92,7 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
           reply('150 Listing');let names=[...files.keys(),...directories];const target=arg.replace(/^-al\s*/, '');if(!arg.startsWith('-al '))names=names.filter(name=>!path.posix.basename(name).startsWith('.'));names=names.filter(name=>path.posix.dirname(name)===(target||'/'));
           const listing=names.map(name=>(directories.has(name)?'d':linkTargets.has(name)?'l':'-')+rights(modes.get(name)||0o644)+' 1 user group '+(files.get(name)?.length||0)+' Jan 01 2026 '+path.posix.basename(name)+(linkTargets.has(name)?' -> '+linkTargets.get(name):'')+'\r\n').join('');dataSocket.end(listing,()=>reply('226 Done'));
         }else if(cmd==='MKD'){
-          if(files.has(arg)||directories.has(arg))reply('550 Already exists');else{directories.add(arg);modes.set(arg,0o755);reply('257 Directory created');}
+          if(Buffer.byteLength(path.posix.basename(arg))>255)reply('550 Filename too long');else if(files.has(arg)||directories.has(arg))reply('550 Already exists');else{directories.add(arg);modes.set(arg,0o755);reply('257 Directory created');}
         }else if(cmd==='RMD'){
           if([...files.keys(),...directories].some(name=>name!==arg&&name.startsWith(arg+'/')))reply('550 Not empty');else{directories.delete(arg);modes.delete(arg);reply('250 Removed');}
         }else if(cmd==='SIZE')reply(files.has(arg)?'213 '+files.get(arg).length:'550 Missing');
@@ -138,6 +138,9 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
   assert.equal(commands.includes('APPE'),false);assert.equal(commands.includes('REST'),false);assert.ok(payloadParents.length>0&&payloadParents.every(mode=>mode===0o700));assert.equal(directories.size,0,'private directories are removed after success and failure');
   const list=await engine.operate(session,'list');assert.ok(list.some(item=>item.name==='local.txt'));
   const remoteFs=await session.service.getRemoteFileSystem(session.config);
+  const longTarget='/'+ 'a'.repeat(204)+'.devkit-00000000-0000-4000-8000-000000000000';
+  await remoteFs.put(require('node:stream').Readable.from(['long filename payload']),longTarget,{mode:0o600});
+  assert.equal(files.get(longTarget).toString(),'long filename payload');assert.equal(modes.get(longTarget),0o600);assert.equal(directories.size,0);
   for(const relative of ['.','./']) assert.equal((await remoteFs.lstat(relative)).type,engine.FileType.Directory);
   await assert.rejects(remoteFs.rename('/local.txt\r\nDELE /local.txt\r\nNOOP','/renamed.txt'),/prohibited control/);
   assert.equal(files.get('/local.txt').toString(),'ftp payload');

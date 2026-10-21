@@ -197,7 +197,8 @@ export default class FTPFileSystem extends RemoteFileSystem {
       if(input.destroyed&&!input.readableEnded)throw new Error('Source stream closed before transfer completed');
     };
     input.on('error',remember);
-    const directory=path+'.devkit-'+randomUUID()+'.upload',payload=this.pathResolver.join(directory,'payload');
+    const directory=this.pathResolver.join(this.pathResolver.dirname(path),'.devkit-'+randomUUID()+'.upload');
+    const payload=this.pathResolver.join(directory,'payload');
     let created=false;
     try {
       checkSource();
