@@ -146,6 +146,8 @@ Invalid input is retained with an error. Formatting preserves large numbers, key
 2. Paste text into **Original** and **Modified**, or use each side’s **Paste / Load file** buttons. Use **Swap** if the sides are reversed.
 3. Optionally normalize JSON/line endings or ignore case/outer whitespace.
 4. Click **Compare texts** or press **Ctrl/Cmd+Enter**. VS Code opens a native diff editor with immutable snapshots.
+
+**Clear both** retains a recovery snapshot. **Undo clear** restores both texts and file labels. If you edited either input after clearing, **Undo restore** lets you switch back to those later edits. Recovery remains available while this panel stays open.
 5. Use the diff editor’s next/previous change arrows, search and inline/side-by-side controls. Return to the tools tab to change inputs and compare again.
 
 For files, run **Compare Two Files** and pick both files, or select two files in Explorer and use its comparison command. To compare a selected editor passage with your clipboard, right-click and choose **Compare Editor or Selection with Clipboard**. Source files stay unchanged. Pasted text is session-local and is not restored after restarting VS Code.

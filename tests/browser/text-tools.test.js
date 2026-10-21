@@ -65,6 +65,14 @@ test('text/JSON/Git workspace drives the real extension handler with local-only 
     await page.locator('#swap').click(); assert.equal(await page.locator('#left').inputValue(), long + 'changed');
     await page.locator('#wrap').uncheck(); assert.equal(await page.locator('#left').evaluate(el => getComputedStyle(el).whiteSpace), 'pre');
     clipboard = 'clipboard text'; await page.locator('[data-paste="right"]').click(); await expect(page.locator('#right')).toHaveValue('clipboard text');
+    const beforeClear=await page.locator('#left').inputValue(),leftLabel=await page.locator('#left-name').textContent(),rightLabel=await page.locator('#right-name').textContent();
+    await page.locator('#clear').click();await expect(page.locator('#left')).toHaveValue('');await expect(page.locator('#right')).toHaveValue('');
+    await page.locator('#clear').click(); // Repeated empty clears must keep recovery.
+    await page.locator('#right').fill('new edits after clear');
+    await page.locator('#clear-undo').click();await expect(page.locator('#left')).toHaveValue(beforeClear);await expect(page.locator('#right')).toHaveValue('clipboard text');
+    await expect(page.locator('#left-name')).toHaveText(leftLabel);await expect(page.locator('#right-name')).toHaveText(rightLabel);
+    await page.locator('#clear-undo').click();await expect(page.locator('#right')).toHaveValue('new edits after clear');
+    await page.locator('#clear-undo').click();await expect(page.locator('#left')).toHaveValue(beforeClear);
     await page.locator('[data-tab="json"]').click();
     const raw = '{"id":900719925474099312345,"items":[true,null]}';
     await page.locator('#json-input').fill(raw); await page.locator('[data-format="format"]').click();

@@ -1,11 +1,14 @@
 'use strict';
 const api = acquireVsCodeApi(), $ = id => document.getElementById(id);
 let currentTab = 'compare', busy = false, undo = [], changedFiles = [], jsonBefore = '', repositorySelected=false, changesLoaded=false;
+let clearedInputs;
+const captureInputs=()=>['left','right'].map(side=>({side,text:$(side).value,name:$(side+'-name').textContent}));
 function notice(text, error = false) { $('status').textContent = text; $('status').classList.toggle('error', error); }
 function setBusy(value) {
   busy = value;
   for (const control of document.querySelectorAll('button,input,textarea,select')) control.disabled = value;
   $('json-undo').disabled = value || undo.length === 0;
+  $('clear-undo').disabled = value || !clearedInputs;
 }
 function send(message) { if (busy) return; setBusy(true); notice('Working…'); api.postMessage(message); }
 function tab(name) {
@@ -46,7 +49,17 @@ for (const side of ['left', 'right', 'json']) $(side === 'json' ? 'json-input' :
 $('compare-button').onclick = compare;
 $('files').onclick = () => send({ type: 'files' });
 $('swap').onclick = () => { const text = $('left').value, name = $('left-name').textContent; setText('left', $('right').value, $('right-name').textContent); setText('right', text, name); };
-$('clear').onclick = () => { setText('left', '', 'Left text'); setText('right', '', 'Right text'); notice('Both inputs cleared.'); };
+$('clear').onclick = () => {
+  if(!$('left').value&&!$('right').value){notice('Both inputs are already empty. Use Undo clear to recover the previous inputs.');return;}
+  clearedInputs=captureInputs();setText('left','','Left text');setText('right','','Right text');
+  $('clear-undo').disabled=false;$('clear-undo').textContent='Undo clear';notice('Both inputs cleared. Use Undo clear to restore both texts and file labels.');
+};
+$('clear-undo').onclick = () => {
+  if(!clearedInputs)return;
+  const previous=clearedInputs;clearedInputs=captureInputs();
+  previous.forEach(item=>setText(item.side,item.text,item.name));
+  $('clear-undo').textContent='Undo restore';notice('Previous inputs restored. Undo restore switches back without losing the replaced inputs.');
+};
 $('wrap').onchange = () => { for (const id of ['left', 'right']) { $(id).wrap = $('wrap').checked ? 'soft' : 'off'; $(id).classList.toggle('no-wrap', !$('wrap').checked); } };
 for (const button of document.querySelectorAll('[data-format]')) button.onclick = () => {
   jsonBefore = $('json-input').value;

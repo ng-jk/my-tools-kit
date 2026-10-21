@@ -2,6 +2,8 @@
 
 ## 0.6.3 — 2026-10-21
 
+- Add Undo clear for both comparison inputs and file labels; restoring preserves later edits in a reversible snapshot instead of discarding them.
+
 - Support profiles-only FTP/SFTP connection files without requiring host or credentials at the top level. Select the first profile by default when no base connection or explicit defaultProfile exists; use protocol-specific default ports when a profile switches protocol without a port.
 
 - Replace generic missing SFTP configuration messages with missing-file, invalid JSON/settings, inactive-context and workspace-path diagnostics. Distinguish DNS, connection, authentication, host-key and TLS failures without displaying credential values.
