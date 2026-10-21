@@ -3,6 +3,7 @@ import { Readable } from 'stream';
 import {stagingPath, replaceStaged} from './staged-replacement';
 import {beginLocalChange} from '../../../data/sftp/local-events';
 import {transferPermissions} from '../transfer-permissions';
+import {uploadMode} from '../diagnostics';
 import { FileSystem, FileType } from '../../../data/sftp/core/fs/index';
 import { Task } from './scheduler';
 import { logger } from '../../../data/sftp/ports';
@@ -125,7 +126,7 @@ export default class TransferTask implements Task {
     const srcFs = this._srcFs, targetFs = this._targetFs, target = this._targetFsPath;
     const {openSsh, fallbackMode, atime, mtime} = this._TransferOption;
     const {filePerm} = transferPermissions(this._TransferOption, this._transferDirection === TransferDirection.LOCAL_TO_REMOTE);
-    let mode = filePerm ? parseInt(String(filePerm), 8) : this._TransferOption.mode;
+    let mode = this._TransferOption.mode;
     const staged = stagingPath(target);
     let fd: any;
     let sourceError: Error | undefined;
@@ -139,6 +140,7 @@ export default class TransferTask implements Task {
         try { const stat = await targetFs.lstat(target); mode = stat.type === FileType.File ? stat.mode : fallbackMode; }
         catch (error) { if (error.code !== 'ENOENT' && error.code !== 2) throw error; mode = fallbackMode; }
       }
+      if(this._transferDirection===TransferDirection.LOCAL_TO_REMOTE) mode=uploadMode(mode,filePerm);
       if (sourceError) throw sourceError;
       if (this._cancelled) throw new Error('Transfer cancelled');
       fd = await targetFs.open(staged, 'wx', mode);

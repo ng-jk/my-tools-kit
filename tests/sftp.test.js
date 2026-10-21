@@ -6,6 +6,82 @@ const os = require('node:os');
 const path = require('node:path');
 const {spawnSync} = require('node:child_process');
 const engine = require('../build/sftp/engine');
+test('profiles-only connections independently resolve protocol, port, paths and credentials',t=>{
+  const workspace=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-profile-settings-'));t.after(()=>fs.rmSync(workspace,{recursive:true,force:true}));
+  const raw={name:'Profile fixture',protocol:'ftp',port:21,ignore:['vendor/**'],profiles:{
+    api_live:{host:'live.invalid',username:'live-user',password:'fixture-live',remotePath:'/backend'},
+    cms_live:{context:'web/dist',host:'cms.invalid',username:'cms-user',password:'fixture-cms',remotePath:'/cms'},
+    api_demo:{context:'api',host:'demo.invalid',username:'demo-user',password:'fixture-demo',remotePath:'/demo'},
+    api_log:{protocol:'sftp',port:22,context:'logs',host:'logs.invalid',username:'log-user',password:'fixture-log',remotePath:'/'}
+  }};
+  const first=engine.createSession(workspace,raw);t.after(()=>first.service.dispose());assert.equal(first.profile,'api_live');assert.equal(first.config.host,'live.invalid');
+  for(const [name,profile] of Object.entries(raw.profiles)) {
+    const session=engine.createSession(workspace,raw,name);t.after(()=>session.service.dispose());
+    for(const field of ['host','username','password','remotePath'])assert.equal(session.config[field],profile[field],name+': '+field);
+    assert.equal(session.config.protocol,profile.protocol||'ftp');assert.equal(session.config.port,profile.port||21);
+    assert.equal(session.service.baseDir,path.resolve(workspace,profile.context||'.'));
+    assert.equal(session.config.ignore(path.join(workspace,profile.context||'.','vendor','skip.php'),'local'),true);
+  }
+  const implicit=engine.createSession(workspace,{...raw,profiles:{ssh:{...raw.profiles.api_log,port:undefined}}},'ssh');t.after(()=>implicit.service.dispose());assert.equal(implicit.config.port,22);
+  assert.equal(raw.port,21);assert.equal(raw.profiles.api_live.password,'fixture-live');
+});
+test('configuration parse errors never echo credential-bearing JSON',async t=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-config-error-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
+  const file=path.join(dir,'sftp.json'),adapter=require('../src/data/sftp-config');
+  fs.writeFileSync(file,'{"password":"must-not-appear", invalid}');
+  const inspection=adapter.inspectConfiguration(file);assert.match(inspection.problem,/invalid JSON/);assert.equal(JSON.stringify(inspection).includes('must-not-appear'),false);
+  await assert.rejects(adapter.readConfiguration(file),error=>/invalid JSON/.test(error.message)&&!error.message.includes('must-not-appear'));
+  fs.unlinkSync(file);assert.match(adapter.inspectConfiguration(file).problem,/does not exist/);
+  await assert.rejects(adapter.readConfiguration(file),/does not exist/);
+});
+test('SFTP diagnostics classify connection failures without reflecting rejected credentials',async()=>{
+  const {connectionFailure,uploadMode,requireDiffFile}=require('../src/logic/sftp/diagnostics');
+  for(const [code,pattern] of [['ENOTFOUND',/Host name/],['ECONNREFUSED',/refused/],['ETIMEDOUT',/timed out/],[530,/username and password/],['ENOENT',/local SSH key/]]) {
+    const error=connectionFailure(Object.assign(new Error('private-password-value'),{code}),{protocol:'ftp',password:'private-password-value'});
+    assert.match(error.message,pattern);assert.equal(error.message.includes('private-password-value'),false);assert.equal(error.code,code);
+  }
+  for(const message of ['All configured authentication methods failed','Host key verification failed','TLS certificate failure'])assert.notEqual(connectionFailure(new Error(message),{}).message,message);
+  for(const [before,expected] of [[0o444,0o644],[0o400,0o600],[0o640,0o640],[0o755,0o755],[0o4755,0o755],[undefined,0o600]])assert.equal(uploadMode(before,undefined),expected);
+  assert.equal(uploadMode(0o600,444),0o444);assert.equal(uploadMode(0o600,'0640'),0o640);
+  for(const mode of [888,4755,'secret'])assert.throws(()=>uploadMode(0o600,mode),/Invalid filePerm/);
+  for(const side of ['local','remote'])await assert.rejects(requireDiffFile({lstat:async()=>{throw Object.assign(new Error('missing'),{code:2});}},'/file',side),side==='local'?/not found locally: \/file/:/not found on server: \/file/);
+});
+test('diff distinguishes local and server missing files using the shared engine',async t=>{
+  const {local,remote,session}=fixture(t);
+  await assert.rejects(engine.operate(session,'diff','missing.txt'),/file not found locally/);
+  fs.writeFileSync(path.join(local,'missing.txt'),'local');
+  await assert.rejects(engine.operate(session,'diff','missing.txt'),/file not found on server/);
+  fs.writeFileSync(path.join(remote,'missing.txt'),'remote');
+  assert.deepEqual(await engine.operate(session,'diff','missing.txt'),{local:'local',remote:'remote'});
+});
+test('uploads repair owner read-only default modes and remain editable on subsequent upload',async()=>{
+  const {Readable}=require('node:stream');
+  let destinationMode=0o444;const modes=[];
+  const source={get:async()=>Readable.from('updated')};
+  const target={lstat:async()=>({type:engine.FileType.File,mode:destinationMode}),open:async(_p,_f,mode)=>{modes.push(mode);return 1;},put:async()=>{},close:async()=>{},rename:async()=>{},unlink:async()=>{}};
+  for(let i=0;i<2;i++) {
+    const task=new engine.TransferTask({fsPath:'/source',fileSystem:source},{fsPath:'/target',fileSystem:target},{fileType:engine.FileType.File,transferDirection:engine.TransferDirection.LOCAL_TO_REMOTE,transferOption:{fallbackMode:0o400}});
+    await task.run();destinationMode=modes.at(-1);
+  }
+  assert.deepEqual(modes,[0o644,0o644]);
+});
+test('SCM upload group resolves Git state rather than nested repository paths', () => {
+  const {repositoryForGroup:resolve}=require('../src/logic/sftp/git-selection');
+  const change=file=>({uri:{fsPath:file}});
+  const parent={state:{workingTreeChanges:[change('/project/a'),change('/project/nested/b')],indexChanges:[]}};
+  const nested={state:{workingTreeChanges:[change('/project/nested/c')],indexChanges:[]}};
+  const group=(...files)=>({id:'workingTree',resourceStates:files.map(file=>({resourceUri:{fsPath:file}}))});
+  assert.equal(resolve([parent,nested],group('/project/a','/project/nested/b')),parent);
+  assert.equal(resolve([parent,nested],group('/project/nested/c')),nested);
+  assert.throws(()=>resolve([parent,nested],group('/project/a','/project/nested/c')),/different repositories/);
+  assert.throws(()=>resolve([parent],group('/stale')),/stale/);
+  assert.equal(resolve([parent],group()),undefined);
+  assert.throws(()=>resolve([parent],group(undefined)),/Cannot identify/);
+  assert.throws(()=>resolve([parent],{...group('/project/a'),id:'merge'}),/Unsupported/);
+  assert.throws(()=>resolve([parent,{state:parent.state}],group('/project/a')),/multiple repositories/);
+  const rename={state:{indexChanges:[{uri:{fsPath:'/old'},originalUri:{fsPath:'/old'},renameUri:{fsPath:'/new'}}]}};
+  assert.equal(resolve([rename],{...group('/new'),id:'index'}),rename);
+});
 function fixture(t, extra={}) {
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-sftp-'));
   t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));

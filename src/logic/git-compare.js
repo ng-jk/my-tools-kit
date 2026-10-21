@@ -3,10 +3,21 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { inside } = require('../data/files');
 const { git } = require('../data/git');
-const { readLocal } = require('../data/local-files');
+const { readLocal, repositoryFolders } = require('../data/local-files');
 const { MAX_TEXT, decodeText } = require('./text-tools');
 
-async function repository(directory) { return (await git(directory, ['rev-parse', '--show-toplevel'])).toString('utf8').trim(); }
+async function repository(directory) {
+  if(typeof directory!=='string'||!directory||directory.includes('\0'))throw new Error('Choose a project folder containing a Git working tree.');
+  const candidate=path.basename(directory)==='.git'?path.dirname(directory):directory;
+  return (await git(candidate, ['rev-parse', '--show-toplevel'])).toString('utf8').trim();
+}
+async function repositoryChoices(directory) {
+  try{return [await repository(directory)];}
+  catch(error){if(error.kind!=='not-repository')throw error;}
+  const children=await repositoryFolders(directory);
+  if(children.length)return children;
+  throw new Error(`No Git working tree was found in "${directory}" or its immediate project folders. Choose the project folder containing .git; a downloaded ZIP or FTP folder may not contain Git history. No repository was created or changed.`);
+}
 async function resolveRevision(root, revision) {
   if (typeof revision !== 'string' || !revision || revision.length > 512 || /[\0\r\n]/.test(revision)) throw new Error('Enter a commit, tag, or branch.');
   if (revision === 'WORKTREE' || revision === 'INDEX') return revision;
@@ -16,7 +27,13 @@ async function resolveRevision(root, revision) {
 }
 async function history(root) {
   // Check HEAD first: an empty repository has no history but remains a useful error state.
-  await resolveRevision(root, 'HEAD');
+  try {await resolveRevision(root, 'HEAD');}
+  catch(error){
+    // An unborn repository is valid, but has no commit history yet.
+    const refs=await git(root,['for-each-ref','--count=1','--format=%(objectname)']);
+    if(!refs.toString().trim())return [];
+    throw error;
+  }
   const parts = (await git(root, ['log', '-60', '--format=%H%x00%s%x00'])).toString('utf8').split('\0');
   const commits = [];
   for (let i = 0; i + 1 < parts.length; i += 2) commits.push({ sha: parts[i].trim(), subject: parts[i + 1] });
@@ -95,4 +112,4 @@ function compareBuffers(left, right) {
   }
   return { left: summary(left), right: summary(right), binary: true, identical };
 }
-module.exports = { repository, resolveRevision, history, changes, listFiles, readFile, parseChanges, compareBuffers };
+module.exports = { repository, repositoryChoices, resolveRevision, history, changes, listFiles, readFile, parseChanges, compareBuffers };

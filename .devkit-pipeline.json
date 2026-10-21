@@ -94,9 +94,15 @@
       [
         "node",
         "--test",
+        "--experimental-test-coverage",
+        "--test-coverage-functions=100",
+        "--test-coverage-include=src/data/git.js",
+        "--test-coverage-include=src/data/local-files.js",
+        "--test-coverage-include=src/logic/git-compare.js",
         "tests/cli.test.js",
         "tests/git-compare.test.js",
-        "tests/text-cli.test.js"
+        "tests/text-cli.test.js",
+        "tests/text-extension.test.js"
       ],
       [
         "{python}",
@@ -121,6 +127,11 @@
         "--test",
         "tests/database-wire.test.js",
         "tests/database-interface.test.js"
+      ],
+      [
+        "node",
+        "--test",
+        "tests/browser/text-tools.test.js"
       ]
     ],
     "build": [

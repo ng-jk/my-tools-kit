@@ -1,5 +1,13 @@
 # Development Tools Kit — user guide
 
+### Independent FTP/SFTP profiles
+
+Each entry in `profiles` can set its own `protocol`, `port`, `context` (local folder relative to the workspace), `remotePath`, `host`, `username` and `password`. Top-level options are shared defaults; profile values override them. A profile that switches protocol without specifying a port uses the new protocol's default (FTP 21, SFTP 22). Use **SFTP: Set Profile** to switch. Set `"defaultProfile": "api_live"` to choose the initial profile explicitly. When host/username exist only in profiles and no default is specified, the first profile is selected automatically. An omitted `context` uses the workspace root or the shared context. Keep real credential-bearing configuration files out of Git; `${env:VARIABLE_NAME}` can supply credential fields.
+
+SFTP troubleshooting: errors identify a missing configuration file, invalid JSON or fields, a file outside the active local context, DNS/port/network failure, or rejected authentication. For rejected authentication check the selected context's username, password or SSH key; servers often do not reveal which credential is wrong. Never include passwords in an error report. Diff reports whether the missing file is local or on the server.
+
+Uploads preserve destination permission bits by default and ensure owner-write access, including when the source or previous destination was read-only. Group/other access is unchanged, and special permission bits are not copied. Set `filePerm` explicitly (for example `640` or `644`) to override this policy; an explicit read-only mode such as `444` intentionally prevents editing. Server ownership, ACLs and directory access remain controlled by the server account.
+
 Open the **Development Tools Kit** toolbox icon in VS Code’s Activity Bar, then choose a tool. This guide shows how to configure and use each function.
 
 [Release notes](CHANGELOG.md) · [Report a problem](https://github.com/ng-jk/my-tools-kit/issues) · [Source code](https://github.com/ng-jk/my-tools-kit)
@@ -310,3 +318,9 @@ node cli.js database query --config connection.local.json --sql-file query.sql -
 For MySQL/MariaDB, `--schema` means the database name. Query execution requires `--yes` because arbitrary SQL may modify data. A configuration with `tls: false` additionally requires `--allow-plaintext`. CLI failures exit nonzero, including missing credentials and TLS/SQL errors. JSON results go to stdout; redirect them only when you intend to save database data. `node cli.js database --help` lists every terminal action. Row limits accept 1–5000 and timeouts 1000–120000 ms.
 
 The original copyright/license and precise upstream revision mapping are retained in `vendor/database-client/LICENSE` and `vendor/database-client/provenance.json`. The toolkit remains MIT-licensed; bundled runtime dependencies retain their own licenses in the packaged third-party license file.
+
+### Git repository selection and test scope
+
+Select a repository from VS Code Source Control or browse to its project folder. Subfolders and linked worktrees are supported. If you select a parent folder, the toolkit offers repositories in its immediate project folders (bounded to 200 direct folders; no recursive drive scan). A ZIP/FTP copy without `.git` cannot supply commit history. A valid empty repository remains selected and explains that a first commit is needed. Git ownership protections remain active.
+
+The project release tests include the repository-selection host bridge and rendered text/Git webview. The Git integration group enforces 100% function coverage for `src/data/git.js`, `src/data/local-files.js` and `src/logic/git-compare.js`. Use Node.js 24 for development/release coverage tests (validated with 24.20.0); the published extension runtime requirement is unchanged. This scoped coverage does not establish complete function or branch coverage for every toolkit module; imported TypeScript/bundled code requires separate coverage attribution.

@@ -59,3 +59,9 @@ test('comparison does not implicitly trust foreign-owned repositories',()=>{
     assert.equal(result.status,0,result.stdout+result.stderr);assert.match(result.stdout,/dubious ownership/);
   } finally {fs.rmSync(root,{recursive:true,force:true});}
 });
+
+test('binary comparisons report sizes, hashes and the first changed byte without text decoding',()=>{
+  const left=Buffer.from([0,1,2]),right=Buffer.from([0,1,3]);
+  const result=compare.compareBuffers(left,right);assert.equal(result.binary,true);assert.equal(result.identical,false);assert.match(result.left,/SHA-256|SHA256|sha256/i);assert.match(result.right,/offset|byte/i);
+  assert.equal(compare.compareBuffers(left,left).identical,true);
+});

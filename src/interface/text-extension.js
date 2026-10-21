@@ -39,16 +39,29 @@ function activateTextTools(vscode, context) {
   async function chooseRepository() {
     let selected;
     const folders = vscode.workspace.workspaceFolders || [];
-    if (folders.length) {
+    let repositories=[];
+    try {
+      const extension=vscode.extensions?.getExtension('vscode.git');
+      const exports=extension?(extension.isActive?extension.exports:await extension.activate()):undefined;
+      repositories=exports?.getAPI?.(1)?.repositories||[];
+    }catch{} // The CLI-based folder picker still works when VS Code Git is disabled.
+    if (folders.length||repositories.length) {
+      const roots=new Map();
+      repositories.forEach(repo=>roots.set(repo.rootUri.fsPath,{label:path.basename(repo.rootUri.fsPath),description:'Git repository — '+repo.rootUri.fsPath,uri:repo.rootUri}));
+      folders.forEach(folder=>{if(!roots.has(folder.uri.fsPath))roots.set(folder.uri.fsPath,{label:folder.name||path.basename(folder.uri.fsPath),description:'Workspace folder — '+folder.uri.fsPath,uri:folder.uri});});
       const choice = await vscode.window.showQuickPick([
-        ...folders.map(folder => ({ label: folder.name || path.basename(folder.uri.fsPath), description: folder.uri.fsPath, uri: folder.uri })),
+        ...roots.values(),
         { label: 'Browse for another repository…', browse: true }
       ], { title: 'Choose a Git repository' });
       if (!choice) return;
       selected = choice.uri;
       if (choice.browse) selected = (await vscode.window.showOpenDialog({ title: 'Choose a Git repository', canSelectFolders: true, canSelectFiles: false, canSelectMany: false }))?.[0];
     } else selected = (await vscode.window.showOpenDialog({ title: 'Choose a Git repository', canSelectFolders: true, canSelectFiles: false, canSelectMany: false }))?.[0];
-    if (selected) return git.repository(selected.fsPath);
+    if (selected) {
+      const choices=await git.repositoryChoices(selected.fsPath);
+      const candidate=choices.length===1?choices[0]:(await vscode.window.showQuickPick(choices.map(root=>({label:path.basename(root),description:root,root})),{title:'Choose a Git repository inside the selected folder'}))?.root;
+      if(candidate)return git.repository(candidate);
+    }
   }
   async function open(mode = 'compare') {
     const seedEditor = vscode.window.activeTextEditor;
@@ -108,7 +121,16 @@ function activateTextTools(vscode, context) {
         else if (message.type === 'repository') {
           if (!vscode.workspace.isTrusted) throw new Error('Trust the workspace before reading Git repositories.');
           const selected = await chooseRepository();
-          if (selected) { root = selected; changeSet = undefined; await post({ type: 'repository', root, commits: await git.history(root) }); }
+          if (selected) {
+            root = selected; changeSet = undefined;
+            // Publish the validated selection independently of history loading.
+            await post({ type: 'repository', root, commits: [], loading:true });
+            try {
+              const commits=await git.history(root);
+              await post({type:'repository',root,commits});
+              if(!commits.length)await post({type:'notice',text:'Repository selected, but it has no commits yet. Create the first commit before comparing Git revisions.'});
+            }catch(error){await post({type:'error',text:`Repository selected: ${root}. Commit history could not be loaded. ${error.message}`});}
+          }
         } else if (message.type === 'changes') {
           if (!root) throw new Error('Select a repository first.');
           changeSet = undefined;

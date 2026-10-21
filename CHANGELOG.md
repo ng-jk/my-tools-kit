@@ -1,5 +1,21 @@
 # Release notes
 
+## 0.6.3 — 2026-10-21
+
+- Support profiles-only FTP/SFTP connection files without requiring host or credentials at the top level. Select the first profile by default when no base connection or explicit defaultProfile exists; use protocol-specific default ports when a profile switches protocol without a port.
+
+- Replace generic missing SFTP configuration messages with missing-file, invalid JSON/settings, inactive-context and workspace-path diagnostics. Distinguish DNS, connection, authentication, host-key and TLS failures without displaying credential values.
+- Report missing local and server files explicitly during diff; check the local file before connecting.
+- Keep default uploaded files writable by their owner while retaining group/other access and existing destination modes; explicit filePerm overrides remain authoritative.
+
+- Fix SFTP change-group ownership for nested repositories using Git change membership; reject stale, mixed, or ambiguous groups before transfers.
+
+- Resolve Git selections through actual Source Control repositories or a chosen working tree; discover immediate child repositories when a project parent is selected.
+- Preserve and display a validated repository before loading history; explain invalid folder selections and unborn repositories instead of showing misleading empty selection state.
+- Isolate local Git comparisons from inherited repository context variables while retaining Git ownership and configuration checks.
+- Add real Git data/logic/host selection regressions and rendered webview tests to required pipeline integration checks. Enforce 100% function coverage for the Git data/logic modules in that test group; this is not a claim of complete toolkit coverage.
+
+
 ## 0.6.2 — 2026-10-18
 
 - Correct MySQL stored-procedure result boundaries so each result keeps its own columns and rows, including the final affected-row header. Add a real MySQL multi-result wire regression.

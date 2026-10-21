@@ -1,6 +1,6 @@
 'use strict';
 const api = acquireVsCodeApi(), $ = id => document.getElementById(id);
-let currentTab = 'compare', busy = false, undo = [], changedFiles = [], jsonBefore = '';
+let currentTab = 'compare', busy = false, undo = [], changedFiles = [], jsonBefore = '', repositorySelected=false, changesLoaded=false;
 function notice(text, error = false) { $('status').textContent = text; $('status').classList.toggle('error', error); }
 function setBusy(value) {
   busy = value;
@@ -37,7 +37,7 @@ function renderChanges() {
     button.append(badge, text, arrow); button.onclick = () => send({ type: 'gitFile', index: i }); $('change-list').append(button); visible++;
   }
   $('change-count').textContent = `${visible} of ${changedFiles.length} files`;
-  if (!visible) { const empty = document.createElement('p'); empty.className = 'empty'; empty.textContent = changedFiles.length ? 'No files match this filter.' : 'No changed files in this comparison.'; $('change-list').append(empty); }
+  if (!visible) { const empty = document.createElement('p'); empty.className = 'empty'; empty.textContent = !repositorySelected?'Select a Git repository before comparing changes.':!changesLoaded?'Choose revisions, then show changed files.':changedFiles.length ? 'No files match this filter.' : 'No changed files in this comparison.'; $('change-list').append(empty); }
 }
 for (const button of document.querySelectorAll('[data-tab]')) button.onclick = () => tab(button.dataset.tab);
 for (const button of document.querySelectorAll('[data-paste]')) button.onclick = () => send({ type: 'clipboard', side: button.dataset.paste });
@@ -58,7 +58,7 @@ $('json-editor').onclick = () => send({ type: 'openJson', text: $('json-input').
 $('json-save').onclick = () => send({ type: 'saveJson', text: $('json-input').value });
 for (const side of ['left', 'right']) $('json-to-' + side).onclick = () => { setText(side, $('json-input').value, 'JSON'); tab('compare'); };
 $('repository').onclick = () => send({ type: 'repository' });
-$('changes').onclick = () => { changedFiles = []; renderChanges(); send({ type: 'changes', ...revisions() }); };
+$('changes').onclick = () => { changedFiles = []; changesLoaded=false;renderChanges(); send({ type: 'changes', ...revisions() }); };
 $('file-filter').oninput = renderChanges;
 for (const id of ['git-left', 'git-right']) $(id).oninput = () => { changedFiles = []; $('change-list').replaceChildren(); $('change-count').textContent = 'Revisions changed — refresh the list'; };
 for (const button of document.querySelectorAll('[data-path]')) button.onclick = () => send({ type: 'choosePath', side: button.dataset.path, revision: $('git-' + button.dataset.path).value.trim() });
@@ -82,14 +82,15 @@ window.addEventListener('message', event => {
     if (message.action !== 'validate' && message.text !== jsonBefore) { undo.push(jsonBefore); if (undo.length > 5) undo.shift(); }
     setText('json', message.text); notice(message.action === 'validate' ? 'Valid JSON.' : 'JSON ' + (message.action === 'minify' ? 'minified' : 'formatted') + '. Values and number precision preserved.');
   } else if (message.type === 'repository') {
+    repositorySelected=true;changesLoaded=false;
     $('repo-name').textContent = message.root; changedFiles = []; renderChanges();
     $('commits').replaceChildren(); $('targets').replaceChildren();
     for (const item of [{ sha: 'HEAD', subject: 'Latest commit' }, ...message.commits]) {
       for (const id of ['commits', 'targets']) { const option = document.createElement('option'); option.value = item.sha; option.label = item.subject; $(id).append(option); }
     }
     for (const value of ['INDEX', 'WORKTREE']) { const option = document.createElement('option'); option.value = value; $('targets').append(option); }
-    notice('Repository selected. Choose revisions or use HEAD → WORKTREE for local changes.');
-  } else if (message.type === 'changes') { changedFiles = message.files; renderChanges(); notice(changedFiles.length ? 'Select a file to open its diff.' : 'No changes between these revisions.'); }
+    notice(message.loading?'Repository selected. Loading commit history…':'Repository selected. Choose revisions or use HEAD → WORKTREE for local changes.');
+  } else if (message.type === 'changes') { changedFiles = message.files;changesLoaded=true; renderChanges(); notice(changedFiles.length ? 'Select a file to open its diff.' : 'No changes between these revisions.'); }
   else if (message.type === 'path') $(message.side + '-path').value = message.path;
 });
 api.postMessage({ type: 'ready' });

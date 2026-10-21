@@ -366,11 +366,13 @@ function mergeProfile(
 ): FileServiceConfig {
   const res = Object.assign({}, target);
   delete res.profiles;
+  // Changing protocol without a profile port must not reuse FTP's port for SSH.
+  if(source.protocol && source.protocol!==target.protocol && source.port===undefined) delete res.port;
 
   const keys = Object.keys(source);
   for (const key of keys) {
     if (key === 'ignore') {
-      res.ignore = res.ignore.concat(source.ignore);
+      res.ignore = (res.ignore || []).concat(source.ignore);
     } else {
       (res as any)[key] = (source as any)[key];
     }
@@ -564,10 +566,11 @@ export default class FileService {
     return this.localFileSystem;
   }
 
-  getRemoteFileSystem(config: ServiceConfig): Promise<FileSystem> {
+  async getRemoteFileSystem(config: ServiceConfig): Promise<FileSystem> {
     const option = getHostInfo(config);
     this._remoteConfigurations.push(option);
-    return createRemoteIfNoneExist(option);
+    try { return await createRemoteIfNoneExist(option); }
+    catch(error) { throw require('../diagnostics').connectionFailure(error,config); }
   }
 
   getConfig(useProfile = this.profile): ServiceConfig {
@@ -591,7 +594,7 @@ export default class FileService {
     const error =
       this._configValidator && this._configValidator(completeConfig);
     if (error) {
-      let errorMsg = `Config validation fail: ${error.message}.`;
+      let errorMsg = `Config validation fail: ${error.details ? error.details.map(detail=>String(detail.path)+' ('+detail.type+')').join(', ') : 'invalid connection settings'}.`;
       // tslint:disable-next-line triple-equals
       if (hasProfile && useProfile == null) {
         errorMsg += ' You might want to set a profile first.';

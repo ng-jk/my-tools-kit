@@ -11,6 +11,7 @@ import { UResource } from '../../../../logic/sftp/core/index';
 import { toRemotePath } from '../../helper/index';
 import { REMOTE_SCHEME } from '../../../../data/sftp/constants';
 import { getFileService } from '../serviceManager/index';
+import {missingContextError} from '../configDiagnostic';
 import RemoteTreeDataProvider, { ExplorerItem } from './treeDataProvider';
 
 export default class RemoteExplorer {
@@ -37,7 +38,7 @@ export default class RemoteExplorer {
         const uri = await selectRemoteFileOnly();
         if (!uri) return;
         const service = getFileService(uri);
-        if (!service) throw new Error('No SFTP configuration for the selected file');
+        if (!service) throw missingContextError(uri);
         item = {resource: UResource.makeResource(uri), isDirectory:false} as ExplorerItem;
       }
       return this._treeDataProvider.showItem(item);
@@ -52,7 +53,7 @@ export default class RemoteExplorer {
         if (uri.toString(true) == "file:///${command:devkit.sftp.sync.remoteToLocal}") {
           throw '';
         } else {
-          throw new Error(`Config Not Found. (${uri.toString(true)})`);
+          throw missingContextError(uri);
         }
       }
       const config = fileService.getConfig();

@@ -56,6 +56,9 @@ test('SFTP wire: password authentication, list, upload, temp rename, download an
   assert.equal((await originalFs.list('/')).some(entry=>entry.name==='wire.txt'),true,'disposing one owner does not disconnect another');
   modes.set('/wire.txt',0o600);
   await engine.operate(session,'upload','wire.txt');assert.equal(modes.get('/wire.txt'),0o600);assert.equal(writeModes.at(-1),0o600);
+  modes.set('/wire.txt',0o440);
+  await engine.operate(session,'upload','wire.txt');assert.equal(modes.get('/wire.txt'),0o640);assert.equal(writeModes.at(-1),0o640);
+  await engine.operate(session,'upload','wire.txt');assert.equal(modes.get('/wire.txt'),0o640,'repeated upload retains owner write and group-only read');
   honorOpen=false;allowChmod=false;const written=writeModes.length;
   await assert.rejects(engine.operate(session,'upload','wire.txt'),/required file permissions/);
   assert.equal(writeModes.length,written);assert.equal(fs.readFileSync(path.join(remote,'wire.txt'),'utf8'),'over SSH');

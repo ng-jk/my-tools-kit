@@ -10,6 +10,7 @@ import logger from '../logger';
 import {confirmBatch} from './confirmBatch';
 import {handleCtxFromUri} from '../fileHandlers/createFileHandler';
 import {localEntryExists} from '../../../data/sftp/local-events';
+import {repositoryForGroup} from '../../../logic/sftp/git-selection';
 import {reconcileGitChanges, planGitTransfers, executeGitTransfers, GitChange} from '../../../logic/sftp/git-transfer';
 
 export default checkCommand({
@@ -38,20 +39,8 @@ async function handleCommand(hint: any) {
   if (!hint) {
     repository = await getRepository(git);
   } else if (isSourceControlResourceGroup(hint)) {
-    const owners = new Set<Repository>();
-    for (const resource of hint.resourceStates) {
-      const file = resource.resourceUri?.fsPath;
-      if (!file) throw new Error('Cannot identify the repository for this Git resource');
-      const owner = git.repositories.filter(repo => {
-        const relative = path.relative(repo.rootUri.fsPath, file);
-        return relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative);
-      }).sort((a,b) => b.rootUri.fsPath.length - a.rootUri.fsPath.length)[0];
-      if (!owner) throw new Error('No repository owns the selected Git resource');
-      owners.add(owner);
-    }
-    if (!owners.size) return;
-    if (owners.size !== 1) throw new Error('Select changes from one repository at a time');
-    repository = [...owners][0];
+    repository = repositoryForGroup(git.repositories, hint);
+    if (!repository) return;
     filterGroupId = hint.id;
   } else if (isRepository(hint)) {
     repository = git.repositories.find(repo => path.relative(repo.rootUri.fsPath, hint.rootUri.fsPath) === '');

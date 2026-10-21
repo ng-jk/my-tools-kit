@@ -5,12 +5,15 @@ import { EXTENSION_NAME } from '../../../data/sftp/constants';
 import { fileOperations, LocalFileSystem } from '../../../logic/sftp/core/index';
 import { makeTmpFile } from '../helper/index';
 import createFileHandler from './createFileHandler';
+import {requireDiffFile} from '../../../logic/sftp/diagnostics';
 
 export const diff = createFileHandler({
   name: 'diff',
   async handle() {
-    const remoteFs = await this.fileService.getRemoteFileSystem(this.config);
     const { localFsPath, remoteFsPath } = this.target;
+    await requireDiffFile(this.fileService.getLocalFileSystem(),localFsPath,'local');
+    const remoteFs = await this.fileService.getRemoteFileSystem(this.config);
+    await requireDiffFile(remoteFs,remoteFsPath,'remote');
     const tmpPath = await makeTmpFile({
       prefix: `${EXTENSION_NAME}-`,
       postfix: path.extname(localFsPath),

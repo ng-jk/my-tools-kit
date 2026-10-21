@@ -119,10 +119,15 @@ const defaultConfig = {
 };
 
 export function mergedDefault(config: any) {
-  return {
+  const result = {
     ...defaultConfig,
     ...Object.fromEntries(Object.entries(config).filter(([,value]) => value !== undefined)),
   };
+  // A profiles-only file has no usable base connection. Start with its first
+  // profile unless the author explicitly selected another default.
+  if(!result.defaultProfile && (!result.host || !result.username) && result.profiles && Object.keys(result.profiles).length)
+    result.defaultProfile=Object.keys(result.profiles)[0];
+  return result;
 }
 export function initialConfig() {
   return {name:'My Server', host:'localhost', protocol:'sftp', port:22, username:'username', remotePath:'/project',
@@ -174,6 +179,7 @@ export function normalizeConfigurations(value: any, environment: {[key:string]:s
 
 export function validateConfig(config: any) {
   const { error } = Joi.validate(config, configScheme, {
+    abortEarly: false,
     allowUnknown: true,
     convert: false,
     language: {

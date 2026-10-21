@@ -11,6 +11,7 @@ const { activateTextTools } = require('../../lib/text-extension');
 
 test('text/JSON/Git workspace drives the real extension handler with local-only fixtures', async () => {
   const toolkit = path.resolve(__dirname, '../..'), root = fs.mkdtempSync(path.join(os.tmpdir(), 'devkit-ui-'));
+  const invalid=root+'-downloaded-zip';fs.mkdirSync(invalid);
   function git(...args) {
     const result = spawnSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', '-c', 'core.autocrlf=false', '-c', 'commit.gpgsign=false', ...args], { cwd: root, encoding: 'utf8', windowsHide: true });
     assert.equal(result.status, 0, result.stderr);
@@ -72,8 +73,10 @@ test('text/JSON/Git workspace drives the real extension handler with local-only 
     await page.locator('#json-undo').click(); assert.equal(await page.locator('#json-input').inputValue(), raw);
     await page.locator('#json-input').fill('{"broken":}'); await page.locator('[data-format="validate"]').click();
     await expect(page.locator('#status')).toContainText('Invalid JSON'); assert.equal(await page.locator('#json-input').inputValue(), '{"broken":}');
-    await page.locator('[data-tab="git"]').click(); await page.locator('#repository').click();
+    await page.locator('[data-tab="git"]').click();await expect(page.locator('#repo-name')).toHaveText('No repository selected');await expect(page.locator('#change-list')).toContainText('Select a Git repository');await page.locator('#repository').click();
     await expect(page.locator('#status')).toContainText('Repository selected');
+    await expect(page.locator('#repo-name')).toHaveText(root.replaceAll('\\','/'));await expect(page.locator('#change-list')).toContainText('Choose revisions');
+    const pick=vscode.window.showQuickPick;vscode.window.showQuickPick=async()=>({uri:fileUri(invalid)});await page.locator('#repository').click();await expect(page.locator('#status')).toContainText('No Git working tree');await expect(page.locator('#status')).toContainText(invalid);await expect(page.locator('#repo-name')).toHaveText(root.replaceAll('\\','/'));vscode.window.showQuickPick=pick;
     await page.locator('#changes').click(); await expect(page.locator('.changed-file')).toHaveCount(1);
     await expect(page.locator('#changes')).toBeEnabled();
     await page.locator('.changed-file').click(); await expect(page.locator('#status')).toContainText('Opened Git snapshots');
@@ -93,6 +96,6 @@ test('text/JSON/Git workspace drives the real extension handler with local-only 
     await page?.screenshot({ path: path.join(toolkit, 'dist/text-tools-failure.png'), fullPage: true, timeout: 5000 }).catch(() => {});
     throw new Error(error.message.slice(-1600));
   } finally {
-    await browser?.close(); await new Promise(resolve => server.close(resolve)); fs.rmSync(root, { recursive: true, force: true });
+    await browser?.close(); await new Promise(resolve => server.close(resolve)); fs.rmSync(root, { recursive: true, force: true });fs.rmSync(invalid,{recursive:true,force:true});
   }
 });

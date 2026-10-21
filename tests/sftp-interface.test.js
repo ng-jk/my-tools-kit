@@ -46,7 +46,7 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     assert.deepEqual(views.get('devkit.tools').getChildren().map(item=>item.label),['API Debugger','JSON Formatter','Compare Text / Files','Compare Git Revisions','SFTP / FTP','Database','CI/CD Pipeline']);
     assert.equal((await views.get('devkit.remoteExplorer').getChildren()).length,1);
     const addedRoot=path.join(dir,'added-workspace');fs.mkdirSync(path.join(addedRoot,'.vscode'),{recursive:true});
-    fs.writeFileSync(path.join(addedRoot,'.vscode','sftp.json'),JSON.stringify({name:'added',protocol:'local',host:'fixture',username:'fixture',remotePath:path.join(dir,'remote-other').replaceAll('\\','/')}));
+    fs.writeFileSync(path.join(addedRoot,'.vscode','sftp.json'),JSON.stringify({name:'added',profiles:{standalone:{protocol:'local',host:'fixture',username:'fixture',remotePath:path.join(dir,'remote-other').replaceAll('\\','/')}}}));
     await changedFolders({added:[{uri:URI.file(addedRoot)}],removed:[]});
     assert.equal((await views.get('devkit.remoteExplorer').getChildren()).length,2);
     await changedFolders({added:[],removed:[{uri:URI.file(addedRoot)}]});
@@ -132,6 +132,14 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     await commands.get('devkit.sftp.upload.changedFiles')({id:'index',resourceStates:[{resourceUri:URI.file(path.join(root,'nested','ui.txt'))}]});
     assert.equal(fs.readFileSync(path.join(dir,'remote','nested','ui.txt'),'utf8'),'resource group content');
     assert.equal(fs.readFileSync(path.join(dir,'remote','ui.txt'),'utf8'),'changed upload has completed');
+    // A parent can track files below an independently opened nested root.
+    repository.state.indexChanges.push({status:0,uri:URI.file(path.join(root,'nested','ui.txt'))});
+    nestedRepository.state.indexChanges=[];
+    fs.writeFileSync(path.join(root,'nested','ui.txt'),'parent group nested content');
+    await commands.get('devkit.sftp.upload.changedFiles')({id:'index',resourceStates:[{resourceUri:URI.file(path.join(root,'ui.txt'))},{resourceUri:URI.file(path.join(root,'nested','ui.txt'))}]});
+    assert.deepEqual(errors,[]);
+    assert.equal(fs.readFileSync(path.join(dir,'remote','nested','ui.txt'),'utf8'),'parent group nested content');
+    repository.state.indexChanges.pop();
     repositories.pop();
     fs.writeFileSync(path.join(root,'nested','ui.txt'),'from other context');
     const cp=require('node:child_process');
@@ -612,10 +620,18 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     await extension.activate(context);
     assert.equal(contextValues.get('devkit.sftp.hasConfiguration'),false);
     assert.equal((await views.get('devkit.remoteExplorer').getChildren()).length,0);
+    await commands.get('devkit.sftp.upload.file')(URI.file(path.join(root,'active.txt')));
+    assert.match(errors.pop(),/Configuration file does not exist/);
     assert.equal(require('../package.json').contributes.viewsWelcome[0].when,'!devkit.sftp.hasConfiguration');
     extension.deactivate();commands.clear();views.clear();errors.length=0;
     fs.writeFileSync(contextFile,'invalid json');await extension.activate(context);
     assert.ok(errors.length);assert.ok(views.has('devkit.remoteExplorer'));assert.ok(commands.has('devkit.sftp.viewContent'));
+    errors.length=0;
+    await commands.get('devkit.sftp.upload.file')(URI.file(path.join(root,'active.txt')));
+    assert.match(errors.pop(),/invalid JSON/);
+    fs.writeFileSync(contextFile,JSON.stringify({password:'DO-NOT-PRINT-THIS',remotePath:'/project'}));
+    await commands.get('devkit.sftp.upload.file')(URI.file(path.join(root,'active.txt')));
+    const missingSettings=errors.pop();assert.match(missingSettings,/host/);assert.match(missingSettings,/username/);assert.equal(missingSettings.includes('DO-NOT-PRINT-THIS'),false);
     errors.length=0;fs.writeFileSync(contextFile,JSON.stringify(isolated));
     await savedDocument({uri:URI.file(contextFile)});
     const recoveredRoots=await views.get('devkit.remoteExplorer').getChildren();assert.equal(recoveredRoots.length,1);assert.deepEqual(errors,[]);

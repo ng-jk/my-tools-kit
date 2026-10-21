@@ -5,6 +5,7 @@ import app from '../app';
 import { UResource, FileService, ServiceConfig } from '../../../logic/sftp/core/index';
 import logger from '../logger';
 import { getFileService } from '../modules/serviceManager/index';
+import {missingContextError} from '../modules/configDiagnostic';
 
 interface FileHandlerConfig {
   _?: boolean;
@@ -34,7 +35,7 @@ export function handleCtxFromUri(uri: Uri): FileHandlerContext {
     if (uri.toString(true) == "file:///${command:devkit.sftp.sync.remoteToLocal}") {
       throw '';
     } else {
-      throw new Error(`Config Not Found. (${uri.toString(true)})`);
+      throw missingContextError(uri);
     }
   }
   const config = fileService.getConfig();
@@ -61,7 +62,7 @@ export function allHandleCtxFromUri(uri: Uri): Array<FileHandlerContext> {
     if (uri.toString(true) == "file:///${command:devkit.sftp.sync.remoteToLocal}") {
       throw '';
     } else {
-      throw new Error(`Config Not Found. (${uri.toString(true)})`);
+      throw missingContextError(uri);
     }
   }
 

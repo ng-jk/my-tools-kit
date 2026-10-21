@@ -59,12 +59,17 @@ async function operate(session: any, action: string, relative = '.', flags: any 
     if (typeof value !== 'function') return value;
     return (...args: any[]) => { if (planning) checkCancelled(); return value.apply(target, args); };
   }});
+  if(action==='diff') await require('./diagnostics').requireDiffFile(service.getLocalFileSystem(),local,'local');
   const remoteFs = guard(await service.getRemoteFileSystem(config));
   checkCancelled();
   const localFs = guard(service.getLocalFileSystem());
   if (action === 'list') return remoteFs.list(remote);
   if (action === 'read') return (await remoteFs.readFile(remote)).toString('utf8');
-  if (action === 'diff') return { local: (await localFs.readFile(local)).toString('utf8'), remote: (await remoteFs.readFile(remote)).toString('utf8') };
+  if (action === 'diff') {
+    const {requireDiffFile}=require('./diagnostics');
+    await requireDiffFile(localFs,local,'local');await requireDiffFile(remoteFs,remote,'remote');
+    return { local: (await localFs.readFile(local)).toString('utf8'), remote: (await remoteFs.readFile(remote)).toString('utf8') };
+  }
   if (action === 'mkdir') { await assertRemoteAncestors(remoteFs,remote,config.remotePath,true,true); await remoteFs.ensureDir(remote); return { passed: true }; }
   if (action === 'create') { await assertRemoteAncestors(remoteFs,remote,config.remotePath,false,true); await fileOperations.createFile(remote, remoteFs); return { passed: true }; }
   if (action === 'rename') {
