@@ -5,7 +5,7 @@
 - Add a visual database connection editor with engine, host, port, credentials, verified TLS and advanced settings; separate Save, Test and Save & connect actions.
 - Add a Database sidebar for saved connections, databases, PostgreSQL schemas, tables/views and columns, with refresh, filtering and context actions.
 - Add destination-specific SQL editors and tabular row previews/results, including NULL values, truncation warnings and multiple result sets. Retain forms and queries when tabs lose focus.
-- Keep passwords in SecretStorage and route browsing/testing/query execution through the existing shared database engine.
+- Keep passwords in SecretStorage and route browsing/testing/query execution through the existing shared database engine. PostgreSQL schema editors set the selected search path before queries; CLI query --schema uses the same logic.
 
 ## 0.7.3 — 2026-10-21
 

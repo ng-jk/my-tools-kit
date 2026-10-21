@@ -39,6 +39,10 @@ function statement(c,action,args={}) {
 }
 async function run(raw,password,action,args={},adapter=driver) {
   const c=connection(raw);const [sql,values]=statement(c,action,args);
+  if(action==='query'&&args.schema!==undefined){
+    if(c.type!=='postgres')throw new Error('Query schema selection is supported only for PostgreSQL; use the configured database for MySQL/MariaDB');
+    identifier(c.type,args.schema);c.querySchema=args.schema;
+  }
   return adapter.execute(c,password,sql,values);
 }
 module.exports={connection,identifier,statement,run};

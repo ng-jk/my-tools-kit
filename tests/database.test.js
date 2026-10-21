@@ -25,3 +25,10 @@ test('shared database logic passes the same operation to a data adapter without 
   const result=await run(raw,'TEST_ONLY_PASSWORD','query',{sql:'SELECT 1',confirmed:true},adapter);
   assert.deepEqual(result.rows,[[1]]);assert.equal(calls[0][1],'TEST_ONLY_PASSWORD');assert.equal(calls[0][2],'SELECT 1');assert.equal(calls[0][0].password,undefined);
 });
+
+test('PostgreSQL query schema is validated and passed to the shared data adapter',async()=>{
+ const calls=[],adapter={execute:async c=>{calls.push(c);return {};}};
+ for(const schema of ['public','tenant_b','odd"; DROP TABLE users; --']){await run(raw,'','query',{sql:'SELECT * FROM users',confirmed:true,schema},adapter);assert.equal(calls.at(-1).querySchema,schema);}
+ await assert.rejects(run(raw,'','query',{sql:'SELECT 1',confirmed:true,schema:'bad\nschema'},adapter),/identifier/);
+ await assert.rejects(run({...raw,type:'mysql'},'','query',{sql:'SELECT 1',confirmed:true,schema:'other'},adapter),/only for PostgreSQL/);
+});

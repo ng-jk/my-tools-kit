@@ -42,8 +42,15 @@ async function execute(config,password,text,values=[]) {
           ssl:ssl||false,sslnegotiation:'postgres',application_name:'Development Tools Kit',client_encoding:'UTF8',options:' ',
           connectionTimeoutMillis:config.timeout,statement_timeout:config.timeout});
         client.on('error',error=>finish(error));
-        client.connect().then(()=>{
+        client.connect().then(async()=>{
           if(done)return;
+          if(config.querySchema){
+            // SET accepts a quoted identifier, not an interpolated SQL fragment.
+            // PostgreSQL implicitly searches pg_catalog first, while unqualified
+            // CREATE statements still target the selected user schema.
+            await client.query('SET search_path TO '+ '"'+config.querySchema.replaceAll('"','""')+'"');
+            if(done)return;
+          }
           const query=new pg.Query({text,values,rowMode:'array'});
           query.on('row',(value,result)=>{let target=pgRows.get(result);if(!target){target=[];pgRows.set(result,target);}row(value,result.fields,target);});
           query.on('error',error=>finish(error));
@@ -52,7 +59,7 @@ async function execute(config,password,text,values=[]) {
             completedResult=sets.length===1?{...sets[0],truncated}:{columns:[],rows:[],affectedRows:sets.reduce((n,r)=>n+r.affectedRows,0),truncated,results:sets};finish();
           });
           client.query(query);
-        },error=>finish(error));
+        }).catch(error=>finish(error));
       } else {
         const mysql=require('mysql2');
         client=mysql.createConnection({host:config.host,port:config.port,user:config.user,password,database:config.database||undefined,

@@ -22,7 +22,11 @@ test('database workbench shares metadata/query operations, retains credentials s
   await commands.get('devkit.database.preview')(tables[1]);const preview=panels.at(-1);await preview.send({type:'ready'});assert.equal(preview.webview.messages.at(-1).type,'result');assert.equal(calls.findLast(c=>c[0]==='preview')[3].database,'app');
   await commands.get('devkit.database.find')(schemas[1]);assert.equal((await b.provider.getChildren(schemas[1]))[1].label,'known_table');
   b.query(first,{...first.config,database:'app'},'SELECT 1');const query=panels.at(-1);assert.ok(query.webview.html.includes('SELECT 1'));b.query(first,{...first.config,database:'app'},'other text');assert.equal(panels.at(-1),query);assert.ok(query.revealed);
-  confirmation=undefined;await query.send({type:'query',sql:'DELETE FROM users'});assert.equal(calls.filter(c=>c[0]==='query').length,0);
+  const schemaQueries=[];
+  for(const schema of ['public','tenant_b']){await commands.get('devkit.database.nodeQuery')({...schemas[1],args:{schema}});const panel=panels.at(-1);schemaQueries.push(panel);await panel.send({type:'query',sql:'SELECT * FROM users'});assert.equal(calls.at(-1)[2].schema,schema);assert.ok(panel.webview.html.includes('schema '+schema));}
+  assert.notEqual(schemaQueries[0],schemaQueries[1],'identically named tables in different schemas use distinct query editors');
+  const queriesBeforeCancel=calls.filter(c=>c[0]==='query').length;
+  confirmation=undefined;await query.send({type:'query',sql:'DELETE FROM users'});assert.equal(calls.filter(c=>c[0]==='query').length,queriesBeforeCancel);
   confirmation='Execute SQL';await query.send({type:'query',sql:'SELECT 1'});assert.equal(calls.at(-1)[0],'query');assert.equal(calls.at(-1)[2].confirmed,true);
   await editor.send({type:'save',values:{...values,password:'',host:'new.example.test'}});assert.equal(saved.length,1);assert.notEqual(saved[0].id,first.id);assert.equal([...secrets.values()][0],values.password);
   const queries=calls.filter(c=>c[0]==='query').length;await query.send({type:'query',sql:'SELECT 1'});assert.equal(calls.filter(c=>c[0]==='query').length,queries);assert.match(query.webview.messages.at(-1).text,/changed or was removed/);

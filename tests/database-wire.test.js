@@ -10,13 +10,18 @@ function cli(args,env){return new Promise(resolve=>{const p=spawn(process.execPa
 test('PostgreSQL wire and CLI connect, browse, execute, limit and redact failures',{timeout:20000},async t=>{
   const sockets=new Set(),queries=[],auth=[];let completedWrite=false;
   const server=net.createServer(socket=>{
-    sockets.add(socket);socket.on('close',()=>sockets.delete(socket));socket.on('error',()=>{});let pending=Buffer.alloc(0),startup=true;
+    sockets.add(socket);socket.on('close',()=>sockets.delete(socket));socket.on('error',()=>{});let pending=Buffer.alloc(0),startup=true,querySchema='public';
     socket.on('data',chunk=>{pending=Buffer.concat([pending,chunk]);
       if(startup){if(pending.length<4||pending.length<pending.readInt32BE(0))return;const length=pending.readInt32BE(0);pending=pending.subarray(length);startup=false;socket.write(msg('R',i32(3)));}
       while(pending.length>=5){const length=pending.readInt32BE(1);if(pending.length<length+1)return;const type=String.fromCharCode(pending[0]),body=pending.subarray(5,length+1);pending=pending.subarray(length+1);
         if(type==='p'){auth.push(body.toString().replace(/\0$/,''));socket.write(Buffer.concat([msg('R',i32(0)),msg('Z',Buffer.from('I'))]));}
         if(type==='Q'){
           const sql=body.toString().replace(/\0$/,'');queries.push(sql);
+          if(sql.startsWith('SET search_path TO ')) {
+            const match=/^SET search_path TO "((?:[^" ]| |"")*)"$/.exec(sql);assert.ok(match,'schema is one quoted SQL identifier');querySchema=match[1].replaceAll('""','"');
+            if(querySchema==='denied')socket.write(Buffer.concat([msg('E',str('SERROR'),str('C42501'),str('Mschema denied'),Buffer.from([0])),msg('Z',Buffer.from('I'))]));
+            else socket.write(Buffer.concat([msg('C',str('SET')),msg('Z',Buffer.from('I'))]));continue;
+          }
           if(['DELAYED_BATCH','ERROR_AFTER_LIMIT'].includes(sql)) {
             const field=Buffer.concat([str('first'),i32(0),i16(0),i32(25),i16(-1),i32(-1),i16(0)]);
             socket.write(Buffer.concat([msg('T',i16(1),field),...['1','2','3'].map(v=>msg('D',i16(1),i32(1),Buffer.from(v)))]));
@@ -30,7 +35,7 @@ test('PostgreSQL wire and CLI connect, browse, execute, limit and redact failure
             socket.write(Buffer.concat([set('left','1'),set('right','2'),msg('Z',Buffer.from('I'))]));continue;
           }
           if(sql==='FAIL'){socket.write(Buffer.concat([msg('E',str('SERROR'),str('C42601'),str('MTEST_ONLY_PASSWORD should never escape'),Buffer.from([0])),msg('Z',Buffer.from('I'))]));continue;}
-          const rows=sql==='MANY'?['1','2','3']:sql.includes('pg_database')?['app']:['1'];
+          const rows=sql==='SELECT * FROM users'?[querySchema]:sql==='MANY'?['1','2','3']:sql.includes('pg_database')?['app']:['1'];
           const field=Buffer.concat([str('name'),i32(0),i16(0),i32(25),i16(-1),i32(-1),i16(0)]);
           socket.write(Buffer.concat([msg('T',i16(1),field),...rows.map(v=>msg('D',i16(1),i32(Buffer.byteLength(v)),Buffer.from(v))),msg('C',str('SELECT '+rows.length)),msg('Z',Buffer.from('I'))]));
         }
@@ -42,6 +47,11 @@ test('PostgreSQL wire and CLI connect, browse, execute, limit and redact failure
   const config={type:'postgres',host:'127.0.0.1',port:server.address().port,user:'fixture',database:'app',tls:false,timeout:2000,maxRows:2};
   assert.deepEqual((await run(config,'TEST_ONLY_PASSWORD','test')).rows,[['1']]);
   assert.deepEqual((await run(config,'TEST_ONLY_PASSWORD','databases')).rows,[['app']]);
+  for(const schema of ['public','tenant_b','odd"; DROP TABLE users; --'])assert.deepEqual((await run(config,'TEST_ONLY_PASSWORD','query',{sql:'SELECT * FROM users',schema,confirmed:true})).rows,[[schema]],'same table name resolves in the selected schema');
+  const reads=queries.filter(sql=>sql==='SELECT * FROM users').length;
+  await assert.rejects(run(config,'TEST_ONLY_PASSWORD','query',{sql:'SELECT * FROM users',schema:'denied',confirmed:true}),/42501/);
+  assert.equal(queries.filter(sql=>sql==='SELECT * FROM users').length,reads,'failed schema selection never executes the user query');
+
   assert.equal((await run(config,'TEST_ONLY_PASSWORD','query',{sql:'MANY',confirmed:true})).truncated,true);
   const batch=await run(config,'TEST_ONLY_PASSWORD','query',{sql:'DELAYED_BATCH',confirmed:true});assert.equal(completedWrite,true,'truncation waits for the final write completion');assert.equal(batch.truncated,true);assert.equal(batch.results.length,2);assert.equal(batch.results[1].affectedRows,1);
   await assert.rejects(run(config,'TEST_ONLY_PASSWORD','query',{sql:'ERROR_AFTER_LIMIT',confirmed:true}),/42601/);
@@ -52,6 +62,7 @@ test('PostgreSQL wire and CLI connect, browse, execute, limit and redact failure
   const args=['query','--config',file,'--sql-file',sql,'--allow-plaintext'];
   const denied=await cli(args,{DEVKIT_DB_FIXTURE_PASSWORD:'TEST_ONLY_PASSWORD'});assert.equal(denied.code,1);assert.match(denied.err,/confirmation/);
   const success=await cli([...args,'--yes'],{DEVKIT_DB_FIXTURE_PASSWORD:'TEST_ONLY_PASSWORD'});assert.equal(success.code,0,success.err);assert.deepEqual(JSON.parse(success.out).rows,[['1']]);
+  fs.writeFileSync(sql,'SELECT * FROM users');const scoped=await cli([...args,'--schema','tenant_b','--yes'],{DEVKIT_DB_FIXTURE_PASSWORD:'TEST_ONLY_PASSWORD'});assert.equal(scoped.code,0,scoped.err);assert.deepEqual(JSON.parse(scoped.out).rows,[['tenant_b']]);
   assert.ok(auth.every(p=>p==='TEST_ONLY_PASSWORD'));assert.ok(queries.includes('SELECT 1'));
   const previous={PGPASSWORD:process.env.PGPASSWORD,PGPASSFILE:process.env.PGPASSFILE,PGSSLMODE:process.env.PGSSLMODE};
   const passfile=path.join(dir,'fixture.pgpass');fs.writeFileSync(passfile,'*:*:*:*:TEST_ONLY_UNRELATED_FILE_PASSWORD\n',{mode:0o600});

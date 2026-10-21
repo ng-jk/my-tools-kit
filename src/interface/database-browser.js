@@ -19,16 +19,16 @@ function activateBrowser(vscode,context,api) {
     panel.webview.onDidReceiveMessage(m=>{if(m?.type==='ready')postResult(panel,value);});
   }
   function query(p,config,initial='') {
-    live(p);const id='query:'+JSON.stringify([p.id,config.database]);
+    live(p);const id='query:'+JSON.stringify([p.id,config.database,config.querySchema]);
     if(panels.has(id)){panels.get(id).reveal();return;}
-    const panel=create(id,'SQL — '+p.name+'/'+(config.database||'server'));panel.webview.html=ui.queryPage(p,config,initial);let busy=false;
+    const panel=create(id,'SQL — '+p.name+'/'+(config.database||'server')+(config.querySchema?'/'+config.querySchema:''));panel.webview.html=ui.queryPage(p,config,initial);let busy=false;
     panel.webview.onDidReceiveMessage(async m=>{
       if(m?.type!=='query'||busy)return;busy=true;
       try {
         live(p);if(typeof m.sql!=='string'||!m.sql.trim()||m.sql.length>1024*1024)throw new Error('Enter SQL (maximum 1 MiB).');
-        const yes=await vscode.window.showWarningMessage(`Execute SQL on ${p.name} (${config.host}:${config.port}/${config.database||'server default'})? SQL can modify or delete data.`,{modal:true},'Execute SQL');
+        const yes=await vscode.window.showWarningMessage(`Execute SQL on ${p.name} (${config.host}:${config.port}/${config.database||'server default'}${config.querySchema?'/'+config.querySchema:''})? SQL can modify or delete data.`,{modal:true},'Execute SQL');
         if(yes!=='Execute SQL'){postResult(panel);return;}
-        live(p);postResult(panel,await api.invoke(p,'query',{sql:m.sql,confirmed:true},config));
+        live(p);postResult(panel,await api.invoke(p,'query',{sql:m.sql,confirmed:true,schema:config.querySchema},config));
       }catch(error){panel.webview.postMessage({type:'status',text:error.message,error:true});}finally{busy=false;}
     });
   }
@@ -99,7 +99,7 @@ function activateBrowser(vscode,context,api) {
   const register=(id,fn)=>context.subscriptions.push(vscode.commands.registerCommand(id,async(...args)=>{try{api.trust();await fn(...args);}catch(error){await vscode.window.showErrorMessage(error.message);}}));
   register('devkit.database.refresh',refresh);
   register('devkit.database.preview',async n=>{live(n.p);result(await api.invoke(n.p,'preview',n.args,n.config),n.p.name+' / '+n.config.database+' / '+n.args.table);});
-  register('devkit.database.nodeQuery',n=>query(n.p,n.config));
+  register('devkit.database.nodeQuery',n=>query(n.p,n.kind==='schema'?{...n.config,querySchema:n.args.schema}:n.config));
   register('devkit.database.find',async n=>{live(n.p);const [action,args,config,title]=metadata(n),name=await api.chooseMetadata(n.p,action,args,config,title);if(name){overrides.set(n.id,[[name]]);changes.fire(n);}});
   context.subscriptions.push({dispose:()=>{for(const p of panels.values())p.dispose();}});
   return {edit,query,result,refresh,provider,browseRoot:()=>vscode.commands.executeCommand('devkit.databaseExplorer.focus')};
