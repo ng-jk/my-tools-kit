@@ -687,5 +687,5 @@ test('remote picker keeps server identity when browsing equal paths on different
 });
 
 test('remote tree transfer actions are scoped to the remote explorer',()=>{
-  for(const item of require('../package.json').contributes.menus['view/item/context']) assert.ok(item.when.includes('view == devkit.remoteExplorer'),item.command);
+  for(const item of require('../package.json').contributes.menus['view/item/context'].filter(item=>item.command.startsWith('devkit.sftp.'))) assert.ok(item.when.includes('view == devkit.remoteExplorer'),item.command);
 });

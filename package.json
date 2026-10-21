@@ -2,7 +2,7 @@
   "name": "development-tools-kit",
   "displayName": "Development Tools Kit",
   "description": "Remote databases, SQL queries, FTP/SFTP, API debugging, JSON/text/Git tools, and Python CI/CD.",
-  "version": "0.7.3",
+  "version": "0.7.4",
   "publisher": "NGJUNKAI",
   "repository": {
     "type": "git",
@@ -354,7 +354,8 @@
       },
       {
         "command": "devkit.database.add",
-        "title": "Development Tools Kit Database: Add Connection"
+        "title": "Development Tools Kit Database: Add Connection",
+        "icon": "$(add)"
       },
       {
         "command": "devkit.database.browse",
@@ -366,15 +367,42 @@
       },
       {
         "command": "devkit.database.test",
-        "title": "Development Tools Kit Database: Test Connection"
+        "title": "Development Tools Kit Database: Test Connection",
+        "icon": "$(debug-start)"
       },
       {
         "command": "devkit.database.edit",
-        "title": "Development Tools Kit Database: Edit Connection"
+        "title": "Development Tools Kit Database: Edit Connection",
+        "icon": "$(edit)"
       },
       {
         "command": "devkit.database.remove",
-        "title": "Development Tools Kit Database: Remove Connection"
+        "title": "Development Tools Kit Database: Remove Connection",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "devkit.database.refresh",
+        "title": "Refresh Databases",
+        "category": "Development Tools Kit",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "devkit.database.preview",
+        "title": "Preview Table Rows",
+        "category": "Development Tools Kit",
+        "icon": "$(table)"
+      },
+      {
+        "command": "devkit.database.nodeQuery",
+        "title": "New SQL Query",
+        "category": "Development Tools Kit",
+        "icon": "$(code)"
+      },
+      {
+        "command": "devkit.database.find",
+        "title": "Find Database Entry",
+        "category": "Development Tools Kit",
+        "icon": "$(search)"
       }
     ],
     "menus": {
@@ -635,6 +663,18 @@
         {
           "command": "devkit.sftp.remoteExplorer.refresh",
           "when": "false"
+        },
+        {
+          "command": "devkit.database.preview",
+          "when": "false"
+        },
+        {
+          "command": "devkit.database.nodeQuery",
+          "when": "false"
+        },
+        {
+          "command": "devkit.database.find",
+          "when": "false"
         }
       ],
       "editor/title": [
@@ -661,6 +701,16 @@
           "command": "devkit.sftp.remoteExplorer.refresh",
           "when": "view == devkit.remoteExplorer",
           "group": "navigation"
+        },
+        {
+          "command": "devkit.database.add",
+          "when": "view == devkit.databaseExplorer",
+          "group": "navigation@1"
+        },
+        {
+          "command": "devkit.database.refresh",
+          "when": "view == devkit.databaseExplorer",
+          "group": "navigation@2"
         }
       ],
       "view/item/context": [
@@ -741,6 +791,21 @@
           "command": "devkit.sftp.download.folder",
           "group": "inline",
           "when": "devkit.sftp.enabled && view == devkit.remoteExplorer && viewItem == folder"
+        },
+        {
+          "command": "devkit.database.test",
+          "when": "view == devkit.databaseExplorer && viewItem == databaseConnection",
+          "group": "database@0"
+        },
+        {
+          "command": "devkit.database.edit",
+          "when": "view == devkit.databaseExplorer && viewItem == databaseConnection",
+          "group": "database@1"
+        },
+        {
+          "command": "devkit.database.remove",
+          "when": "view == devkit.databaseExplorer && viewItem == databaseConnection",
+          "group": "database@2"
         }
       ],
       "scm/title": [
@@ -791,6 +856,10 @@
         {
           "id": "devkit.remoteExplorer",
           "name": "SFTP Remote Explorer"
+        },
+        {
+          "id": "devkit.databaseExplorer",
+          "name": "Database"
         }
       ]
     },
@@ -799,6 +868,10 @@
         "view": "devkit.remoteExplorer",
         "contents": "Configure a server to browse files.\n[Configure SFTP](command:devkit.sftp.config)",
         "when": "!devkit.sftp.hasConfiguration"
+      },
+      {
+        "view": "devkit.databaseExplorer",
+        "contents": "Connect to MySQL, MariaDB or PostgreSQL.\n[Add database connection](command:devkit.database.add)"
       }
     ],
     "keybindings": [

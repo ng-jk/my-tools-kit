@@ -127,13 +127,15 @@
         "node",
         "--test",
         "tests/database-wire.test.js",
-        "tests/database-interface.test.js"
+        "tests/database-interface.test.js",
+        "tests/database-workbench.test.js"
       ],
       [
         "node",
         "--test",
         "tests/browser/text-tools.test.js",
-        "tests/browser/api-workspace.test.js"
+        "tests/browser/api-workspace.test.js",
+        "tests/browser/database.test.js"
       ]
     ],
     "build": [

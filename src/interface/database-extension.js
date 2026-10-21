@@ -5,7 +5,8 @@ function activateDatabase(vscode,context) {
   const key='devkit.database.connections',secret=id=>'devkit.database.password.'+id;
   const profiles=()=>context.globalState?.get(key,[])||[];
   const trust=()=>{if(!vscode.workspace.isTrusted)throw new Error('Trust the workspace before connecting to a database');};
-  const save=items=>context.globalState.update(key,items);
+  let workbench;
+  const save=async items=>{await context.globalState.update(key,items);workbench?.refresh();};
   async function pick(){return vscode.window.showQuickPick(profiles().map(p=>({label:p.name,description:`${p.config.type} ${p.config.host}:${p.config.port} / ${p.config.database||'(choose database)'}`,profile:p})),{title:'Database — choose a connection',placeHolder:'Add Connection from the Database menu if none are saved'}).then(p=>p?.profile);}
   async function invoke(p,action,args={},config=p.config) {
     trust();
@@ -17,9 +18,10 @@ function activateDatabase(vscode,context) {
     current();
     return vscode.window.withProgress({location:vscode.ProgressLocation.Notification,title:`Database: ${action} — ${p.name} (${config.host}/${config.database||'server'})`,cancellable:false},()=>{trust();current();return run(config,password,action,args);});
   }
-  async function result(value,title){if(!value)return;const doc=await vscode.workspace.openTextDocument({language:'json',content:JSON.stringify(value,null,2)});await vscode.window.showTextDocument(doc,{preview:false});if(value.truncated)await vscode.window.showWarningMessage(`${title}: result truncated at the row or 8 MiB limit. Refine SQL with WHERE/LIMIT; terminal configurations also support maxRows up to 5000.`);}
+  async function result(value,title){if(!value)return;if(workbench)return workbench.result(value,title);const doc=await vscode.workspace.openTextDocument({language:'json',content:JSON.stringify(value,null,2)});await vscode.window.showTextDocument(doc,{preview:false});if(value.truncated)await vscode.window.showWarningMessage(`${title}: result truncated at the row or 8 MiB limit. Refine SQL with WHERE/LIMIT; terminal configurations also support maxRows up to 5000.`);}
   async function add(existing,original={id:existing?.id}) {
     trust();
+    if(workbench)return workbench.edit(existing);
     const current=existing?.config||{},input=async(prompt,value,password=false,validateInput)=>vscode.window.showInputBox({prompt,value:value||'',password,ignoreFocusOut:true,validateInput});
     const text=value=>/[\x00-\x1f]/.test(value)?'Use one line without control characters':undefined;
     const required=value=>!value.trim()?'A value is required':text(value);
@@ -70,6 +72,7 @@ function activateDatabase(vscode,context) {
   async function query(p,config=p.config,initial) {
     let sql=initial;
     if(sql===undefined){const editor=vscode.window.activeTextEditor;if(editor?.document.languageId==='sql')sql=editor.selection.isEmpty?editor.document.getText():editor.document.getText(editor.selection);}
+    if(workbench)return workbench.query(p,config,sql||'');
     if(!sql?.trim()) {
       const doc=await vscode.workspace.openTextDocument({language:'sql',content:'-- Write SQL here, then run Database: Execute SQL.\n'});await vscode.window.showTextDocument(doc);return;
     }
@@ -91,18 +94,19 @@ function activateDatabase(vscode,context) {
       else await result(await invoke(p,action==='Preview rows'?'preview':'columns',{schema,table},config),table);
     }
   }
+  if(vscode.window.createWebviewPanel&&vscode.EventEmitter)workbench=require('./database-browser').activateBrowser(vscode,context,{profiles,save,trust,invoke,chooseMetadata,test:(config,password)=>run(config,password,'test')});
   const handlers={
     'devkit.database.add':()=>add(),
-    'devkit.database.browse':async()=>{const p=await pick();if(p)await browse(p);},
+    'devkit.database.browse':async()=>{if(workbench)return workbench.browseRoot();const p=await pick();if(p)await browse(p);},
     'devkit.database.query':async()=>{const p=await pick();if(p){const config=await chooseDatabase(p);if(config)await query(p,config);}},
-    'devkit.database.edit':async()=>{const p=await pick();if(p)await add(p);},
-    'devkit.database.remove':async()=>{const p=await pick();if(p&&await vscode.window.showWarningMessage(`Remove saved connection ${p.name}? This deletes its stored password, not the remote database.`,{modal:true},'Remove connection')==='Remove connection'){trust();await context.secrets.delete(secret(p.id));await save(profiles().filter(x=>x.id!==p.id));}},
-    'devkit.database.test':async()=>{const p=await pick();if(p)await result(await invoke(p,'test'),'Connection test');},
+    'devkit.database.edit':async node=>{const p=node?.p||await pick();if(p)await add(p);},
+    'devkit.database.remove':async node=>{const p=node?.p||await pick();if(p&&await vscode.window.showWarningMessage(`Remove saved connection ${p.name}? This deletes its stored password, not the remote database.`,{modal:true},'Remove connection')==='Remove connection'){trust();await context.secrets.delete(secret(p.id));await save(profiles().filter(x=>x.id!==p.id));}},
+    'devkit.database.test':async node=>{const p=node?.p||await pick();if(p)await result(await invoke(p,'test'),'Connection test');},
     'devkit.database.menu':async()=>{
       const actions=[['Add Connection','add'],['Browse Databases / Schemas / Tables','browse'],['Execute SQL','query'],['Test Connection','test'],['Edit Connection','edit'],['Remove Connection','remove']];
       const chosen=await vscode.window.showQuickPick(actions.map(([label,id])=>({label,id})),{title:'Database — choose a function'});if(chosen)await handlers['devkit.database.'+chosen.id]();
     }
   };
-  for(const [id,fn]of Object.entries(handlers))context.subscriptions.push(vscode.commands.registerCommand(id,async()=>{try{trust();await fn();}catch(error){await vscode.window.showErrorMessage(error.message);}}));
+  for(const [id,fn]of Object.entries(handlers))context.subscriptions.push(vscode.commands.registerCommand(id,async(...args)=>{try{trust();await fn(...args);}catch(error){await vscode.window.showErrorMessage(error.message);}}));
 }
 module.exports={activateDatabase};

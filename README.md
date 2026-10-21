@@ -270,28 +270,30 @@ The toolkit bundles a maintained adaptation of the MIT Database Client connectio
 
 ### Connect from VS Code
 
-1. Click the toolbox Activity Bar icon, then **Database → Add Connection**.
-2. Enter a name, engine, hostname/IP, port, username and initial database. For PostgreSQL, use `postgres` if you need to discover other databases.
-3. Choose **Verified TLS**, and optionally enter a private CA certificate file path. Certificate and hostname/IP verification are required. Plaintext is available for trusted private networks only and requires an explicit warning confirmation each time.
-4. Enter the password in the masked prompt. **Test and save** completes automatically after the connection succeeds. Passwords stay in VS Code SecretStorage; connection metadata stays in VS Code global state. Neither is written into the workspace or Git.
-5. Invalid connection fields show inline validation so you can correct them without losing the earlier inputs. On connection-test failure, use **Retry** or **Edit connection**. Cancel at any prompt to leave the connection unsaved. Editing requires re-entering the password. Edits rotate the credential identity; commands awaiting confirmation for the old connection are cancelled and must select it again.
+1. Click the toolbox Activity Bar icon, expand the **Database** view and click **+** (or use **Database → Add Connection**).
+2. In **Connect to server**, enter a connection name, server type, host, port, username, password and initial database. For PostgreSQL, use `postgres` when discovering other databases.
+3. Choose **Verified TLS**. Expand **Advanced settings** for a private CA certificate path, operation timeout and row limit. Certificate and hostname/IP verification stay enabled. Plaintext requires explicit confirmation before each network operation.
+4. **Save connection** stores the configuration without a network test. **Test connection** checks the current form without saving. **Save & connect** tests, saves and focuses the Database sidebar. Failures appear in the form and preserve your inputs for correction.
+5. Passwords are masked and stored only in VS Code SecretStorage; connection metadata is saved globally on this computer, outside the workspace. Right-click a saved connection to **Test**, **Edit** or **Remove** it. Leave an edited password empty to retain the saved password. Edits rotate credential identity, so pending operations against the old identity are rejected.
 
 ### Browse and execute SQL
 
-- **Database → Browse Databases / Schemas / Tables**: choose a connection, database, PostgreSQL schema, then a table or view. Choose **Browse columns** or **Preview rows**. Choose **Back to tables** to continue browsing, or Escape to leave. Empty or truncated lists explain their status and offer **Filter list** (server-side SQL LIKE patterns: `%` any text, `_` one character), **Enter exact name**, or **Use listed entries** when available. Exact-name entry lets you browse a known object even when it is not present in the capped list.
-- **Database → Execute SQL**: choose a connection and database. Write SQL in a `.sql` editor first, or use the blank SQL document opened by the command. Run the command again after writing SQL. If text is selected, only that selection runs; otherwise the entire document runs.
-- Confirm **Execute SQL** after checking the destination. SQL can change or delete database data. Queries are not wrapped in automatic rollback. Each operation uses a new connection, so session state and transactions do not span separate command runs. MySQL/MariaDB allow one statement per run; PostgreSQL batch behavior follows its protocol.
-- Results open as an unsaved JSON document with `columns`, positional `rows`, `affectedRows`, and `truncated`. Multi-result operations include a `results` array so each statement retains its own columns, rows and affected-row count. They remain in the editor until closed; saving them is your choice. No SQL history or results are automatically saved by the toolkit. VS Code's own unsaved-editor recovery settings still apply.
-- Defaults: 15-second operation timeout, 500 rows and 8 MiB of accumulated result data. After a collection limit is reached, extra rows are discarded while SQL continues to completion; later errors still fail the operation. A timeout or broken connection may leave the execution outcome uncertain: inspect server state before retrying writes. A truncated result is clearly marked; refine the query using `WHERE` and `LIMIT`. These caps bound collected results, not server-side work or a single protocol field. Use database permissions and server resource limits appropriate for your connection.
+- Expand a saved connection in the **Database** sidebar to list databases. Expand a database to list tables/views; PostgreSQL adds a schema level. Expand a table to see its columns and types, or click its name to preview rows in a grid. The toolbar **Refresh** reloads metadata. Errors appear in the tree with a retry action.
+- Choose **Find / filter entries…** (or **More entries…** when truncated) to reach objects outside a capped list. Server-side LIKE filters use `%` for any text and `_` for one character. **Enter exact name** reaches a known database/schema/table when it cannot be listed. Refresh clears the narrowed selection.
+- Click **New SQL query** under a database/schema to open a destination-specific SQL editor. Alternatively, **Database → Execute SQL** picks a connection and database and opens the query editor, prefilled from the active `.sql` document/selection when available.
+- Write SQL and click **Execute SQL**, or press **Ctrl+Enter / ⌘+Enter**. Confirm the destination in the warning. SQL can modify or delete data; no automatic rollback is applied. Each operation uses a new connection, so transaction/session state does not span runs. MySQL/MariaDB allow one statement per run; PostgreSQL batch behavior follows its protocol.
+- Results appear below the query with column headings, rows, explicit `NULL` cells and affected-row counts. Multi-result operations offer a **Result set** selector. Errors and truncation are clearly shown. Forms, SQL and results remain in memory when tabs are hidden; closing the panel discards unsaved input/results. No SQL history or result files are automatically saved.
+- Defaults: 15-second operation timeout, 500 rows and 8 MiB of accumulated result data. Advanced settings accept 1–5000 rows and 1000–120000 ms. After a collection limit is reached, extra rows are discarded while SQL continues to completion; later errors still fail. A timeout or broken connection may leave the execution outcome uncertain: inspect server state before retrying writes. These limits bound collected results, not server-side work or a single protocol field.
 
 | Command palette entry | Command ID | Use |
 |---|---|---|
 | Database Tools | `devkit.database.menu` | Open the database function menu. |
-| Add Connection | `devkit.database.add` | Create, test and save an independent connection. |
+| Add Connection | `devkit.database.add` | Open the connection form to save/test an independent connection. |
 | Browse Databases | `devkit.database.browse` | Browse databases, schemas, tables, views, columns and row previews. |
-| Execute SQL | `devkit.database.query` | Execute selected/all SQL from the active SQL document after destination confirmation. |
+| Execute SQL | `devkit.database.query` | Open the SQL editor; selected/all active SQL text prefills it. |
 | Test Connection | `devkit.database.test` | Connect and run `SELECT 1`. |
-| Edit Connection | `devkit.database.edit` | Reconfigure and re-test an existing connection. |
+| Edit Connection | `devkit.database.edit` | Open an existing connection in the form; save or test changes. |
+| Refresh Databases | `devkit.database.refresh` | Clear filters and refresh the database tree. |
 | Remove Connection | `devkit.database.remove` | Remove saved metadata and password after confirmation; the server database is untouched. |
 
 All palette titles begin **Development Tools Kit Database:**. Database connections require a trusted workspace. Operations report progress, return bounded errors without raw SQL/passwords, and fail on timeout or certificate errors. Direct database TCP/TLS connections are supported; for an SSH-only database, establish a trusted system SSH tunnel separately and connect through it using a certificate matching the configured endpoint. This release does not configure database tunnels automatically.
