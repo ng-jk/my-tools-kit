@@ -26,7 +26,7 @@ test('extension host bridge executes requests and persists no response credentia
     const extensionPath = path.resolve(__dirname, '..');
     activate({ subscriptions: [], extensionPath, extensionUri: uri(extensionPath), secrets: { get: async name => name.endsWith(':TOKEN') ? 'fixture-secret' : undefined } });
     await commands.get('devkit.open')();
-    await receive({ type: 'send', request: { url: 'http://127.0.0.1:' + server.address().port, auth: { type: 'bearer', token: '{{token}}' } }, environment: { token: '{{secret.TOKEN}}' } });
+    await receive({ type: 'send', request: { url: 'http://127.0.0.1:' + server.address().port,documentation:'Literal documentation: {{customerId}} / {{secret.UNSTORED}}', auth: { type: 'bearer', token: '{{token}}' } }, environment: { token: '{{secret.TOKEN}}' } });
     const result = messages.find(m => m.type === 'result').result;
     assert.equal(result.json.authorization, 'Bearer fixture-secret'); assert.equal(result.variables, undefined); assert.equal(result.base64, undefined);
     assert.equal(fs.readdirSync(root).length, 0);

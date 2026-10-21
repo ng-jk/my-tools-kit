@@ -47,6 +47,11 @@ test('OAuth token exchange supports manual code/PKCE, password and refresh grant
   }
   assert.equal(grants[0].code_verifier,'fixture-verifier');assert.equal(grants[1].username,'fixture');assert.equal(grants[2].refresh_token,'fixture-refresh');
 });
+test('plain-text documentation templates never affect outgoing requests',async t=>{
+  const base=await fixture(t,(_req,res)=>res.end('sent'));
+  const result=await execute({url:base,documentation:'Examples: {{customerId}} and {{secret.UNSTORED}} are plain text.'});
+  assert.equal(result.status,200);assert.equal(result.body,'sent');
+});
 test('NTLM does not mutate non-challenging endpoints or report an empty negotiation as success',async t=>{
   const methods=[];const base=await fixture(t,(req,res)=>{methods.push(req.method);res.end('anonymous endpoint');});
   await assert.rejects(execute({url:base,method:'POST',body:{type:'text',value:'must not be silently omitted'},auth:{type:'ntlm',username:'fixture',password:'fixture'}}),/negotiation was not offered.*No authenticated payload/);

@@ -23,6 +23,7 @@ function substitute(value, variables, seen = []) {
 function pairs(value) {
   return Array.isArray(value) ? value.filter(x => x.enabled !== false && x.disabled !== true && (x.name??x.key)).map(x => [x.name ?? x.key, x.value ?? '']) : Object.entries(value || {});
 }
+function requestTemplate(request){const {documentation,...template}=request;return template;}
 function jsonPath(value, pointer = '') {
   return pointer.replace(/^\$\.?/, '').replace(/\[(\d+)\]/g, '.$1').split('.').filter(Boolean).reduce((v, key) => v?.[key], value);
 }
@@ -120,7 +121,7 @@ async function execute(request, options = {}) {
     variables=result.variables;
   }
   const pre = await script(request.preScript, request, null, variables, options); variables = pre.variables; tests.push(...pre.tests); logs.push(...pre.logs);
-  const r = substitute({ ...(pre.request||request), preScript: undefined, postScript: undefined }, variables);
+  const r = substitute({ ...requestTemplate(pre.request||request), preScript: undefined, postScript: undefined }, variables);
   let url = new URL(r.url); for (const [k, v] of pairs(r.query)) url.searchParams.append(k, v);
   let headers = Object.fromEntries(pairs(r.headers).map(([k, v]) => [k.toLowerCase(), String(v)]));
   headers['accept-encoding'] = 'identity';
@@ -205,4 +206,4 @@ async function runCollection(collection, options = {}) {
   }
   return { passed: results.length > 0 && results.every(r => r.passed) && !options.signal?.aborted, results, variables };
 }
-module.exports = { execute, runCollection, substitute, assertions, CookieJar, flatten,dependencyRequests,pairs };
+module.exports = { execute, runCollection, substitute, assertions, CookieJar, flatten,dependencyRequests,pairs,requestTemplate };
