@@ -24,6 +24,10 @@ test('profiles-only connections independently resolve protocol, port, paths and 
   }
   const implicit=engine.createSession(workspace,{...raw,profiles:{ssh:{...raw.profiles.api_log,port:undefined}}},'ssh');t.after(()=>implicit.service.dispose());assert.equal(implicit.config.port,22);
   assert.equal(raw.port,21);assert.equal(raw.profiles.api_live.password,'fixture-live');
+  const sshConfig=path.join(workspace,'ssh-config');fs.writeFileSync(sshConfig,'Host fixture-alias\n  HostName base.invalid\n  User from-ssh-config\n');
+  const external=engine.createSession(workspace,{host:'fixture-alias',sshConfigPath:sshConfig,remotePath:'/base',profiles:raw.profiles});t.after(()=>external.service.dispose());
+  assert.equal(external.profile,null);assert.equal(external.config.host,'base.invalid');assert.equal(external.config.username,'from-ssh-config');assert.equal(external.config.remotePath,'/base');
+  assert.equal(engine.inspectConfig({remote:'saved-connection',profiles:raw.profiles}).selected,null);
 });
 test('configuration parse errors never echo credential-bearing JSON',async t=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-config-error-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));

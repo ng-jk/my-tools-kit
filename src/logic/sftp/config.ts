@@ -125,7 +125,7 @@ export function mergedDefault(config: any) {
   };
   // A profiles-only file has no usable base connection. Start with its first
   // profile unless the author explicitly selected another default.
-  if(!result.defaultProfile && (!result.host || !result.username) && result.profiles && Object.keys(result.profiles).length)
+  if(!result.defaultProfile && !result.host && !result.remote && result.profiles && Object.keys(result.profiles).length)
     result.defaultProfile=Object.keys(result.profiles)[0];
   return result;
 }
