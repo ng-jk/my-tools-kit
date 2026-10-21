@@ -28,6 +28,7 @@ export default class MirrorService {
     }
     if(!originals.length)return;
     await this.repository.initialize();
+    for(const original of originals)await this.repository.prepareFile(original.relative);
     const queue=originals.slice(),touched=new Set<string>(),links=new Map<string,string>();
     const count=Math.max(1,Math.min(option.concurrency||1,queue.length));
     const outcomes=await Promise.allSettled(Array.from({length:count},async()=>{

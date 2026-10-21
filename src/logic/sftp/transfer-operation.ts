@@ -6,6 +6,7 @@ import {backupBeforeUpload} from './backup';
 import {assertRemoteAncestors} from './remote-operations';
 import {DirectoryPermissionScope} from './directory-permissions';
 import {cancelPendingOperations} from './cancellation';
+import {acquireUploadLock} from './upload-lock';
 
 async function assertLocalAncestors(fs:any,target:string,root:string) {
   const base=path.resolve(root), relative=path.relative(base,path.resolve(target));
@@ -28,6 +29,7 @@ export async function executeTransfer(service: any, config: any, local: string, 
   active.add(cancel);
   const directoryScope = new DirectoryPermissionScope();
   let scheduler: any;
+  let releaseUpload:(()=>void)|undefined;
   let finishMetadata: (()=>void)|undefined;
   let planning = true;
   const guard = (fs: any) => new Proxy(fs, {get(target, key) {
@@ -38,6 +40,7 @@ export async function executeTransfer(service: any, config: any, local: string, 
   }});
   try {
     checkCancelled();
+    if(!down)releaseUpload=await acquireUploadLock(config,remote,checkCancelled);
     const remoteFs = guard(await service.getRemoteFileSystem(config));
     finishMetadata=(remoteFs as any).beginMetadataReadScope?.();
     checkCancelled();
@@ -71,6 +74,6 @@ export async function executeTransfer(service: any, config: any, local: string, 
   } finally {
     finishMetadata?.();
     scheduler?.stop(); active.delete(cancel);
-    await directoryScope.finish();
+    try{await directoryScope.finish();}finally{releaseUpload?.();}
   }
 }

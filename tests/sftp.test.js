@@ -985,3 +985,33 @@ test('upload and sync back up leaf symlink targets in Git without dereferencing 
    assert.equal(fs.existsSync(path.join(backup,'leaf.txt')),false,'backup stores link in Git without creating an executable filesystem link');
  }
 });
+
+test('concurrent ordinary uploads back up every overwritten version',async t=>{
+ const {local,remote,session}=fixture(t),git=require('isomorphic-git'),{Readable}=require('node:stream');
+ const backup=engine.defaultBackupPath(session.service.workspace,session.service.baseDir,session.config,session.service.profile);
+ t.after(()=>fs.rmSync(backup,{recursive:true,force:true}));
+ fs.writeFileSync(path.join(local,'concurrent.txt'),'B');fs.writeFileSync(path.join(remote,'concurrent.txt'),'A');
+ const remoteFs=await session.service.getRemoteFileSystem(session.config),put=remoteFs.put.bind(remoteFs),get=remoteFs.get.bind(remoteFs);
+ let unblock,started,reads=0,first=true;const gate=new Promise(resolve=>unblock=resolve),ready=new Promise(resolve=>started=resolve);
+ remoteFs.get=async(...args)=>{reads++;return get(...args);};
+ remoteFs.put=async(input,target,options)=>{if(first){first=false;const chunks=[];for await(const chunk of input)chunks.push(chunk);started();await gate;return put(Readable.from(Buffer.concat(chunks)),target,options);}return put(input,target,options);};
+ const a=engine.operate(session,'upload','concurrent.txt');await ready;
+ fs.writeFileSync(path.join(local,'concurrent.txt'),'C');const b=engine.operate(session,'upload','concurrent.txt');
+ try{await new Promise(resolve=>setTimeout(resolve,40));assert.equal(reads,1,'second backup waits for first replacement');}finally{unblock();}
+ await Promise.all([a,b]);assert.equal(fs.readFileSync(path.join(remote,'concurrent.txt'),'utf8'),'C');
+ const versions=[];for(const commit of await git.log({fs,dir:backup}))versions.push(Buffer.from((await git.readBlob({fs,dir:backup,oid:commit.oid,filepath:'concurrent.txt'})).blob).toString());
+ assert.deepEqual(versions,['B','A']);
+});
+
+test('automatic backup handles file-directory transitions without losing committed history',async t=>{
+ const {local,remote,session}=fixture(t),git=require('isomorphic-git');
+ const backup=engine.defaultBackupPath(session.service.workspace,session.service.baseDir,session.config,session.service.profile);
+ t.after(()=>fs.rmSync(backup,{recursive:true,force:true}));
+ const source=path.join(local,'shape'),destination=path.join(remote,'shape');
+ fs.writeFileSync(source,'new file');fs.writeFileSync(destination,'old file');await engine.operate(session,'upload','shape');
+ fs.unlinkSync(source);fs.unlinkSync(destination);fs.mkdirSync(source);fs.mkdirSync(destination);
+ fs.writeFileSync(path.join(source,'item.txt'),'new child');fs.writeFileSync(path.join(destination,'item.txt'),'old child');await engine.operate(session,'upload','shape');
+ fs.rmSync(source,{recursive:true});fs.rmSync(destination,{recursive:true});fs.writeFileSync(source,'final');fs.writeFileSync(destination,'second old file');await engine.operate(session,'upload','shape');
+ const commits=await git.log({fs,dir:backup});assert.equal(commits.length,3);
+ for(const [index,file,expected] of [[0,'shape','second old file'],[1,'shape/item.txt','old child'],[2,'shape','old file']])assert.equal(Buffer.from((await git.readBlob({fs,dir:backup,oid:commits[index].oid,filepath:file})).blob).toString(),expected);
+});

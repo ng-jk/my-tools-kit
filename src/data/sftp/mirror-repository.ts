@@ -23,6 +23,27 @@ export class MirrorRepository {
     }
     if (!await fse.pathExists(path.join(this.root,'.git'))) await git.init({fs,dir:this.root,defaultBranch:'main'});
   }
+  async prepareFile(filepath:string) {
+    const root=path.resolve(this.root),absolute=path.resolve(root,filepath),relative=path.relative(root,absolute);
+    if(!relative||path.isAbsolute(relative)||relative==='..'||relative.startsWith('..'+path.sep)||relative.split(path.sep).some(part=>part.toLowerCase()==='.git'))throw new Error('Unsafe backup working path');
+    const normalized=relative.split(path.sep).join('/');
+    for(const file of await git.listFiles({fs,dir:this.root})){
+      if(file.startsWith(normalized+'/')||normalized.startsWith(file+'/'))await git.remove({fs,dir:this.root,filepath:file});
+    }
+    let current=root;
+    const parts=relative.split(path.sep);
+    for(let i=0;i<parts.length;i++){
+      current=path.join(current,parts[i]);let stat;
+      try{stat=await fse.lstat(current);}catch(error){if(error.code!=='ENOENT')throw error;}
+      if(stat?.isSymbolicLink())throw new Error('Backup working tree contains a link');
+      const parent=i<parts.length-1;
+      if(stat&&(parent?!stat.isDirectory():stat.isDirectory())){
+        // The resolved path is checked above; .git and the repository root are excluded.
+        await fse.remove(current);
+      }
+      if(parent)await this.files.ensureDir(current);
+    }
+  }
   async stageLink(filepath:string,target:string) {
     // Git stores link text with mode 120000; never create/follow a local link.
     const local=path.join(this.root,filepath);
