@@ -52,7 +52,7 @@ function activate(context) {
       const values = { ...data.environment };
       for (const [key, value] of Object.entries(process.env)) values['env.' + key] = value;
       const requests=(data.type==='run'?flatten(data.collection):[data.request]).flatMap(request=>dependencyRequests(request,data.collections||[data.collection]));
-      const source = JSON.stringify({requests:requests.map(requestTemplate),environment:data.environment,collectionVariables:data.collection?.variables});
+      const source = JSON.stringify({requests:requests.map(request=>requestTemplate(request,true)),environment:data.environment,collectionVariables:data.collection?.variables});
       for (const match of source.matchAll(/\{\{\s*secret\.([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g)) {
         const value = await context.secrets.get(root + ':' + match[1]);
         if (value === undefined) throw new Error('Store the secret first: ' + match[1]);

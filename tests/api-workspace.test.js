@@ -52,6 +52,15 @@ test('plain-text documentation templates never affect outgoing requests',async t
   const result=await execute({url:base,documentation:'Examples: {{customerId}} and {{secret.UNSTORED}} are plain text.'});
   assert.equal(result.status,200);assert.equal(result.body,'sent');
 });
+test('disabled and unnamed fields do not require variables or secrets',async t=>{
+  const base=await fixture(t,async(req,res)=>{const chunks=[];for await(const chunk of req)chunks.push(chunk);res.setHeader('content-type','application/json');res.end(JSON.stringify({url:req.url,headers:req.headers,body:Buffer.concat(chunks).toString()}));});
+  for(const body of [{type:'form',value:[{name:'skip',value:'{{missing}}',enabled:false},{name:'',value:'{{missing}}'},{name:'yes',value:'one'}]},{type:'multipart',fields:[{name:'skip',file:'{{missing}}',enabled:false},{name:'',value:'{{missing}}'},{name:'yes',value:'one'}]}]){
+    const result=await execute({url:base,method:'POST',headers:[{name:'Authorization',value:'{{secret.UNUSED}}',enabled:false}],query:[{name:'skip',value:'{{missing}}',disabled:true}],auth:{type:'none',token:'{{missing}}'},body});
+    assert.equal(result.status,200);assert.equal(result.json.url,'/');assert.equal(result.json.headers.authorization,undefined);assert.equal(result.json.body.includes('{{missing}}'),false);
+  }
+  await assert.rejects(execute({url:base,method:'POST',body:{type:'multipart',fields:[{name:'file',file:''}]}}),/Multipart file path is required/);
+  await assert.rejects(execute({url:base,method:'POST',body:{type:'binary',file:''}}),/Binary body requires/);
+});
 test('pre-request collection defaults cannot retarget requests or leak into another collection',async t=>{
   const seen=[];
   const auth=await fixture(t,(req,res)=>{seen.push(['auth',req.url,req.headers.authorization]);res.setHeader('content-type','application/json');res.end('{"token":"extracted-token"}');});

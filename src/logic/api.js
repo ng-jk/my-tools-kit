@@ -23,7 +23,26 @@ function substitute(value, variables, seen = []) {
 function pairs(value) {
   return Array.isArray(value) ? value.filter(x => x.enabled !== false && x.disabled !== true && (x.name??x.key)).map(x => [x.name ?? x.key, x.value ?? '']) : Object.entries(value || {});
 }
-function requestTemplate(request){const {documentation,...template}=request;return template;}
+function requestTemplate(request,forSecrets=false){
+  const {documentation,name,id,preRequests,collections,variables,bodyDrafts,authDrafts,...template}=request;
+  const enabled=rows=>Array.isArray(rows)?rows.filter(row=>row&&row.enabled!==false&&row.disabled!==true&&(row.name??row.key)):rows;
+  template.headers=enabled(template.headers);template.query=enabled(template.query);
+  if(template.body){
+    const body=template.body;
+    if(body.type==='none')template.body={type:'none'};
+    else if(body.type==='form')template.body={type:'form',value:enabled(body.value)};
+    else if(body.type==='multipart')template.body={type:'multipart',fields:enabled(body.fields)};
+    else if(body.type==='binary')template.body={type:'binary',file:body.file};
+  }
+  if(template.auth){
+    const auth=template.auth,fields={none:[],bearer:['token'],basic:['username','password'],apiKey:['name','value','in'],ntlm:['username','password','domain','workstation'],aws:['accessKeyId','secretAccessKey','sessionToken','region','service']};
+    let selected=fields[auth.type];
+    if(auth.type==='oauth2')selected=['tokenUrl','clientId','clientSecret','scope','grantType',...({password:['username','password'],authorization_code:['code','redirectUri','codeVerifier'],refresh_token:['refreshToken']}[auth.grantType]||[])];
+    if(selected)template.auth=Object.fromEntries(['type',...selected].filter(key=>Object.hasOwn(auth,key)).map(key=>[key,auth[key]]));
+  }
+  if(forSecrets&&variables)template.variables=variables;
+  return template;
+}
 function jsonPath(value, pointer = '') {
   return pointer.replace(/^\$\.?/, '').replace(/\[(\d+)\]/g, '.$1').split('.').filter(Boolean).reduce((v, key) => v?.[key], value);
 }
@@ -76,7 +95,7 @@ function buildBody(body, headers, root) {
   if(body.type==='xml'){headers['content-type']||='application/xml';return Buffer.from(String(body.value??''));}
   if(body.type==='graphql'){headers['content-type']||='application/json';const value=body.variables||{};if(typeof value!=='object'||Array.isArray(value))throw new Error('GraphQL variables must be a JSON object');return Buffer.from(JSON.stringify({query:String(body.query??body.value??''),variables:value,...(body.operationName?{operationName:body.operationName}:{})}));}
   if (body.type === 'form') { headers['content-type'] ||= 'application/x-www-form-urlencoded'; return Buffer.from(new URLSearchParams(pairs(body.value)).toString()); }
-  if (body.type === 'binary') {headers['content-type']||='application/octet-stream';return readBuffer(inside(root, body.file));}
+  if (body.type === 'binary') {if(typeof body.file!=='string'||!body.file.trim())throw new Error('Binary body requires a project-relative file path');headers['content-type']||='application/octet-stream';return readBuffer(inside(root, body.file));}
   if (body.type === 'multipart') {
     const boundary = 'devkit-' + crypto.randomUUID(); headers['content-type'] = 'multipart/form-data; boundary=' + boundary;
     const chunks = [];
@@ -85,7 +104,8 @@ function buildBody(body, headers, root) {
       if (/[\r\n"]/.test(field.name)) throw new Error('Invalid multipart field name');
       let disposition = `Content-Disposition: form-data; name="${field.name}"`;
       let value = Buffer.from(String(field.value ?? ''));
-      if (field.file) {
+      if (Object.hasOwn(field,'file')) {
+        if(typeof field.file!=='string'||!field.file.trim())throw new Error('Multipart file path is required for field '+field.name);
         const filename = path.basename(field.file).replace(/["\r\n]/g, '_');
         disposition += `; filename="${filename}"\r\nContent-Type: application/octet-stream`;
         value = readBuffer(inside(root, field.file));

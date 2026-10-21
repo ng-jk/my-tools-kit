@@ -128,7 +128,7 @@ function renderPairs(id){
   let rows=id==='headers'?rowValues(headerValues()):rowValues(json(id,[]));
   if(!rows.length)rows=[{name:'',value:'',enabled:true}];
   const container=$(id+'Rows');container.replaceChildren();
-  const emit=()=>{$(id).value=JSON.stringify(rows.filter(row=>row.name).map(row=>({...row})),null,2);};
+  const emit=()=>{$(id).value=JSON.stringify(rows.map(row=>({...row})),null,2);};
   rows.forEach((row,index)=>{
     row.name??=row.key||'';const line=document.createElement('div');line.className='pair-row';
     const enabled=document.createElement('input');enabled.type='checkbox';enabled.checked=row.enabled!==false&&row.disabled!==true;enabled.setAttribute('aria-label',id+' enabled '+(index+1));enabled.onchange=()=>{row.enabled=enabled.checked;delete row.disabled;emit();};
