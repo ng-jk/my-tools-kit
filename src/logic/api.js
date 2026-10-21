@@ -12,7 +12,7 @@ function substitute(value, variables, seen = []) {
   if (typeof value === 'string') return value.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (_, key) => {
     if (key === '$uuid') return crypto.randomUUID();
     if (key === '$timestamp') return String(Date.now());
-    if (!Object.hasOwn(variables, key)) throw new Error('Missing variable: ' + key);
+    if (!Object.hasOwn(variables, key)) throw new Error(key.startsWith('secret.')?'Store the secret first: '+key.slice(7):'Missing variable: ' + key);
     if (seen.includes(key) || seen.length >= 20) throw new Error('Circular or deeply nested variable: ' + key);
     return substitute(String(variables[key]), variables, [...seen, key]);
   });
@@ -23,7 +23,7 @@ function substitute(value, variables, seen = []) {
 function pairs(value) {
   return Array.isArray(value) ? value.filter(x => x.enabled !== false && x.disabled !== true && (x.name??x.key)).map(x => [x.name ?? x.key, x.value ?? '']) : Object.entries(value || {});
 }
-function requestTemplate(request,variables={}){
+function requestTemplate(request,variables={},discover=false){
   const {documentation,name,id,preRequests,collections,variables:collectionDefaults,bodyDrafts,authDrafts,...template}=request;
   const enabled=rows=>Array.isArray(rows)?rows.filter(row=>row&&row.enabled!==false&&row.disabled!==true&&(row.name??row.key)):rows;
   template.headers=enabled(template.headers);template.query=enabled(template.query);
@@ -35,9 +35,10 @@ function requestTemplate(request,variables={}){
     else if(body.type==='binary')template.body={type:'binary',file:body.file};
   }
   if(template.auth){
-    const auth={...template.auth,type:substitute(template.auth.type,variables)},fields={none:[],bearer:['token'],basic:['username','password'],apiKey:['name','value','in'],ntlm:['username','password','domain','workstation'],aws:['accessKeyId','secretAccessKey','sessionToken','region','service']};
+    const selector=value=>{try{return substitute(value,variables);}catch(error){if(discover)return undefined;throw error;}};
+    const auth={...template.auth,type:selector(template.auth.type)},fields={none:[],bearer:['token'],basic:['username','password'],apiKey:['name','value','in'],ntlm:['username','password','domain','workstation'],aws:['accessKeyId','secretAccessKey','sessionToken','region','service']};
     let selected=fields[auth.type];
-    if(auth.type==='oauth2')selected=['tokenUrl','clientId','clientSecret','scope','grantType',...({password:['username','password'],authorization_code:['code','redirectUri','codeVerifier'],refresh_token:['refreshToken']}[substitute(auth.grantType,variables)]||[])];
+    if(auth.type==='oauth2'&&(!auth.grantType||selector(auth.grantType)!==undefined))selected=['tokenUrl','clientId','clientSecret','scope','grantType',...({password:['username','password'],authorization_code:['code','redirectUri','codeVerifier'],refresh_token:['refreshToken']}[selector(auth.grantType)]||[])];
     if(selected)template.auth=Object.fromEntries(['type',...selected].filter(key=>Object.hasOwn(auth,key)).map(key=>[key,auth[key]]));
   }
   return template;
@@ -52,7 +53,7 @@ function referencedSecrets(requests,environment={}){
       walk(variables[name],[...seen,name]);
     };
     const walk=(value,seen=[])=>{if(typeof value==='string'){for(const match of value.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g))key(match[1],seen);}else if(Array.isArray(value))value.forEach(item=>walk(item,seen));else if(value&&typeof value==='object')Object.values(value).forEach(item=>walk(item,seen));};
-    walk(requestTemplate(request,variables));
+    walk(requestTemplate(request,variables,true));
     for(const script of [request.preScript,request.postScript])for(const match of String(script||'').matchAll(/env\.get\(\s*['"]([^'"]+)['"]\s*\)/g))key(match[1]);
   }
   return [...names];

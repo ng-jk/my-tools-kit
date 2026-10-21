@@ -54,8 +54,9 @@ function activate(context) {
       const requests=(data.type==='run'?flatten(data.collection):[data.request]).flatMap(request=>dependencyRequests({...request,variables:data.collection?.variables},data.collections||[data.collection]));
       for (const name of referencedSecrets(requests,values)) {
         const value = await context.secrets.get(root + ':' + name);
-        if (value === undefined) throw new Error('Store the secret first: ' + name);
-        values['secret.' + name] = value;
+        // Setup scripts may choose an auth mode later. Only execution can
+        // decide whether a missing credential is actually required.
+        if(value!==undefined)values['secret.' + name] = value;
       }
       return values;
     }

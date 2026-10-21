@@ -29,6 +29,8 @@ test('extension host bridge executes requests and persists no response credentia
     await receive({ type: 'send', request: { url: 'http://127.0.0.1:' + server.address().port,documentation:'Literal documentation: {{customerId}} / {{secret.UNSTORED}}',headers:[{name:'Unused',value:'{{secret.DISABLED}}',enabled:false}], auth: { type: 'bearer', token: '{{token}}' } }, environment: { token: '{{secret.TOKEN}}' } });
     const result = messages.find(m => m.type === 'result').result;
     assert.equal(result.json.authorization, 'Bearer fixture-secret'); assert.equal(result.variables, undefined); assert.equal(result.base64, undefined);
+    await receive({type:'send',allowScripts:true,request:{url:'http://127.0.0.1:'+server.address().port,preScript:'env.set("mode","bearer")',auth:{type:'{{mode}}',token:'{{secret.TOKEN}}',password:'{{secret.UNUSED}}'}}});
+    assert.equal(messages.filter(m=>m.type==='result').at(-1).result.json.authorization,'Bearer fixture-secret');
     assert.equal(fs.readdirSync(root).length, 0);
     vscode.workspace.isTrusted = false;
     await receive({ type: 'send', request: { url: 'http://127.0.0.1:' + server.address().port } });
