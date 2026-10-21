@@ -2,6 +2,8 @@
 
 ## 0.7.0 — 2026-10-21
 
+- Associate downloaded responses and undo recovery with their originating collection/request. Keep duplicate imported collections and their draft credentials isolated. Architecture checks inspect generated bundle dependency inputs to prevent hidden layer violations.
+
 - Rebuild API request editing around Query/Headers row editors, raw headers, typed authentication fields, seven body modes, test rules/scripting and Pre Run request chains/scripting.
 - Add XML and GraphQL bodies, independent unsent body/auth drafts, NTLMv2 authentication on a single connection and AWS Signature V4. Add OAuth authorization-code/PKCE, password and refresh-token exchange fields alongside client credentials.
 - Add response cookies, structured results, plain-text request documentation, raw/pretty response viewing, wrapping and copying. Collections can form an in-memory dependency library shared with CLI via --collections.

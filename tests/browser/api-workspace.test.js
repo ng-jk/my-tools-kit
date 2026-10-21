@@ -14,7 +14,7 @@ test('API editor preserves raw drafts across hide/reload and drives shared reque
   const disposable=()=>({dispose(){}}),vscode={ThemeIcon:class{},ViewColumn:{One:1},Uri:{file:uri,joinPath:(base,...parts)=>uri(path.join(base.fsPath,...parts))},
     workspace:{isTrusted:true,workspaceFolders:[{uri:uri(root)}],registerTextDocumentContentProvider:disposable,onDidCloseTextDocument:disposable},
     commands:{registerCommand:(name,fn)=>{commands.set(name,fn);return disposable();}},
-    window:{registerTreeDataProvider:disposable,showErrorMessage:message=>errors.push(message),createWebviewPanel:(_id,_title,_column,value)=>{panels++;options=value;return {reveal:()=>reveals++,onDidDispose(){},webview:{cspSource:'http:',asWebviewUri:value=>({toString:()=>'/media/'+path.basename(value.fsPath)}),set html(value){html=value;},postMessage:message=>page?.evaluate(value=>window.dispatchEvent(new MessageEvent('message',{data:value})),message),onDidReceiveMessage:fn=>receive=fn}};}}
+    window:{registerTreeDataProvider:disposable,showErrorMessage:message=>errors.push(message),showSaveDialog:async()=>uri(path.join(root,'response.bin')),createWebviewPanel:(_id,_title,_column,value)=>{panels++;options=value;return {reveal:()=>reveals++,onDidDispose(){},webview:{cspSource:'http:',asWebviewUri:value=>({toString:()=>'/media/'+path.basename(value.fsPath)}),set html(value){html=value;},postMessage:message=>page?.evaluate(value=>window.dispatchEvent(new MessageEvent('message',{data:value})),message),onDidReceiveMessage:fn=>receive=fn}};}}
   };
   const original=Module._load;
   try {
@@ -42,8 +42,17 @@ test('API editor preserves raw drafts across hide/reload and drives shared reque
     await page.locator('[data-tab="tests"]').click();await page.locator('#addTest').click();await expect(page.locator('#testRows')).toContainText('status');
     await page.locator('[data-tab="preRun"]').click();await page.locator('#addPreRequest').click();await page.locator('[aria-label="Collection 1"]').selectOption({label:'My collection'});await expect(page.locator('[aria-label="Request 1"]')).toBeVisible();
     await page.locator('#new').click();await page.locator('#name').fill('Setup');await page.locator('#url').fill(base+'/echo?setup=1');
+    await page.locator('#send').click();await expect(page.locator('#notice')).toContainText('Completed successfully');
     await page.locator('.request-item').filter({hasText:'New request'}).click();await page.locator('[aria-label="Request 1"]').selectOption({label:'Setup'});
+    await page.locator('#download').click();await expect.poll(()=>fs.existsSync(path.join(root,'response.bin'))).toBe(true);assert.equal(JSON.parse(fs.readFileSync(path.join(root,'response.bin'),'utf8')).url,'/echo?q=hello');fs.unlinkSync(path.join(root,'response.bin'));
     await page.locator('#send').click();await expect(page.locator('#notice')).toContainText('Completed successfully');await page.locator('[data-view="tests"]').click();await expect(page.locator('#response')).toContainText('Setup');
+    const originalCollection=await page.locator('#activeCollection').inputValue();await page.locator('.request-item').filter({hasText:'Setup'}).click();await page.locator('#delete').click();
+    const other={version:1,id:'other',name:'Other',requests:[{id:'other-request',name:'Other request',url:base+'/echo'}]};
+    await page.evaluate(value=>window.dispatchEvent(new MessageEvent('message',{data:{type:'collection',collection:value,warnings:[]}})),other);
+    await page.locator('#undoDelete').click();await expect(page.locator('#activeCollection')).toHaveValue(originalCollection);await expect(page.locator('.request-item').filter({hasText:'Setup'})).toHaveCount(1);
+    await page.locator('#activeCollection').selectOption('other');await expect(page.locator('.request-item').filter({hasText:'Setup'})).toHaveCount(0);
+    await page.evaluate(value=>window.dispatchEvent(new MessageEvent('message',{data:{type:'collection',collection:value,warnings:[]}})),other);
+    const ids=await page.locator('#activeCollection option').evaluateAll(items=>items.map(item=>item.value));assert.equal(new Set(ids).size,ids.length);
     await page.screenshot({path:path.join(toolkit,'dist/api-workspace-browser.png'),fullPage:true});
     await page.setViewportSize({width:560,height:900});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
     assert.deepEqual(errors,[]);assert.equal(fs.readdirSync(root).length,0,'drafts and credentials never persisted to the project');

@@ -25,6 +25,16 @@ def violations(root):
                 forbidden = [root / "src" / "interface", root / "lib"] if layer == "logic" else [root / "src" / "logic", root / "src" / "interface", root / "lib"] if layer == "data" else []
                 if any(resolved and resolved.is_relative_to(path.resolve()) for path in forbidden):
                     errors.append(f"{file.relative_to(root)}: forbidden dependency {dependency}")
+                if resolved and resolved.is_relative_to((root / 'build' / 'sftp').resolve()):
+                    metadata = root / 'dist' / ('sftp-' + resolved.stem + '-metafile.json')
+                    if not metadata.is_file():
+                        errors.append(f"{file.relative_to(root)}: missing generated dependency metadata for {dependency}")
+                    else:
+                        inputs = json.loads(metadata.read_text(encoding='utf-8')).get('inputs', {})
+                        for source in inputs:
+                            candidate = (root / source).resolve()
+                            if any(candidate.is_relative_to(path.resolve()) for path in forbidden):
+                                errors.append(f"{file.relative_to(root)}: generated dependency {dependency} imports forbidden {source}")
                 if layer != "interface" and dependency == "vscode":
                     errors.append(f"{file.relative_to(root)}: VS Code belongs in interface")
                 if layer == "logic" and dependency.removeprefix("node:") in ("fs", "fs/promises", "http", "https", "child_process", "worker_threads", "fs-extra"):

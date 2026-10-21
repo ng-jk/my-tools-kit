@@ -45,7 +45,7 @@ function activate(context) {
       .replaceAll('{{CSP}}', panel.webview.cspSource).replaceAll('{{NONCE}}', nonce)
       .replace('{{SCRIPT}}', panel.webview.asWebviewUri(vscode.Uri.joinPath(base, 'app.js')).toString())
       .replace('{{STYLE}}', panel.webview.asWebviewUri(vscode.Uri.joinPath(base, 'style.css')).toString());
-    let controller; let lastResponse;let draft;const jar=new CookieJar();
+    let controller;let draft;const jar=new CookieJar(),downloadPayloads=new Map();
     const post = value => panel.webview.postMessage(value);
     const confirmSave=async()=>await vscode.window.showWarningMessage('Save request data to a plain JSON file?',{modal:true,detail:'Requests, environments and libraries can include passwords, tokens, headers and body data. Prefer secret placeholders and keep credential files out of Git.'},'Save')==='Save';
     async function variables(data) {
@@ -60,7 +60,7 @@ function activate(context) {
       }
       return values;
     }
-    panel.onDidDispose(() => {controller?.abort();apiPanels.delete(root);draft=undefined;lastResponse=undefined;});
+    panel.onDidDispose(() => {controller?.abort();apiPanels.delete(root);draft=undefined;downloadPayloads.clear();});
     panel.webview.onDidReceiveMessage(async message => {
       try {
         if (!vscode.workspace.isTrusted) throw new Error('Workspace trust is required');
@@ -74,9 +74,10 @@ function activate(context) {
           try {
             const options = { root, variables: await variables(message), signal: controller.signal, allowScripts: !!message.allowScripts,collections:message.collections||[message.collection],jar };
             const result = message.type === 'send' ? await execute(message.request, options) : await runCollection(message.collection, options);
-            lastResponse = message.type === 'send' ? result : null;
+            const key=message.requestKey||message.request?.id||'legacy';
+            if(message.type==='send'){downloadPayloads.set(key,result.base64);if(downloadPayloads.size>6)downloadPayloads.delete(downloadPayloads.keys().next().value);}else downloadPayloads.delete(key);
             // Never persist resolved requests, responses or credentials to workspace state.
-            await post({ type: 'result', result: message.type === 'send' ? { ...result, variables: undefined, base64: undefined } : { passed: result.passed, results: result.results.map(r => ({ status: r.status, time: r.time, passed: r.passed, tests: r.tests, error: r.error })) } });
+            await post({ type: 'result',requestKey:message.requestKey, result: message.type === 'send' ? { ...result, variables: undefined, base64: undefined } : { passed: result.passed, results: result.results.map(r => ({ status: r.status, time: r.time, passed: r.passed, tests: r.tests, error: r.error })) } });
           } finally { controller = undefined; await post({ type: 'idle' }); }
         } else if (message.type === 'cancel') controller?.abort();
         else if(message.type==='formatBody'){await post({type:'bodyFormatted',original:message.text,text:formatJson(message.text,{indent:2})});}
@@ -112,9 +113,11 @@ function activate(context) {
           if(!await confirmSave())return;
           const target = await vscode.window.showSaveDialog({ defaultUri: vscode.Uri.file(path.join(root, 'environment.local.json')), filters: { JSON: ['json'] } });
           if (target) writeAtomic(target.fsPath, JSON.stringify(message.environment, null, 2) + '\n');
-        } else if (message.type === 'download' && lastResponse) {
+        } else if (message.type === 'download') {
+          const body=downloadPayloads.get(message.requestKey||'legacy');
+          if(body===undefined)throw new Error('No retained response for this request. Send it again before saving.');
           const target = await vscode.window.showSaveDialog({ defaultUri: vscode.Uri.file(path.join(root, 'response.bin')) });
-          if (target) writeAtomic(target.fsPath, Buffer.from(lastResponse.base64, 'base64'));
+          if (target) writeAtomic(target.fsPath, Buffer.from(body, 'base64'));
         } else if (message.type === 'curl') { await vscode.env.clipboard.writeText(curl(message.request)); await post({ type: 'notice', text: 'POSIX cURL template copied. Auth, query fields and non-raw bodies require manual mapping.' }); }
         else if (message.type === 'pipeline') await configure();
         else if (message.type === 'secret') await vscode.commands.executeCommand('devkit.secret');

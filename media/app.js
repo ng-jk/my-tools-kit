@@ -6,6 +6,7 @@ let selected = -1, response = null, view = 'body';
 const responses=new Map();let pendingRequestId;
 let activeTab='query',bodyMode='none',authMode='none',bodyDrafts={},authDrafts={},preRequests=[],deletedRequest;
 let editorDrafts={};
+const requestKey=request=>collection.id+':'+request.id;
 const history = [];
 const json = (id, fallback) => { const text = $(id).value.trim(); return text ? JSON.parse(text) : fallback; };
 function notice(text, error = false) { $('notice').textContent = text; $('notice').classList.toggle('error', error); }
@@ -17,13 +18,14 @@ function capture() {
   const type = $('bodyType').value;
   r.body = type === 'none' ? undefined : type === 'binary' ? { type, file: $('body').value } : type === 'multipart' ? { type, fields: json('body', []) } :type==='graphql'?{type,query:$('body').value,variables:json('graphqlVariables',{}),operationName:$('graphqlOperation').value}: { type, value: type==='form' ? json('body', {}) : $('body').value };
   r.auth = { ...json('auth', {}), type: $('authType').value };
-  editorDrafts[r.id]={bodyDrafts:structuredClone(bodyDrafts),authDrafts:structuredClone(authDrafts)};delete r.bodyDrafts;delete r.authDrafts;
+  editorDrafts[requestKey(r)]={bodyDrafts:structuredClone(bodyDrafts),authDrafts:structuredClone(authDrafts)};delete r.bodyDrafts;delete r.authDrafts;
   collection.requests[selected] = r; collection.name = $('collectionName').value;
   return r;
 }
 function load(index) {
   selected = index; const r = collection.requests[index];
-  response=responses.get(r.id)||null;if(!response){$('response').textContent='Send this request to inspect its response.';$('metrics').textContent='Status: — · Size: — · Time: —';}else{$('metrics').textContent=`Status: ${response.status} · Size: ${response.size} bytes · Time: ${response.time} ms`;showResponse();}
+  $('download').disabled=!responses.get(requestKey(r))||!!responses.get(requestKey(r)).results;
+  response=responses.get(requestKey(r))||null;if(!response){$('response').textContent='Send this request to inspect its response.';$('metrics').textContent='Status: — · Size: — · Time: —';}else{$('metrics').textContent=`Status: ${response.status} · Size: ${response.size} bytes · Time: ${response.time} ms`;showResponse();}
   for (const key of ['name', 'url', 'preScript', 'postScript','documentation']) $(key).value = r[key] || '';
   $('method').value = r.method || 'GET';
   for (const key of ['headers', 'query', 'tls']) $(key).value = JSON.stringify(r[key] || {}, null, 2);
@@ -33,7 +35,7 @@ function load(index) {
   const body = r.body?.file ?? r.body?.fields ?? r.body?.query??r.body?.value ?? '';
   $('body').value = typeof body === 'string' ? body : JSON.stringify(body, null, 2);
   $('graphqlVariables').value=JSON.stringify(r.body?.variables||{},null,2);$('graphqlOperation').value=r.body?.operationName||'';
-  bodyMode=$('bodyType').value;bodyDrafts=structuredClone(editorDrafts[r.id]?.bodyDrafts||{});authDrafts=structuredClone(editorDrafts[r.id]?.authDrafts||{});preRequests=structuredClone(r.preRequests||[]);
+  bodyMode=$('bodyType').value;bodyDrafts=structuredClone(editorDrafts[requestKey(r)]?.bodyDrafts||{});authDrafts=structuredClone(editorDrafts[requestKey(r)]?.authDrafts||{});preRequests=structuredClone(r.preRequests||[]);
   const { type = 'none', ...auth } = r.auth || {}; $('authType').value = type;authMode=type; $('auth').value = JSON.stringify(auth, null, 2); authHint(); render();renderPairs('query');renderPairs('headers');bodyControls();renderTests();renderPreRequests();
 }
 function render() {
@@ -74,22 +76,22 @@ for (const button of document.querySelectorAll('[data-tab]')) button.onclick = (
 for (const button of document.querySelectorAll('[data-view]')) button.onclick = () => { view = button.dataset.view;for(const item of document.querySelectorAll('[data-view]'))item.setAttribute('aria-pressed',String(item===button));showResponse(); };
 $('new').onclick = action(() => { if (selected >= 0) capture(); collection.requests.push(blank()); load(collection.requests.length - 1); });
 $('duplicate').onclick = action(() => { const r = capture(); collection.requests.push({ ...structuredClone(r), id: crypto.randomUUID(), name: r.name + ' copy' }); load(collection.requests.length - 1); });
-$('delete').onclick = action(() => {capture();deletedRequest={request:collection.requests[selected],index:selected};collection.requests.splice(selected, 1); if (!collection.requests.length) collection.requests.push(blank()); load(Math.min(selected, collection.requests.length - 1));$('undoDelete').disabled=false;notice('Request removed. Use Undo delete to recover it.');});
-$('undoDelete').onclick=()=>{if(!deletedRequest)return;collection.requests.splice(deletedRequest.index,0,deletedRequest.request);load(deletedRequest.index);deletedRequest=undefined;$('undoDelete').disabled=true;saveDraft();};
+$('delete').onclick = action(() => {capture();deletedRequest={request:collection.requests[selected],index:selected,collectionId:collection.id};collection.requests.splice(selected, 1); if (!collection.requests.length) collection.requests.push(blank()); load(Math.min(selected, collection.requests.length - 1));$('undoDelete').disabled=false;notice('Request removed. Use Undo delete to recover it in its original collection.');});
+$('undoDelete').onclick=action(()=>{if(!deletedRequest)return;capture();const origin=catalog.find(c=>c.id===deletedRequest.collectionId);if(!origin)throw new Error('Original collection is unavailable');collection=origin;$('collectionName').value=collection.name;collection.requests.splice(deletedRequest.index,0,deletedRequest.request);load(deletedRequest.index);deletedRequest=undefined;$('undoDelete').disabled=true;saveDraft();});
 $('search').oninput = render; $('authType').onchange = ()=>{authDrafts[authMode]=$('auth').value;authMode=$('authType').value;$('auth').value=authDrafts[authMode]||'{}';authHint();};
 $('addTest').onclick = action(() => { const tests = json('tests', []); let value = $('testValue').value; try { value = JSON.parse(value); } catch {} tests.push({ source: $('testSource').value, path: $('testPath').value, operator: $('testOperator').value, value }); $('tests').value = JSON.stringify(tests, null, 2);renderTests(); });
 for (const type of ['send', 'run']) $(type).onclick = action(() => {
   const request = capture(); const environment = { ...collection.variables, ...json('environment', {}) };
-  pendingRequestId=request.id;
+  pendingRequestId=requestKey(request);
   busy(true); notice(type === 'send' ? 'Sending request…' : 'Running collection…');
-  vscode.postMessage({ type, request, collection,collections:catalog, environment, allowScripts: $('allowScripts').checked });
+  vscode.postMessage({ type, request,requestKey:pendingRequestId, collection,collections:catalog, environment, allowScripts: $('allowScripts').checked });
 });
 $('save').onclick = action(() => { capture(); vscode.postMessage({ type: 'save', collection }); });
 $('exportPostman').onclick = action(() => { capture(); vscode.postMessage({ type: 'exportPostman', collection }); });
 $('saveRequest').onclick = action(() => vscode.postMessage({ type: 'saveRequest', request: capture() }));
 $('curl').onclick = action(() => vscode.postMessage({ type: 'curl', request: capture() }));
 $('saveEnvironment').onclick = action(() => vscode.postMessage({ type: 'saveEnvironment', environment: json('environment', {}) }));
-for (const type of ['open', 'cancel', 'download', 'pipeline', 'secret', 'openEnvironment', 'textTools']) $(type).onclick = () => vscode.postMessage({ type });
+for (const type of ['open', 'cancel', 'download', 'pipeline', 'secret', 'openEnvironment', 'textTools']) $(type).onclick = () => vscode.postMessage({ type,requestKey:collection.requests[selected]?requestKey(collection.requests[selected]):undefined });
 window.addEventListener('message', event => {
   const message = event.data;
   if (message.type === 'idle') busy(false);
@@ -98,7 +100,9 @@ window.addEventListener('message', event => {
   if (message.type === 'environment') { $('environment').value = JSON.stringify(message.value, null, 2); notice('Environment loaded.'); }
   if (message.type === 'collection') {
     $('allowScripts').checked=false;
-    capture();collection = message.collection;collection.id||=crypto.randomUUID();collection.requests.forEach(r=>r.id||=crypto.randomUUID());catalog.push(collection);
+    capture();collection = message.collection;collection.id||=crypto.randomUUID();collection.requests.forEach(r=>r.id||=crypto.randomUUID());
+    if(catalog.some(c=>c.id===collection.id)){const previous=collection.id;collection.id=crypto.randomUUID();collection.name+=' (imported copy)';for(const request of collection.requests)for(const reference of request.preRequests||[])if(reference.collectionId===previous)reference.collectionId=collection.id;}
+    catalog.push(collection);
     function flatten(folder, defaults = {}) { const inherited = { ...defaults, ...folder.defaults }; return [...(folder.requests || []).map(r => ({ ...inherited, ...r })), ...(folder.folders || []).flatMap(f => flatten(f, inherited))]; }
     collection.requests = flatten(collection); delete collection.folders; delete collection.defaults;
     if (!collection.requests.length) collection.requests.push(blank());
@@ -106,10 +110,12 @@ window.addEventListener('message', event => {
     notice(message.warnings.length ? message.warnings.join('\n') : 'Collection loaded.');
   }
   if (message.type === 'result') {
+    pendingRequestId=message.requestKey||pendingRequestId;
     responses.set(pendingRequestId,message.result);
     if(responses.size>6)responses.delete(responses.keys().next().value);
-    if(collection.requests[selected]?.id!==pendingRequestId){notice('Background request completed; select its request to inspect the response.');return;}
+    if(!collection.requests[selected]||requestKey(collection.requests[selected])!==pendingRequestId){notice('Background request completed; select its request to inspect the response.');return;}
     response = message.result; $('metrics').textContent = response.results ? `${response.results.length} requests` : `Status: ${response.status} · Size: ${response.size} bytes · Time: ${response.time} ms`;
+    $('download').disabled=!!response.results;
     notice(response.passed ? 'Completed successfully.' : 'Completed with failed tests or an HTTP error.', !response.passed);
     history.unshift(new Date().toLocaleTimeString() + ' · ' + (response.status || 'Collection') + ' · ' + (response.passed ? 'PASS' : 'FAIL'));
     $('history').textContent = history.slice(0, 12).join('\n'); showResponse();

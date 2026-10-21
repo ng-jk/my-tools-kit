@@ -6,7 +6,7 @@ const {patchFtp}=require('./patch-ftp');
 async function main() {
   const root = path.resolve(__dirname, '..');
   const dependencies = new Set();
-  for (const [entry, name] of [['src/interface/sftp/extension.ts', 'extension'], ['src/logic/sftp/engine.ts', 'engine'], ['src/data/sftp/watch-match.js', 'watch-match'], ['src/logic/database.js', 'database'],['src/logic/auth-libraries.js','api-auth']]) {
+  for (const [entry, name] of [['src/interface/sftp/extension.ts', 'extension'], ['src/logic/sftp/engine.ts', 'engine'], ['src/data/sftp/watch-match.js', 'watch-match'], ['src/logic/database.js', 'database'],['src/data/auth-libraries.js','api-auth']]) {
     const result = await esbuild.build({ absWorkingDir: root, entryPoints: [entry], outfile: 'build/sftp/' + name + '.js',
       platform: 'node', target: 'node20', format: 'cjs', bundle: true, sourcemap: false, metafile: true,
       external: ['vscode', '*.node', 'cpu-features', 'pg-native'], logLevel: 'warning',

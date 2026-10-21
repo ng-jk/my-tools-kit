@@ -11,6 +11,19 @@ from scripts.architecture import violations
 
 
 class PolicyTests(unittest.TestCase):
+    def test_generated_imports_cannot_hide_data_to_logic_dependency(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            (root/'src/data').mkdir(parents=True)
+            (root/'dist').mkdir()
+            (root/'src/data/adapter.js').write_text("require('../../build/sftp/auth')")
+            self.assertTrue(violations(root))
+            metadata=root/'dist/sftp-auth-metafile.json'
+            metadata.write_text(json.dumps({'inputs':{'src/logic/wrapper.js':{}}}))
+            self.assertTrue(violations(root))
+            metadata.write_text(json.dumps({'inputs':{'src/data/wrapper.js':{}}}))
+            self.assertEqual(violations(root),[])
+
     def test_authentication_retries_three_times(self):
         git = Git.__new__(Git)
         git.attempts = []
