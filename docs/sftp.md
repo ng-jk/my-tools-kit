@@ -209,4 +209,4 @@ Ordinary file, folder, upload-only Git and all-profile uploads start without an 
 
 FTP planning shares directory listings for repeated metadata reads, clears them on mutations, and discards them before payload transfer. This reduces network round trips, especially on high-latency servers; required backup downloads still take time. File permission verification and staged replacement remain active. Force Upload keeps its credential-exclusion warning; remote deletions, renames, and destructive synchronization retain their separate confirmations.
 
-FTP listing absence is not proof of a new file. Unlisted originals are backed up using their exact path; if RETR fails or returns an ambiguous 550, replacement is blocked. This also prevents FTP creation of unlisted new destinations where absence cannot be proved; use SFTP for safe new-file creation.
+FTP listing absence is not proof of a new file. Hidden entries are requested to establish an unlisted original’s type before backup; unknown type/absence or a failed read blocks replacement. This also prevents FTP creation of unlisted new destinations where absence cannot be proved; use SFTP for safe new-file creation.

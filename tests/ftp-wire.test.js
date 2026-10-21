@@ -61,7 +61,8 @@ test('implicit FTPS keeps authentication and passive data in verified TLS',{time
 test('FTP wire: passive upload, listing and download share the transfer engine',{timeout:20000},async t=>{
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-ftp-'));
   fs.writeFileSync(path.join(root,'local.txt'),'ftp payload');
-  const files=new Map([['/nul',Buffer.from('valid remote sibling')]]),modes=new Map(),appendModes=[],sockets=new Set(),servers=new Set();let permissionsSupported=true,permissionsHonored=true;
+  let referentReads=0;const linkTargets=new Map([['/.hidden-link','/outside/private']]);
+  const files=new Map([['/nul',Buffer.from('valid remote sibling')],['/.hidden.txt',Buffer.from('hidden original')],['/.hidden-link',Buffer.from('link placeholder')]]),modes=new Map(),appendModes=[],sockets=new Set(),servers=new Set();let permissionsSupported=true,permissionsHonored=true;
   const rights=mode=>[6,3,0].map(shift=>[4,2,1].map((bit,index)=>((mode>>shift)&bit)?'rwx'[index]:'-').join('')).join('');
   const server=net.createServer(socket=>{
     sockets.add(socket);socket.on('close',()=>sockets.delete(socket));socket.on('error',()=>{});
@@ -84,16 +85,16 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
         }else if(cmd==='STOR'||cmd==='APPE'){
           reply('150 Receiving');const chunks=[];dataSocket.on('data',b=>chunks.push(b));dataSocket.on('end',()=>{if(cmd==='APPE'){appendModes.push(modes.get(arg));files.set(arg,Buffer.concat([files.get(arg)||Buffer.alloc(0),...chunks]));}else{files.set(arg,Buffer.concat(chunks));if(!modes.has(arg))modes.set(arg,0o644);}dataSocket.end();reply('226 Done');});dataSocket.resume();
         }else if(cmd==='RETR'){
-          if(!files.has(arg)){reply('550 Missing');dataSocket.destroy();}else{reply('150 Sending');dataSocket.end(files.get(arg),()=>reply('226 Done'));}
+          if(linkTargets.has(arg)){referentReads++;reply('550 Symlink must not be dereferenced');dataSocket.destroy();}else if(!files.has(arg)){reply('550 Missing');dataSocket.destroy();}else{reply('150 Sending');dataSocket.end(files.get(arg),()=>reply('226 Done'));}
         }else if(cmd==='LIST'){
-          reply('150 Listing');let names=[...files.keys()];const target=arg.replace(/^-al\s*/, '');if(target&&target!=='/')names=names.filter(name=>name===target);
-          const listing=names.map(name=>'-'+rights(modes.get(name)||0o644)+' 1 user group '+files.get(name).length+' Jan 01 2026 '+path.posix.basename(name)+'\r\n').join('');dataSocket.end(listing,()=>reply('226 Done'));
+          reply('150 Listing');let names=[...files.keys()];const target=arg.replace(/^-al\s*/, '');if(!arg.startsWith('-al '))names=names.filter(name=>!path.posix.basename(name).startsWith('.'));if(target&&target!=='/')names=names.filter(name=>name===target);
+          const listing=names.map(name=>(linkTargets.has(name)?'l':'-')+rights(modes.get(name)||0o644)+' 1 user group '+files.get(name).length+' Jan 01 2026 '+path.posix.basename(name)+(linkTargets.has(name)?' -> '+linkTargets.get(name):'')+'\r\n').join('');dataSocket.end(listing,()=>reply('226 Done'));
         }else if(cmd==='SIZE')reply(files.has(arg)?'213 '+files.get(arg).length:'550 Missing');
         else if(cmd==='MDTM')reply(files.has(arg)?'213 20260101000000':'550 Missing');
         else if(cmd==='MFMT')reply('213 Modified');
         else if(cmd==='SITE'){const match=/^CHMOD ([0-7]+) (.+)$/.exec(arg);if(!permissionsSupported||!match)reply('502 Unsupported');else{if(permissionsHonored)modes.set(match[2],parseInt(match[1],8));reply('200 Permissions set');}}
         else if(cmd==='RNFR'){renameFrom=arg;reply(files.has(arg)?'350 Rename ready':'550 Missing');}
-        else if(cmd==='RNTO'){files.set(arg,files.get(renameFrom));files.delete(renameFrom);modes.set(arg,modes.get(renameFrom));modes.delete(renameFrom);reply('250 Renamed');}
+        else if(cmd==='RNTO'){linkTargets.delete(arg);files.set(arg,files.get(renameFrom));files.delete(renameFrom);modes.set(arg,modes.get(renameFrom));modes.delete(renameFrom);reply('250 Renamed');}
         else if(cmd==='DELE'){files.delete(arg);modes.delete(arg);reply('250 Deleted');}
         else if(cmd==='QUIT'){reply('221 Bye');socket.end();}
         else reply('502 Unsupported');
@@ -103,10 +104,16 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   const session=engine.createSession(root,{protocol:'ftp',host:'127.0.0.1',port:server.address().port,username:'fixture',password:'fixture',remotePath:'/'});
   t.after(async()=>{session.service.dispose();for(const socket of sockets)socket.destroy();for(const data of servers)if(data.listening)data.close();await new Promise(resolve=>server.close(resolve));fs.rmSync(root,{recursive:true,force:true});});
-  await assert.rejects(engine.operate(session,'upload','local.txt'),/FTP could not read the exact destination/);
+  await assert.rejects(engine.operate(session,'upload','local.txt'),/FTP cannot establish destination type or absence/);
   assert.equal(files.has('/local.txt'),false,'ambiguous FTP absence cannot authorize an overwrite');
   files.set('/local.txt',Buffer.from('previous payload'));
   await engine.operate(session,'upload','local.txt');assert.equal(files.get('/local.txt').toString(),'ftp payload');
+  const backup=engine.defaultBackupPath(session.service.workspace,session.service.baseDir,session.config,session.service.profile);
+  t.after(()=>fs.rmSync(backup,{recursive:true,force:true}));
+  for(const name of ['.hidden.txt','.hidden-link']){fs.writeFileSync(path.join(root,name),'hidden replacement');await engine.operate(session,'upload',name);assert.equal(files.get('/'+name).toString(),'hidden replacement');}
+  assert.equal(referentReads,0,'hidden symlinks are backed up as metadata, never RETR');
+  const git=require('isomorphic-git'),oid=await git.resolveRef({fs,dir:backup,ref:'HEAD'});
+  assert.equal(Buffer.from((await git.readBlob({fs,dir:backup,oid,filepath:'.hidden-link'})).blob).toString(),'/outside/private');
   assert.equal(files.get('/nul').toString(),'valid remote sibling','reserved Windows names on the server do not block or change uploads');
   if(process.platform==='win32')await assert.rejects(engine.operate(session,'download','nul'),/Windows reserved device name/);
   modes.set('/local.txt',0o600);fs.writeFileSync(path.join(root,'local.txt'),'ftp payload');

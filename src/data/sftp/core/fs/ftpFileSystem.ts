@@ -118,13 +118,24 @@ export default class FTPFileSystem extends RemoteFileSystem {
     const nameIdentity = this.pathResolver.basename(path);
     const stats = await this.list(parentPath);
 
-    const fileStat = stats.find(ns => ns.name === nameIdentity);
+    let fileStat = stats.find(ns => ns.name === nameIdentity);
+    if(!fileStat){
+      try{fileStat=(await this.list(parentPath,{showHiddenFiles:true})).find(entry=>entry.name===nameIdentity);}
+      catch(error){if(![500,501,502,504].includes(Number(error.code)))throw error;}
+    }
 
     if (!fileStat) {
       throw Object.assign(new Error('file not exist'), { code: 'ENOENT' });
     }
 
     return fileStat;
+  }
+
+  async lstatForBackup(path:string):Promise<FileStats> {
+    const parent=this.pathResolver.dirname(path),name=this.pathResolver.basename(path);
+    const entry=(await this.list(parent,{showHiddenFiles:true})).find(item=>item.name===name);
+    if(!entry)throw new Error('FTP cannot establish destination type or absence. The server omitted the path even with hidden entries requested. Use SFTP for safely creating a new destination.');
+    return entry;
   }
 
   async open(path: string, flags: string, mode?: number): Promise<FtpFileHandle> {
@@ -286,9 +297,9 @@ export default class FTPFileSystem extends RemoteFileSystem {
     { showHiddenFiles = false } = {}
   ): Promise<FileEntry[]> {
     // -al flag only get partially support
-    const key=this.pathResolver.normalize(dir);
+    const key=(showHiddenFiles?'-al ':'')+this.pathResolver.normalize(dir);
     let pending=this.metadataReaders?this.metadata.get(key):undefined;
-    if(!pending){pending=this.atomicList(dir);if(this.metadataReaders){this.metadata.set(key,pending);pending.catch(()=>{if(this.metadata.get(key)===pending)this.metadata.delete(key);});}}
+    if(!pending){pending=this.atomicList((showHiddenFiles?'-al ':'')+dir);if(this.metadataReaders){this.metadata.set(key,pending);pending.catch(()=>{if(this.metadata.get(key)===pending)this.metadata.delete(key);});}}
     const stats = await pending;
     if (!Array.isArray(stats) || stats.some(item => !item || typeof item !== 'object' || typeof item.name !== 'string' || !item.name)) {
       throw new Error('FTP listing contains unparseable entries; refusing an incomplete directory snapshot');

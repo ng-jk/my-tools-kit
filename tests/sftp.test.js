@@ -98,6 +98,9 @@ function fixture(t, extra={}) {
   fs.mkdirSync(local);fs.mkdirSync(remote);
   const raw={host:'fixture',username:'fixture',protocol:'local',remotePath:remote.replaceAll('\\','/'),ignore:['ignored.txt'],...extra};
   const session=engine.createSession(local,raw);t.after(()=>session.service.dispose());
+  const automaticBackup=engine.defaultBackupPath(session.service.workspace,session.service.baseDir,session.config,session.service.profile);
+  assert.match(path.relative(path.join(os.homedir(),'.devkit-backups','sftp'),automaticBackup),/^[0-9a-f]{64}$/);
+  t.after(()=>fs.rmSync(automaticBackup,{recursive:true,force:true}));
   return {dir,local,remote,raw,session};
 }
 
@@ -1030,18 +1033,18 @@ test('valid dot-dot-prefixed upload paths are backed up before replacement',asyn
  await assert.rejects(engine.operate(unsafe,'upload','..notes.txt'),/outside the workspace/);
 });
 
-test('FTP omitted originals are read directly and unreadable ambiguity stops replacement',async t=>{
+test('FTP omitted originals require typed metadata and unreadable originals stop replacement',async t=>{
  const {local,remote,session}=fixture(t);
  const backup=engine.defaultBackupPath(session.service.workspace,session.service.baseDir,session.config,session.service.profile);
  t.after(()=>fs.rmSync(backup,{recursive:true,force:true}));
  const remoteFs=await session.service.getRemoteFileSystem(session.config),stat=remoteFs.lstat.bind(remoteFs),get=remoteFs.get.bind(remoteFs);
- remoteFs.supportsCompleteDirectoryListing=false;
+ remoteFs.supportsCompleteDirectoryListing=false;remoteFs.lstatForBackup=stat;
  const destination=path.join(remote,'.htaccess');fs.writeFileSync(destination,'hidden original');fs.writeFileSync(path.join(local,'.htaccess'),'replacement');
  remoteFs.lstat=async file=>{if(path.resolve(file)===destination)throw Object.assign(new Error('omitted by LIST'),{code:'ENOENT'});return stat(file);};
  await engine.operate(session,'upload','.htaccess');assert.equal(fs.readFileSync(path.join(backup,'.htaccess'),'utf8'),'hidden original');
  assert.equal(fs.readFileSync(destination,'utf8'),'replacement');
  remoteFs.get=async file=>{if(path.resolve(file)===destination)throw Object.assign(new Error('550 unavailable'),{code:550});return get(file);};
- fs.writeFileSync(path.join(local,'.htaccess'),'must not replace');await assert.rejects(engine.operate(session,'upload','.htaccess'),/FTP could not read the exact destination/);
+ fs.writeFileSync(path.join(local,'.htaccess'),'must not replace');await assert.rejects(engine.operate(session,'upload','.htaccess'),/FTP could not back up the identified destination/);
  assert.equal(fs.readFileSync(destination,'utf8'),'replacement');
 });
 
@@ -1079,3 +1082,17 @@ test('concurrent accounts sharing a server retain the intermediate overwritten v
  const otherHead=await git.resolveRef({fs,dir:otherBackup,ref:'HEAD'});assert.equal(Buffer.from((await git.readBlob({fs,dir:otherBackup,oid:otherHead,filepath:'concurrent.txt'})).blob).toString(),'B');
 });
 
+
+test('an unlisted FTP symlink is preserved as a link without reading its referent',async t=>{
+ const {local,remote,session}=fixture(t),git=require('isomorphic-git');
+ const backup=engine.defaultBackupPath(session.service.workspace,session.service.baseDir,session.config,session.service.profile);t.after(()=>fs.rmSync(backup,{recursive:true,force:true}));
+ fs.writeFileSync(path.join(local,'.hidden-link'),'replacement');fs.writeFileSync(path.join(remote,'.hidden-link'),'virtual link');
+ const remoteFs=await session.service.getRemoteFileSystem(session.config),stat=remoteFs.lstat.bind(remoteFs),get=remoteFs.get.bind(remoteFs);let reads=0;
+ remoteFs.supportsCompleteDirectoryListing=false;
+ remoteFs.lstat=async file=>{if(path.basename(file)==='.hidden-link')throw Object.assign(new Error('omitted'),{code:'ENOENT'});return stat(file);};
+ remoteFs.lstatForBackup=async()=>({type:engine.FileType.SymbolicLink,target:'/outside/private',mode:0o777});
+ remoteFs.get=async(...args)=>{reads++;return get(...args);};
+ await engine.operate(session,'upload','.hidden-link');assert.equal(reads,0);
+ const oid=await git.resolveRef({fs,dir:backup,ref:'HEAD'});assert.equal(Buffer.from((await git.readBlob({fs,dir:backup,oid,filepath:'.hidden-link'})).blob).toString(),'/outside/private');
+ remoteFs.lstatForBackup=undefined;await assert.rejects(engine.operate(session,'upload','.hidden-link'),/cannot establish destination type/);assert.equal(reads,0);
+});
