@@ -155,7 +155,7 @@ function renderPreRequests(){
   });
 }
 function rawInputs(){return Object.fromEntries([...document.querySelectorAll('input[id],select[id],textarea[id]')].map(input=>[input.id,input.type==='checkbox'?input.checked:input.value]));}
-function saveDraft(){vscode.postMessage({type:'draft',value:{catalog,collectionId:collection.id,selected,inputs:rawInputs(),activeTab,bodyDrafts,authDrafts,bodyMode,authMode,preRequests,editorDrafts}});}
+function saveDraft(){vscode.postMessage({type:'draft',value:{catalog,collectionId:collection.id,selected,inputs:rawInputs(),activeTab,bodyDrafts,authDrafts,bodyMode,authMode,preRequests,editorDrafts,deletedRequest}});}
 $('addQuery').onclick=action(()=>addPair('query'));$('addHeader').onclick=action(()=>addPair('headers'));$('addBodyField').onclick=action(()=>addPair('body'));
 $('rawHeaders').onchange=action(()=>{if(!$('rawHeaders').checked)renderPairs('headers');$('headers').classList.toggle('hidden',!$('rawHeaders').checked);$('headersRows').classList.toggle('hidden',$('rawHeaders').checked);$('addHeader').classList.toggle('hidden',$('rawHeaders').checked);});
 $('bodyType').onchange=action(()=>{bodyDrafts[bodyMode]={text:$('body').value,variables:$('graphqlVariables').value,operation:$('graphqlOperation').value};bodyMode=$('bodyType').value;const draft=bodyDrafts[bodyMode]||{text:['form','multipart'].includes(bodyMode)?'[]':'',variables:'{}',operation:''};$('body').value=draft.text;$('graphqlVariables').value=draft.variables;$('graphqlOperation').value=draft.operation;bodyControls();});
@@ -176,6 +176,7 @@ window.addEventListener('message',event=>{
   load(draft.selected);
   for(const [id,value] of Object.entries(draft.inputs||{})){if(!$(id))continue;if($(id).type==='checkbox')$(id).checked=value;else $(id).value=value;}
   bodyDrafts=draft.bodyDrafts||{};authDrafts=draft.authDrafts||{};bodyMode=draft.bodyMode;authMode=draft.authMode;preRequests=draft.preRequests||[];
+  deletedRequest=draft.deletedRequest;$('undoDelete').disabled=!deletedRequest;
   authHint();
   for(const render of [()=>renderPairs('query'),()=>$('rawHeaders').onchange(),bodyControls,renderTests,renderPreRequests])try{render();}catch{}
   document.querySelector('[data-tab="'+draft.activeTab+'"]').click();notice('Unsaved session draft restored.');

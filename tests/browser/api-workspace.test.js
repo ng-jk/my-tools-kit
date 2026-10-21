@@ -47,6 +47,7 @@ test('API editor preserves raw drafts across hide/reload and drives shared reque
     await page.locator('#download').click();await expect.poll(()=>fs.existsSync(path.join(root,'response.bin'))).toBe(true);assert.equal(JSON.parse(fs.readFileSync(path.join(root,'response.bin'),'utf8')).url,'/echo?q=hello');fs.unlinkSync(path.join(root,'response.bin'));
     await page.locator('#send').click();await expect(page.locator('#notice')).toContainText('Completed successfully');await page.locator('[data-view="tests"]').click();await expect(page.locator('#response')).toContainText('Setup');
     const originalCollection=await page.locator('#activeCollection').inputValue();await page.locator('.request-item').filter({hasText:'Setup'}).click();await page.locator('#delete').click();
+    await page.reload();await expect(page.locator('#notice')).toContainText('draft restored');await expect(page.locator('#undoDelete')).toBeEnabled();
     const other={version:1,id:'other',name:'Other',requests:[{id:'other-request',name:'Other request',url:base+'/echo'}]};
     await page.evaluate(value=>window.dispatchEvent(new MessageEvent('message',{data:{type:'collection',collection:value,warnings:[]}})),other);
     await page.locator('#undoDelete').click();await expect(page.locator('#activeCollection')).toHaveValue(originalCollection);await expect(page.locator('.request-item').filter({hasText:'Setup'})).toHaveCount(1);
