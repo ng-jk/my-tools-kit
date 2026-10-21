@@ -1,5 +1,12 @@
 # Release notes
 
+## 0.7.3 — 2026-10-21
+
+- Fix FTP uploads on servers that reject APPE/REST with “Append/Restart not permitted”: use standard STOR without append or restart commands.
+- Upload inside a verified owner-only temporary directory, restore and verify file permissions, then move the complete file into staged replacement. This protects payloads even when STOR resets file modes.
+- Preserve automatic backups and the original destination on transfer/permission failures; remove temporary upload directories and exclude them from automatic transfers.
+
+
 ## 0.7.2 — 2026-10-21
 
 - Clarify that the Git commit picker selects filenames and uploads current local contents, not historical file contents. Display this in the picker and SFTP Output without an overwrite popup.

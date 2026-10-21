@@ -256,7 +256,7 @@ test('source failure during protocol permission checks rejects instead of hangin
     const adapter=protocol==='sftp'?new engine.SFTPFileSystem(path.posix,{client:{}}):new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({abort:cb=>cb()})}});
     const fail=async()=>{stream.destroy(new Error('source failed during permissions'));await new Promise(setImmediate);};
     if(protocol==='sftp') {adapter.fchmod=fail;adapter.fstat=async()=>({mode:0o600});adapter._put=async()=>{payloads++;};}
-    else {adapter.verifyMode=fail;adapter.atomicAppend=async()=>{payloads++;};}
+    else {adapter.mkdir=async()=>{};adapter.chmod=async()=>{};adapter.unlink=async()=>{};adapter.rmdir=async()=>{};adapter.verifyMode=fail;adapter.atomicPut=async()=>{payloads++;};}
     await assert.rejects(adapter.put(stream,'/target',{mode:0o600,fd:{handle:Buffer.from('h'),path:'/target',prepared:true,mode:0o600}}),/source failed during permissions/);
     assert.equal(payloads,0);
   }
@@ -295,7 +295,7 @@ test('failed transfers preserve destinations and close staging handles',async t=
 test('internal staging and recovery files are excluded from automatic transfers',async t=>{
   const {local,remote,session}=fixture(t,{ignore:[]});
   const staged='a.txt.devkit-12345678-1234-1234-1234-123456789abc';
-  for(const name of [staged,staged+'.backup']) {fs.writeFileSync(path.join(local,name),'internal');assert.equal(session.config.ignore(path.join(local,name)),true);}
+  for(const name of [staged,staged+'.backup',staged+'.upload']) {fs.writeFileSync(path.join(local,name),'internal');assert.equal(session.config.ignore(path.join(local,name)),true);}
   fs.writeFileSync(path.join(local,'a.txt'),'user content');
   await engine.operate(session,'upload');assert.deepEqual(fs.readdirSync(remote),['a.txt']);
 });

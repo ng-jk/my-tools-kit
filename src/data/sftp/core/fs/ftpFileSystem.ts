@@ -1,6 +1,7 @@
 // Adapted from ng-jk/vscode-sftp (MIT); see THIRD-PARTY-NOTICES.md.
 import PQueue from 'p-queue';
 import { Readable } from 'stream';
+import {randomUUID} from 'crypto';
 import { logger } from '../../ports';
 import { FileEntry, FileType, FileStats, FileOption } from './fileSystem';
 import RemoteFileSystem from './remoteFileSystem';
@@ -145,14 +146,15 @@ export default class FTPFileSystem extends RemoteFileSystem {
       catch(error) {if(error.code!=='ENOENT'&&error.code!==2)throw error;}
     }
     mode = mode === undefined ? 0o600 : mode;
-    await this.atomicPut(Readable.from([]),path);
-    await this.chmod(path,mode);
-    await this.verifyMode(path,mode);
+    // FTP handles are logical; payload creation happens inside a private directory
+    // in put(). STOR can recreate a file with server-default permissions.
     return {path,flags,mode,prepared:true};
   }
 
-  private async verifyMode(path:string,mode:number) {
-    if (((await this.lstat(path)).mode & 0o777) !== (mode & 0o777)) throw new Error('FTP server did not preserve required file permissions');
+  private async verifyMode(path:string,mode:number,type=FileType.File) {
+    const stat=await this.lstat(path);
+    if(stat.type!==type)throw new Error('FTP staging entry has an unexpected file type');
+    if ((stat.mode & 0o777) !== (mode & 0o777)) throw new Error('FTP server did not preserve required file permissions');
   }
 
   close(_fd: FtpFileHandle): Promise<void> {
@@ -188,26 +190,36 @@ export default class FTPFileSystem extends RemoteFileSystem {
   }
 
   async put(input: Readable, path: string, option?: FileOption): Promise<void> {
-    let inputError: Error | undefined;
-    input.once('error', err => {
-      inputError = err;
-      this.ftp.abort((abortErr: any) => {
-        if (abortErr) {
-          logger.error(abortErr, 'fail to abort');
-        }
-      });
-    });
-
+    let inputError:Error|undefined;
+    const remember=(error:Error)=>{inputError=error;this.ftp.abort((err:any)=>{if(err)logger.warn('FTP abort failed');});};
+    const checkSource=()=>{
+      if(inputError)throw inputError;
+      if(input.destroyed&&!input.readableEnded)throw new Error('Source stream closed before transfer completed');
+    };
+    input.on('error',remember);
+    const directory=path+'.devkit-'+randomUUID()+'.upload',payload=this.pathResolver.join(directory,'payload');
+    let created=false;
     try {
-      const handle=option?.fd as FtpFileHandle | undefined;
-      const prepared=handle?.prepared ? handle : await this.open(path,'w',option?.mode);
-      await this.verifyMode(path,prepared.mode!);
-      if (inputError) throw inputError;
-      if (input.destroyed && !input.readableEnded) throw new Error('Source stream closed before transfer completed');
-      await this.atomicAppend(input, path);
-      await this.verifyMode(path,prepared.mode!);
-    } catch (error) {
-      throw inputError || error;
+      checkSource();
+      const handle=option?.fd as FtpFileHandle|undefined;
+      const prepared=handle?.prepared?handle:await this.open(path,'w',option?.mode);
+      await this.mkdir(directory);created=true;
+      await this.chmod(directory,0o700);await this.verifyMode(directory,0o700,FileType.Directory);
+      checkSource();
+      // No APPE or REST: even servers that recreate STOR files cannot expose
+      // their contents through this verified owner-only parent directory.
+      await this.atomicPut(input,payload);
+      checkSource();
+      await this.chmod(payload,prepared.mode!);await this.verifyMode(payload,prepared.mode!);
+      checkSource();
+      await this.renameAtomic(payload,path);
+    } catch(error) {throw inputError||error;}
+    finally {
+      input.removeListener('error',remember);
+      if(created){
+        try{await this.unlink(payload);}catch(error){if(error.code!=='ENOENT'&&error.code!==2&&error.code!==550)logger.warn('FTP temporary payload cleanup failed: '+payload);}
+        try{await this.rmdir(directory,false);}catch(error){logger.warn('FTP temporary directory retained after cleanup failure: '+directory);}
+      }
     }
   }
 
@@ -391,12 +403,6 @@ export default class FTPFileSystem extends RemoteFileSystem {
       });
 
     return this.queue.add(()=>this.mutation(task));
-  }
-
-  private async atomicAppend(input: Readable, path: string): Promise<void> {
-    return this.queue.add(() => this.mutation(()=>new Promise<void>((resolve,reject) => {
-      this.ftp.append(input,path,(error:any)=>error?reject(error):resolve());
-    })));
   }
 
   private async atomicDeleteFile(path: string): Promise<void> {
