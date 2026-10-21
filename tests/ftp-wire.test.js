@@ -62,7 +62,7 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-ftp-'));
   fs.writeFileSync(path.join(root,'local.txt'),'ftp payload');
   let referentReads=0;const linkTargets=new Map([['/.hidden-link','/outside/private']]);
-  const files=new Map([['/nul',Buffer.from('valid remote sibling')],['/.hidden.txt',Buffer.from('hidden original')],['/.hidden-link',Buffer.from('link placeholder')]]),modes=new Map(),directories=new Set(),payloadParents=[],commands=[],sockets=new Set(),servers=new Set();let permissionsSupported=true,permissionsHonored=true,filePermissionsHonored=true,failStore=false,probeMode='mlst',probeDenied='',probeAmbiguous='',rejectHidden=false;const omitted=new Set();
+  const files=new Map([['/nul',Buffer.from('valid remote sibling')],['/.hidden.txt',Buffer.from('hidden original')],['/.hidden-link',Buffer.from('link placeholder')]]),modes=new Map(),directories=new Set(),payloadParents=[],commands=[],sockets=new Set(),servers=new Set();let permissionsSupported=true,permissionsHonored=true,filePermissionsHonored=true,failStore=false,probeMode='mlst',probeDenied='',probeAmbiguous='',rejectHidden=false;const omitted=new Set(),mlstReferentTypes=new Map();
   const rights=mode=>[6,3,0].map(shift=>[4,2,1].map((bit,index)=>((mode>>shift)&bit)?'rwx'[index]:'-').join('')).join('');
   const server=net.createServer(socket=>{
     sockets.add(socket);socket.on('close',()=>sockets.delete(socket));socket.on('error',()=>{});
@@ -84,7 +84,7 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
           else if(arg===probeDenied)reply('550 Permission denied');
           else if(arg===probeAmbiguous)reply('550 File unavailable');
           else if(!files.has(arg)&&!directories.has(arg))reply('550 '+arg+': No such file or directory');
-          else if(cmd==='MLST')reply('250-Listing\r\n type='+(directories.has(arg)?'dir':linkTargets.has(arg)?'OS.unix=slink':'file')+';size='+(files.get(arg)?.length||0)+';unix.mode='+(modes.get(arg)||0o644).toString(8)+'; '+arg+'\r\n250 End');
+          else if(cmd==='MLST')reply('250-Listing\r\n type='+(directories.has(arg)?'dir':linkTargets.has(arg)?(mlstReferentTypes.get(arg)||'file'):'file')+';size='+(files.get(arg)?.length||0)+';unix.mode='+(modes.get(arg)||0o644).toString(8)+'; '+arg+'\r\n250 End');
           else reply('213-Status\r\n '+(directories.has(arg)?'d':linkTargets.has(arg)?'l':'-')+rights(modes.get(arg)||0o644)+' 1 user group '+(files.get(arg)?.length||0)+' Jan 01 2026 '+arg+(linkTargets.has(arg)?' -> '+linkTargets.get(arg):'')+'\r\n213 End');
         }
         else if(cmd==='PASV'){
@@ -128,16 +128,14 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
   const backup=engine.defaultBackupPath(session.service.workspace,session.service.baseDir,session.config,session.service.profile);
   t.after(()=>fs.rmSync(backup,{recursive:true,force:true}));
   rejectHidden=true;fs.writeFileSync(path.join(root,'hidden-list-new.txt'),'new despite LIST -al rejection');await engine.operate(session,'upload','hidden-list-new.txt');assert.equal(files.get('/hidden-list-new.txt').toString(),'new despite LIST -al rejection');
-  files.set('/hidden-list-existing.txt',Buffer.from('existing despite LIST -al rejection'));omitted.add('/hidden-list-existing.txt');fs.writeFileSync(path.join(root,'hidden-list-existing.txt'),'replacement');await engine.operate(session,'upload','hidden-list-existing.txt');assert.equal(files.get('/hidden-list-existing.txt').toString(),'replacement');omitted.clear();rejectHidden=false;
+  files.set('/hidden-list-existing.txt',Buffer.from('existing despite LIST -al rejection'));omitted.add('/hidden-list-existing.txt');fs.writeFileSync(path.join(root,'hidden-list-existing.txt'),'replacement');await assert.rejects(engine.operate(session,'upload','hidden-list-existing.txt'),/cannot identify|cannot establish/);assert.equal(files.get('/hidden-list-existing.txt').toString(),'existing despite LIST -al rejection');omitted.clear();rejectHidden=false;
   for(const name of ['.hidden.txt','.hidden-link']){fs.writeFileSync(path.join(root,name),'hidden replacement');await engine.operate(session,'upload',name);assert.equal(files.get('/'+name).toString(),'hidden replacement');}
-  files.set('/.unlisted.txt',Buffer.from('unlisted original'));omitted.add('/.unlisted.txt');fs.writeFileSync(path.join(root,'.unlisted.txt'),'typed replacement');await engine.operate(session,'upload','.unlisted.txt');assert.equal(files.get('/.unlisted.txt').toString(),'typed replacement');omitted.clear();
-  files.set('/.unlisted-link',Buffer.from('placeholder'));linkTargets.set('/.unlisted-link','/outside/private');omitted.add('/.unlisted-link');fs.writeFileSync(path.join(root,'.unlisted-link'),'new link destination');await engine.operate(session,'upload','.unlisted-link');assert.equal(files.get('/.unlisted-link').toString(),'new link destination');omitted.clear();
+  files.set('/.unlisted.txt',Buffer.from('unlisted original'));omitted.add('/.unlisted.txt');fs.writeFileSync(path.join(root,'.unlisted.txt'),'typed replacement');await assert.rejects(engine.operate(session,'upload','.unlisted.txt'),/cannot identify|cannot establish/);assert.equal(files.get('/.unlisted.txt').toString(),'unlisted original');omitted.clear();
+  files.set('/.unlisted-link',Buffer.from('placeholder'));linkTargets.set('/.unlisted-link','/outside/private');omitted.add('/.unlisted-link');fs.writeFileSync(path.join(root,'.unlisted-link'),'new link destination');await assert.rejects(engine.operate(session,'upload','.unlisted-link'),/cannot identify|cannot establish/);assert.equal(files.get('/.unlisted-link').toString(),'placeholder');omitted.clear();
+  files.set('/.unlisted-dir',Buffer.from('link placeholder'));linkTargets.set('/.unlisted-dir','/outside');mlstReferentTypes.set('/.unlisted-dir','dir');omitted.add('/.unlisted-dir');const linked=engine.createSession(root,{protocol:'ftp',host:'127.0.0.1',port:server.address().port,username:'fixture',password:'fixture',remotePath:'/.unlisted-dir'});t.after(()=>linked.service.dispose());const beforeLink=payloadParents.length;await assert.rejects(engine.operate(linked,'upload','local.txt'),/cannot identify|cannot establish/);assert.equal(payloadParents.length,beforeLink);omitted.clear();
   assert.equal(referentReads,0,'hidden symlinks are backed up as metadata, never RETR');
   const git=require('isomorphic-git'),oid=await git.resolveRef({fs,dir:backup,ref:'HEAD'});
   assert.equal(Buffer.from((await git.readBlob({fs,dir:backup,oid,filepath:'.hidden-link'})).blob).toString(),'/outside/private');
-  assert.equal(Buffer.from((await git.readBlob({fs,dir:backup,oid,filepath:'.unlisted.txt'})).blob).toString(),'unlisted original');
-  assert.equal(Buffer.from((await git.readBlob({fs,dir:backup,oid,filepath:'hidden-list-existing.txt'})).blob).toString(),'existing despite LIST -al rejection');
-  assert.equal(Buffer.from((await git.readBlob({fs,dir:backup,oid,filepath:'.unlisted-link'})).blob).toString(),'/outside/private');
   assert.equal(files.get('/nul').toString(),'valid remote sibling','reserved Windows names on the server do not block or change uploads');
   if(process.platform==='win32')await assert.rejects(engine.operate(session,'download','nul'),/Windows reserved device name/);
   modes.set('/local.txt',0o600);fs.writeFileSync(path.join(root,'local.txt'),'ftp payload');

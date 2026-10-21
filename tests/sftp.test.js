@@ -1104,12 +1104,14 @@ test('FTP direct metadata distinguishes explicit absence, unsafe replies and typ
  for(const name of ['file','directory','exist','not'])for(const text of ['No such file or directory',"Sorry, but that file doesn't exist"]){replies.push(failure(text),failure(text),failure(text));await assert.rejects(remote.lstat('/'+name),e=>e.code==='ENOENT');}
  for(const text of ['Permission denied','File unavailable','No access: file not found','No such file or directory: permission denied']){replies.push(failure(text),failure(text),failure(text));await assert.rejects(remote.lstat('/new.txt'),e=>e.code!=='ENOENT'&&/did not confirm/.test(e.message));}
  replies.push(...Array.from({length:3},()=>failure('/No such file or directory: unavailable')));await assert.rejects(remote.lstat('/No such file or directory'),e=>e.code!=='ENOENT');
- replies.push('type=file;size=7;unix.mode=0640; /hidden');const stat=await remote.lstat('/hidden');assert.equal(stat.mode,0o640);assert.equal(stat.type,engine.FileType.File);
+ replies.push('type=file;size=7;unix.mode=0640; /hidden','-rw-r----- 1 user group 7 Jan 01 2026 /hidden','Rename ready');await assert.rejects(remote.lstat('/hidden'),/confirms.*exists/);
  replies.push('type=file;size=7;unix.mode=0640; /different','not metadata',failure('Unsupported',502));await assert.rejects(remote.lstat('/hidden'),/cannot establish/);
  replies.push('type=file;size=7;unix.mode=invalid; /hidden','not metadata',failure('Unsupported',502));await assert.rejects(remote.lstat('/hidden'),/cannot establish/);
- replies.push(failure('Unsupported',502),'-rw-r----- 1 user group 7 Jan 01 2026 /hidden');assert.equal((await remote.lstat('/hidden')).mode,0o640);
- replies.push('type=OS.unix=slink; /link','lrwxrwxrwx 1 user group 8 Jan 01 2026 /link -> /private');const link=await remote.lstat('/link');assert.equal(link.type,engine.FileType.SymbolicLink);assert.equal(link.target,'/private');
+ replies.push(failure('Unsupported',502),'-rw-r----- 1 user group 7 Jan 01 2026 /hidden','Rename ready');await assert.rejects(remote.lstat('/hidden'),/confirms.*exists/);
+ replies.push('type=OS.unix=slink; /link','lrwxrwxrwx 1 user group 8 Jan 01 2026 /link -> /private','Rename ready');await assert.rejects(remote.lstat('/link'),/confirms.*exists/);
  replies.push(failure('No such file or directory'),failure('No such file or directory'),'Rename ready');await assert.rejects(remote.lstat('/dangling-link'),/confirms.*exists/);
+ for(const kind of ['file','dir']){replies.push('type='+kind+';size=7;unix.mode=0755; /omitted-link','no own entry metadata','Rename ready');await assert.rejects(remote.lstat('/omitted-link'),/confirms.*exists/);}
+ replies.push('type=file;size=7;unix.mode=0644; /contradictory',failure('No such file or directory'),failure('No such file or directory'));await assert.rejects(remote.lstat('/contradictory'),/contradictory/);
  assert.equal(replies.length,0);assert.ok(calls.some(command=>command.startsWith('STAT ')));
 });
 

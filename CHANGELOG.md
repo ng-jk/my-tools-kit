@@ -3,6 +3,7 @@
 ## 0.7.6 — 2026-10-22
 
 - Continue direct FTP path checks when the server rejects hidden-list requests with 550. Explicit absence permits new uploads; denied or ambiguous probes still block replacement.
+- Do not use MLST/STAT referent metadata as lstat data: existing unlisted entries and directory ancestors remain blocked unless directory entries establish their own type. Use visible, randomly named private upload directories so hidden-list rejection does not block staging.
 - Includes the new-file creation and protected-backup fixes from 0.7.5.
 
 ## 0.7.5 — 2026-10-22

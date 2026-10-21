@@ -7,7 +7,7 @@ import { FileEntry, FileType, FileStats, FileOption } from './fileSystem';
 import RemoteFileSystem from './remoteFileSystem';
 import { FTPClient } from '../remote-client/index';
 import { assertEntryName, checkedEntries } from '../../path-safety';
-import {missingPathReply,mlstMetadata,statMetadata} from './ftp-metadata';
+import {missingPathReply,mlstReportsPresence,statReportsPresence} from './ftp-metadata';
 
 interface FtpFileHandle {
   path: string;
@@ -137,7 +137,7 @@ export default class FTPFileSystem extends RemoteFileSystem {
   async lstatForBackup(path:string):Promise<FileStats> {return this.lstat(path);}
 
   private async probePath(path:string):Promise<FileStats> {
-    const diagnostics:string[]=[];
+    const diagnostics:string[]=[];let reportedPresent=false;
     for(const command of ['MLST','STAT','RNFR']){
       let reply:string;
       try{reply=await this.queue.add(async()=>{
@@ -148,16 +148,18 @@ export default class FTPFileSystem extends RemoteFileSystem {
         if(missingPathReply(error,path)){
           // Confirm missing metadata through the rename-side existence check:
           // an omitted/dangling link must not be treated as a new destination.
-          if(command==='RNFR')throw Object.assign(new Error('Remote path does not exist: '+path),{code:'ENOENT'});
+          if(command==='RNFR'){if(reportedPresent)throw new Error('FTP returned contradictory existence responses for '+path+'. Upload stopped without replacing the destination.');throw Object.assign(new Error('Remote path does not exist: '+path),{code:'ENOENT'});}
           diagnostics.push(command+' reported missing');continue;
         }
         if(![500,501,502,504,550].includes(Number(error.code)))throw new Error('FTP could not inspect remote path '+path+' ('+command+', code '+(error.code||'unknown')+'). Check the connection and server permissions.');
         diagnostics.push(command+' code '+error.code);continue;
       }
       if(command==='RNFR')throw new Error('FTP confirms that '+path+' exists, but cannot identify its file type/permissions for backup. Check listing/read permissions. No file was renamed.');
-      const stat=command==='MLST'?mlstMetadata(reply,path):statMetadata(reply,path);
-      if(stat)return stat;
-      diagnostics.push(command+' returned unusable metadata');
+      const present=command==='MLST'?mlstReportsPresence(reply,path):statReportsPresence(reply,path);
+      // MLST/STAT may describe a symlink referent: they establish presence,
+      // never the non-following type needed for backup or ancestor traversal.
+      if(present)reportedPresent=true;
+      diagnostics.push(command+' cannot establish the entry own type');
     }
     throw new Error('FTP cannot establish destination type or absence for '+path+'. '+diagnostics.join('; ')+'. The server did not confirm that the path is missing; check listing/read permissions.');
   }
@@ -220,7 +222,7 @@ export default class FTPFileSystem extends RemoteFileSystem {
       if(input.destroyed&&!input.readableEnded)throw new Error('Source stream closed before transfer completed');
     };
     input.on('error',remember);
-    const directory=this.pathResolver.join(this.pathResolver.dirname(path),'.devkit-'+randomUUID()+'.upload');
+    const directory=this.pathResolver.join(this.pathResolver.dirname(path),'upload.devkit-'+randomUUID()+'.upload');
     const payload=this.pathResolver.join(directory,'payload');
     let created=false;
     try {
