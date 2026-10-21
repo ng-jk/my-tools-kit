@@ -5,8 +5,8 @@ import { EXTENSION_NAME } from '../../../data/sftp/constants';
 let isShow = false;
 const outputChannel = vscode.window.createOutputChannel(EXTENSION_NAME);
 
-export function show() {
-  outputChannel.show();
+export function show(preserveFocus=false) {
+  outputChannel.show(preserveFocus);
   isShow = true;
 }
 

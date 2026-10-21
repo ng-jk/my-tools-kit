@@ -1058,3 +1058,24 @@ test('backup Git ignores never omit overwritten originals from verified history'
  }
  const commits=await git.log({fs,dir:backup});assert.equal(Buffer.from((await git.readBlob({fs,dir:backup,oid:commits[1].oid,filepath:'ignored.txt'})).blob).toString(),'A');
 });
+
+test('concurrent accounts sharing a server retain the intermediate overwritten version',async t=>{
+ const {local,remote,session,raw}=fixture(t),git=require('isomorphic-git'),{Readable}=require('node:stream');
+ const backup=engine.defaultBackupPath(session.service.workspace,session.service.baseDir,session.config,session.service.profile);
+ t.after(()=>fs.rmSync(backup,{recursive:true,force:true}));
+ fs.writeFileSync(path.join(local,'concurrent.txt'),'B');fs.writeFileSync(path.join(remote,'concurrent.txt'),'A');
+ const remoteFs=await session.service.getRemoteFileSystem(session.config),put=remoteFs.put.bind(remoteFs),get=remoteFs.get.bind(remoteFs);
+ let unblock,started,reads=0,first=true;const gate=new Promise(resolve=>unblock=resolve),ready=new Promise(resolve=>started=resolve);
+ remoteFs.get=async(...args)=>{reads++;return get(...args);};
+ remoteFs.put=async(input,target,options)=>{if(first){first=false;const chunks=[];for await(const chunk of input)chunks.push(chunk);started();await gate;return put(Readable.from(Buffer.concat(chunks)),target,options);}return put(input,target,options);};
+ const a=engine.operate(session,'upload','concurrent.txt');await ready;
+ fs.writeFileSync(path.join(local,'concurrent.txt'),'C');const other=engine.createSession(local,{...raw,username:'another-account'});t.after(()=>other.service.dispose());
+ const otherBackup=engine.defaultBackupPath(other.service.workspace,other.service.baseDir,other.config,other.service.profile);t.after(()=>fs.rmSync(otherBackup,{recursive:true,force:true}));
+ const b=engine.operate(other,'upload','concurrent.txt');
+ try{await new Promise(resolve=>setTimeout(resolve,40));assert.equal(reads,1,'second backup waits for first replacement');}finally{unblock();}
+ await Promise.all([a,b]);assert.equal(fs.readFileSync(path.join(remote,'concurrent.txt'),'utf8'),'C');
+ const versions=[];for(const commit of await git.log({fs,dir:backup}))versions.push(Buffer.from((await git.readBlob({fs,dir:backup,oid:commit.oid,filepath:'concurrent.txt'})).blob).toString());
+ assert.deepEqual(versions,['A']);
+ const otherHead=await git.resolveRef({fs,dir:otherBackup,ref:'HEAD'});assert.equal(Buffer.from((await git.readBlob({fs,dir:otherBackup,oid:otherHead,filepath:'concurrent.txt'})).blob).toString(),'B');
+});
+

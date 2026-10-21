@@ -14,6 +14,7 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
   fs.writeFileSync(path.join(root,'nested','ui.txt'),'from other context');
   fs.writeFileSync(path.join(root,'ui.txt'),'uploaded from the UI adapter');
   fs.writeFileSync(path.join(root,'.vscode','sftp.json'),JSON.stringify({name:'fixture',protocol:'local',host:'fixture',username:'fixture',remotePath:path.join(dir,'remote').replaceAll('\\','/'),syncOption:{delete:true},defaultProfile:'dev',profiles:{dev:{watcher:{files:'**/*',autoUpload:true,autoDelete:true}},prod:{watcher:{files:false}},other:{context:'nested',remotePath:path.join(dir,'remote-other').replaceAll('\\','/')}}}));
+  const outputLines=[];let outputShows=0;
   const statusTexts=[],loading=[];
   let savedDocument, changedFolders, openedDocument; const contextValues=new Map(),commands=new Map(),views=new Map(),errors=[],watchers=[];const disposable=()=>({dispose(){}});
   const repository={rootUri:URI.file(root),ui:{selected:true},state:{indexChanges:[],workingTreeChanges:[]}};
@@ -25,7 +26,7 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
       createFileSystemWatcher:()=>{const watcher={disposed:false,handlers:{},onDidCreate(fn){this.handlers.create=fn;return disposable();},onDidChange(fn){this.handlers.change=fn;return disposable();},onDidDelete(fn){this.handlers.delete=fn;return disposable();},dispose(){this.disposed=true;}};watchers.push(watcher);return watcher;},
       onDidSaveTextDocument:fn=>{savedDocument=fn;return disposable();},onDidOpenTextDocument:fn=>{openedDocument=fn;return disposable();},registerTextDocumentContentProvider:disposable},
     commands:{registerCommand:(id,fn,self)=>{assert.equal(commands.has(id),false,'duplicate '+id);commands.set(id,fn.bind(self));return disposable();},executeCommand:async(id,...args)=>id==='setContext'?contextValues.set(args[0],args[1]):commands.has(id)?commands.get(id)(...args):undefined},
-    window:{withProgress:async(options,run)=>{loading.push(options.title);return run();},activeTextEditor:{document:{uri:URI.file(path.join(root,'ui.txt'))}},createStatusBarItem:()=>({set text(value){this.value=value;statusTexts.push(value);},get text(){return this.value;},show(){},hide(){},dispose(){}}),createOutputChannel:()=>({appendLine(){},show(){},hide(){},dispose(){}}),
+    window:{withProgress:async(options,run)=>{loading.push(options.title);return run();},activeTextEditor:{document:{uri:URI.file(path.join(root,'ui.txt'))}},createStatusBarItem:()=>({set text(value){this.value=value;statusTexts.push(value);},get text(){return this.value;},show(){},hide(){},dispose(){}}),createOutputChannel:()=>({appendLine(line){outputLines.push(line);},show(){outputShows++;},hide(){},dispose(){}}),
       showQuickPick:async choices=>choices.find(item=>item.command==='devkit.sftp.upload.file') || choices[0],
       showOpenDialog:async()=>[URI.file(path.join(root,'ui.txt'))],
       showInformationMessage:async(message,...choices)=>{if(choices[0]?.modal && /^Upload to (this destination|all listed profiles)/.test(message))assert.equal(choices.slice(1).includes('Cancel'),false,'VS Code supplies modal Cancel');return choices[0]?.modal?choices[1]:choices[0];},showErrorMessage:async message=>{errors.push(message);},registerTreeDataProvider:(id,provider)=>{views.set(id,provider);return disposable();},
@@ -193,10 +194,13 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     errors.length=0;
     const acceptInformation=vscode.window.showInformationMessage;
     for(const variant of ['upload','upload.activeFile','upload.activeFolder','upload.file','upload.folder','forceUpload','upload.project']) {
-      let confirmations=0;
+      let confirmations=0;const outputBefore=outputShows,lineBefore=outputLines.length;
       vscode.window.showInformationMessage=async(message,options)=>{confirmations++;assert.match(options.detail,/profile dev/);assert.match(options.detail,/profile prod/);assert.match(options.detail,/fixture:/);assert.ok(options.detail.replaceAll('\\','/').toLowerCase().includes(root.replaceAll('\\','/').toLowerCase()));assert.ok(options.detail.includes('remote-other'));return undefined;};
       await commands.get('devkit.sftp.'+variant+'.to.allProfiles')(variant==='upload'?[path.join(root,'ui.txt')]:URI.file(variant==='upload.folder'?root:path.join(root,'ui.txt')));
       assert.equal(confirmations,variant==='forceUpload'?1:0,variant);
+      assert.ok(outputShows>outputBefore,'resolved mappings are shown without a confirmation');
+      const mapping=outputLines.slice(lineBefore).join('\n').replaceAll('\\','/').toLowerCase();
+      for(const value of [root,path.join(root,'nested'),'profile dev','profile other','remote-other'])assert.ok(mapping.includes(value.replaceAll('\\','/').toLowerCase()),mapping);
       assert.equal(fs.readFileSync(path.join(dir,'remote-other','ui.txt'),'utf8'),'from other context');
     }
     vscode.window.showInformationMessage=acceptInformation;

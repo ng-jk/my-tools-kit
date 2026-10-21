@@ -2,6 +2,7 @@
 import { Uri, window } from 'vscode';
 import logger from '../../logger';
 import app from '../../app';
+import * as output from '../../ui/output';
 import { reportError } from '../../helper/index';
 import { handleCtxFromUri, allHandleCtxFromUri, FileHandlerContext } from '../../fileHandlers/index';
 import Command from './command';
@@ -104,18 +105,18 @@ export function createFileMultiCommand(commandOption: FileCommandOption & { name
                     ownedContexts.push(...allHandleCtxFromUri(uri));
                 }
                 if (!ownedContexts.length) throw new Error('No legacy profiles are configured for these targets.');
+                logger.info('Upload to all profiles: each profile uses its own local source folder. Resolved mappings:');
+                for(const {fileService,config,target} of ownedContexts)logger.info(`${fileService.name||config.host} - profile ${fileService.profile||'base'} (${config.host}:${config.port})\n${target.localFsPath} -> ${target.remoteFsPath}`);
+                output.show(true);
                 if(this.id.includes('forceUpload')){
                     const answer=await window.showInformationMessage('Force Upload to all listed profiles bypasses credential-file exclusions.',{modal:true,detail:'Ignore rules will be bypassed, including credential-file exclusions. Destinations: '+ownedContexts.map(({fileService,config,target})=>`${fileService.name||config.host} - profile ${fileService.profile||'base'} (${config.host}:${config.port})\n${target.localFsPath} -> ${target.remoteFsPath}`).join('\n\n')},'Upload');
                     if(answer!=='Upload')return;
                 }
                 checks.forEach(check => check());
-                // Profiles on the same server can overlap; avoid racing backup
-                // reads and replacement writes. Independent servers still run together.
-                const chains=new Map<string,Promise<unknown>>();
+                // Shared transfer logic serializes overlapping destination trees;
+                // independent destinations retain concurrency.
                 const results=await Promise.allSettled(ownedContexts.map(ctx=>{
-                    const key=JSON.stringify([ctx.config.protocol,ctx.config.host,ctx.config.port,ctx.config.username]);
-                    const task=(chains.get(key)||Promise.resolve()).then(()=>{checkPending();checks.forEach(check=>check());return commandOption.handleFile(ctx);});
-                    chains.set(key,task.catch(()=>{}));return task;
+                    checkPending();checks.forEach(check=>check());return commandOption.handleFile(ctx);
                 }));
                 const failure = results.find(result => result.status === 'rejected');
                 if (failure && failure.status === 'rejected') throw failure.reason;
