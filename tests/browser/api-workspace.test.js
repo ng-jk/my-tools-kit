@@ -54,6 +54,13 @@ test('API editor preserves raw drafts across hide/reload and drives shared reque
     await page.locator('#activeCollection').selectOption('other');await expect(page.locator('.request-item').filter({hasText:'Setup'})).toHaveCount(0);
     await page.evaluate(value=>window.dispatchEvent(new MessageEvent('message',{data:{type:'collection',collection:value,warnings:[]}})),other);
     const ids=await page.locator('#activeCollection option').evaluateAll(items=>items.map(item=>item.value));assert.equal(new Set(ids).size,ids.length);
+    const folderCollection={version:1,id:'folder-fixture',name:'Folder fixture',requests:[],folders:[{requests:[{name:'Folder A',url:base+'/echo?a=1'},{name:'Folder B',url:base+'/echo?b=1'}]}]};
+    await page.evaluate(value=>window.dispatchEvent(new MessageEvent('message',{data:{type:'collection',collection:value,warnings:[]}})),folderCollection);
+    await page.locator('[data-tab="auth"]').click();await page.locator('#authType').selectOption('basic');await page.locator('[data-auth="password"]').fill('folder-a-only');await page.locator('#authType').selectOption('none');
+    await page.locator('#send').click();await expect(page.locator('#notice')).toContainText('Completed successfully');
+    await page.locator('.request-item').filter({hasText:'Folder B'}).click();await page.locator('#authType').selectOption('basic');await expect(page.locator('[data-auth="password"]')).toHaveValue('');await page.locator('#authType').selectOption('none');
+    await page.locator('#send').click();await expect(page.locator('#notice')).toContainText('Completed successfully');
+    await page.locator('.request-item').filter({hasText:'Folder A'}).click();await page.locator('#download').click();await expect.poll(()=>fs.existsSync(path.join(root,'response.bin'))).toBe(true);assert.equal(JSON.parse(fs.readFileSync(path.join(root,'response.bin'),'utf8')).url,'/echo?a=1');fs.unlinkSync(path.join(root,'response.bin'));
     await page.screenshot({path:path.join(toolkit,'dist/api-workspace-browser.png'),fullPage:true});
     await page.setViewportSize({width:560,height:900});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
     assert.deepEqual(errors,[]);assert.equal(fs.readdirSync(root).length,0,'drafts and credentials never persisted to the project');

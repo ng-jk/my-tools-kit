@@ -112,7 +112,7 @@ async function execute(request, options = {}) {
     const collection=(options.collections||request.collections||[]).find(c=>(c.id||c.name)===reference.collectionId);
     const preRequest=collection&&flatten(collection).find(r=>(r.id||r.name)===reference.requestId);
     if(!preRequest)throw new Error('Pre-request not found in the selected collection');
-    const key=reference.collectionId+':'+reference.requestId,stack=options.preStack||[];
+    const key=JSON.stringify([reference.collectionId,reference.requestId]),stack=options.preStack||[];
     if(stack.includes(key))throw new Error('Pre-request dependency cycle');
     const result=await execute(preRequest,{...options,variables:{...collection.variables,...variables},jar,preDepth:(options.preDepth||0)+1,preStack:[...stack,key],preBudget:budget});
     preResults.push({name:preRequest.name,status:result.status,time:result.time,passed:result.passed,tests:result.tests});
@@ -186,7 +186,7 @@ function dependencyRequests(request,collections,stack=[]) {
   const result=[request];
   for(const reference of request.preRequests||[]) {
     if(reference.enabled===false)continue;
-    const key=reference.collectionId+':'+reference.requestId;if(stack.includes(key))throw new Error('Pre-request dependency cycle');
+    const key=JSON.stringify([reference.collectionId,reference.requestId]);if(stack.includes(key))throw new Error('Pre-request dependency cycle');
     const collection=(collections||[]).find(c=>(c.id||c.name)===reference.collectionId);
     const child=collection&&flatten(collection).find(r=>(r.id||r.name)===reference.requestId);
     if(!child)throw new Error('Pre-request not found in the selected collection');

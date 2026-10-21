@@ -117,7 +117,7 @@ Open **Auth**, select a method, and fill the labeled fields. Advanced JSON is op
 | Basic | `{"username":"user","password":"{{secret.PASSWORD}}"}` |
 | API key | `{"name":"X-API-Key","value":"{{secret.KEY}}","in":"header"}` |
 | OAuth 2 client credentials | `{"tokenUrl":"https://example.com/token","clientId":"client","clientSecret":"{{secret.CLIENT_SECRET}}","scope":"read"}` |
-| NTLMv2 | Username, password, domain and workstation. Servers must provide extended security and target information; NTLMv1 fallback is blocked. |
+| NTLMv2 | Username, password, domain and workstation. Negotiation uses a safe HEAD probe, which must receive a challenge on the same connection. Servers must provide extended security and target information; NTLMv1 fallback is blocked. Endpoints that do not challenge HEAD fail without sending a mutation payload. |
 | AWS Signature V4 | Explicit accessKeyId, secretAccessKey, region and service; optional sessionToken. No ambient AWS credentials are selected. |
 
 OAuth 2 also accepts `grantType` values `password`, `authorization_code`, and `refresh_token` with their corresponding fields. For authorization code, obtain the code through your provider's authorization page and supply code, redirectUri and optional PKCE codeVerifier. This editor does not automatically open a browser callback listener.

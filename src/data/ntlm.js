@@ -9,8 +9,10 @@ async function ntlmTransport(url,init,options,auth) {
   try {
     const firstHeaders={...init.headers,authorization:ntlm.createType1Message({...auth}),connection:'keep-alive'};
     delete firstHeaders['content-length'];
-    const first=await transport(url,{...init,headers:firstHeaders,body:undefined},{...options,agent});
-    if(first.status!==401)return first;
+    // Negotiate with a safe HEAD probe so an anonymous endpoint cannot execute
+    // an empty POST/PUT before we know it supports NTLM.
+    const first=await transport(url,{...init,method:'HEAD',headers:firstHeaders,body:undefined},{...options,agent});
+    if(first.status!==401)throw new Error('NTLM negotiation was not offered for the HEAD probe. No authenticated payload was sent; check the endpoint authentication policy.');
     let error;const challenge=ntlm.parseType2Message(String(first.headers['www-authenticate']||''),e=>{error=e;});
     if(error||!challenge||(challenge.negotiateFlags&0x80000)===0||!challenge.targetInfo?.length)throw new Error('NTLMv2 challenge with extended security and target information is required');
     const remaining=timeout-(Date.now()-start);if(remaining<=0)throw new Error('Request timeout');

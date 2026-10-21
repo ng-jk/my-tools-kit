@@ -6,7 +6,7 @@ let selected = -1, response = null, view = 'body';
 const responses=new Map();let pendingRequestId;
 let activeTab='query',bodyMode='none',authMode='none',bodyDrafts={},authDrafts={},preRequests=[],deletedRequest;
 let editorDrafts={};
-const requestKey=request=>collection.id+':'+request.id;
+const requestKey=request=>JSON.stringify([collection.id,request.id]);
 const history = [];
 const json = (id, fallback) => { const text = $(id).value.trim(); return text ? JSON.parse(text) : fallback; };
 function notice(text, error = false) { $('notice').textContent = text; $('notice').classList.toggle('error', error); }
@@ -100,11 +100,12 @@ window.addEventListener('message', event => {
   if (message.type === 'environment') { $('environment').value = JSON.stringify(message.value, null, 2); notice('Environment loaded.'); }
   if (message.type === 'collection') {
     $('allowScripts').checked=false;
-    capture();collection = message.collection;collection.id||=crypto.randomUUID();collection.requests.forEach(r=>r.id||=crypto.randomUUID());
-    if(catalog.some(c=>c.id===collection.id)){const previous=collection.id;collection.id=crypto.randomUUID();collection.name+=' (imported copy)';for(const request of collection.requests)for(const reference of request.preRequests||[])if(reference.collectionId===previous)reference.collectionId=collection.id;}
-    catalog.push(collection);
+    capture();collection = message.collection;if(typeof collection.id!=='string'||!collection.id)collection.id=crypto.randomUUID();
     function flatten(folder, defaults = {}) { const inherited = { ...defaults, ...folder.defaults }; return [...(folder.requests || []).map(r => ({ ...inherited, ...r })), ...(folder.folders || []).flatMap(f => flatten(f, inherited))]; }
     collection.requests = flatten(collection); delete collection.folders; delete collection.defaults;
+    const requestIds=new Set();for(const request of collection.requests){if(typeof request.id!=='string'||!request.id||requestIds.has(request.id))request.id=crypto.randomUUID();requestIds.add(request.id);}
+    if(catalog.some(c=>c.id===collection.id)){const previous=collection.id;collection.id=crypto.randomUUID();collection.name+=' (imported copy)';for(const request of collection.requests)for(const reference of request.preRequests||[])if(reference.collectionId===previous)reference.collectionId=collection.id;}
+    catalog.push(collection);
     if (!collection.requests.length) collection.requests.push(blank());
     $('collectionName').value = collection.name; load(0);
     notice(message.warnings.length ? message.warnings.join('\n') : 'Collection loaded.');

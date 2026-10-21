@@ -47,6 +47,11 @@ test('OAuth token exchange supports manual code/PKCE, password and refresh grant
   }
   assert.equal(grants[0].code_verifier,'fixture-verifier');assert.equal(grants[1].username,'fixture');assert.equal(grants[2].refresh_token,'fixture-refresh');
 });
+test('NTLM does not mutate non-challenging endpoints or report an empty negotiation as success',async t=>{
+  const methods=[];const base=await fixture(t,(req,res)=>{methods.push(req.method);res.end('anonymous endpoint');});
+  await assert.rejects(execute({url:base,method:'POST',body:{type:'text',value:'must not be silently omitted'},auth:{type:'ntlm',username:'fixture',password:'fixture'}}),/negotiation was not offered.*No authenticated payload/);
+  assert.deepEqual(methods,['HEAD']);
+});
 test('CLI --collections executes the same dependency extraction and cookie workflow',async t=>{
   const fs=require('node:fs'),path=require('node:path'),os=require('node:os');
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-api-cli-deps-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
