@@ -43,9 +43,9 @@ test('NTLMv2 sends authenticated body once on the challenge socket with a valid 
 test('OAuth token exchange supports manual code/PKCE, password and refresh grants',async t=>{
   const grants=[];const base=await fixture(t,async(req,res)=>{const chunks=[];for await(const chunk of req)chunks.push(chunk);res.setHeader('content-type','application/json');if(req.url==='/token'){grants.push(Object.fromEntries(new URLSearchParams(Buffer.concat(chunks).toString())));res.end('{"access_token":"fixture-token"}');}else res.end(JSON.stringify({authorization:req.headers.authorization}));});
   for(const auth of [{grantType:'authorization_code',code:'fixture-code',redirectUri:'http://127.0.0.1/callback',codeVerifier:'fixture-verifier'},{grantType:'password',username:'fixture',password:'fixture'},{grantType:'refresh_token',refreshToken:'fixture-refresh'}]){
-    const result=await execute({url:base,auth:{type:'oauth2',tokenUrl:base+'/token',clientId:'fixture-client',...auth}});assert.equal(result.json.authorization,'Bearer fixture-token');
+    for(const templated of [false,true]){const variables={grant:auth.grantType};const result=await execute({url:base,auth:{type:'oauth2',tokenUrl:base+'/token',clientId:'fixture-client',...auth,grantType:templated?'{{grant}}':auth.grantType}},{variables});assert.equal(result.json.authorization,'Bearer fixture-token');}
   }
-  assert.equal(grants[0].code_verifier,'fixture-verifier');assert.equal(grants[1].username,'fixture');assert.equal(grants[2].refresh_token,'fixture-refresh');
+  assert.equal(grants[0].code_verifier,'fixture-verifier');assert.equal(grants[2].username,'fixture');assert.equal(grants[4].refresh_token,'fixture-refresh');
 });
 test('plain-text documentation templates never affect outgoing requests',async t=>{
   const base=await fixture(t,(_req,res)=>res.end('sent'));
@@ -91,4 +91,10 @@ test('CLI --collections executes the same dependency extraction and cookie workf
   fs.writeFileSync(library,JSON.stringify([{id:'auth',version:1,requests:[{id:'login',url:base+'/login',extract:[{variable:'id',path:'id'}]}]}]));
   const result=await require('node:util').promisify(require('node:child_process').execFile)(process.execPath,[path.resolve(__dirname,'../cli.js'),'send',request,'--collections',library],{timeout:20000});
   const body=JSON.parse(result.stdout);assert.equal(body.json.url,'/main?id=99');assert.equal(body.json.cookie,'session=fixture');
+});
+
+test('variable-selected OAuth grants discover only the selected credentials',()=>{
+ const {referencedSecrets}=require('../src/logic/api');
+ const auth={type:'oauth2',grantType:'{{grant}}',username:'{{secret.USER}}',password:'{{secret.PASSWORD}}',code:'{{secret.CODE}}',refreshToken:'{{secret.REFRESH}}'};
+ for(const [grant,expected] of [['password',['USER','PASSWORD']],['authorization_code',['CODE']],['refresh_token',['REFRESH']],['client_credentials',[]]])assert.deepEqual(referencedSecrets([{url:'https://example.invalid',auth}],{grant}),expected);
 });
