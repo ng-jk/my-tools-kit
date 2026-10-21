@@ -1015,3 +1015,17 @@ test('automatic backup handles file-directory transitions without losing committ
  const commits=await git.log({fs,dir:backup});assert.equal(commits.length,3);
  for(const [index,file,expected] of [[0,'shape','second old file'],[1,'shape/item.txt','old child'],[2,'shape','old file']])assert.equal(Buffer.from((await git.readBlob({fs,dir:backup,oid:commits[index].oid,filepath:file})).blob).toString(),expected);
 });
+
+test('valid dot-dot-prefixed upload paths are backed up before replacement',async t=>{
+ const {local,remote,session,raw}=fixture(t);
+ const backup=engine.defaultBackupPath(session.service.workspace,session.service.baseDir,session.config,session.service.profile);
+ t.after(()=>fs.rmSync(backup,{recursive:true,force:true}));
+ for(const name of ['..notes.txt','..archive/config.json']){
+   for(const base of [local,remote])fs.mkdirSync(path.dirname(path.join(base,name)),{recursive:true});
+   fs.writeFileSync(path.join(local,name),'replacement');fs.writeFileSync(path.join(remote,name),'original');
+   await engine.operate(session,'upload',name);
+   assert.equal(fs.readFileSync(path.join(backup,name),'utf8'),'original');assert.equal(fs.readFileSync(path.join(remote,name),'utf8'),'replacement');
+ }
+ const unsafe=engine.createSession(local,{...raw,mirror:{enabled:true,path:path.join(local,'..backups')}});t.after(()=>unsafe.service.dispose());
+ await assert.rejects(engine.operate(unsafe,'upload','..notes.txt'),/outside the workspace/);
+});

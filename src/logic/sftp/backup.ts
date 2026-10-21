@@ -6,7 +6,7 @@ import {defaultBackupPath} from '../../data/sftp/backup-location';
 // True when `child` is the same as or nested under `parent`.
 function isInside(child: string, parent: string): boolean {
   const rel = path.relative(parent, child);
-  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+  return rel === '' || (rel!=='..' && !rel.startsWith('..'+path.sep) && !path.isAbsolute(rel));
 }
 
 /** Save remote originals before upload. A failed backup must stop replacement. */
@@ -30,9 +30,8 @@ export async function backupBeforeUpload(
       relPath: path.relative(base, t.localFsPath),
       remoteFs,
       remotePath: t.targetFsPath,
-    }))
-    // guard against paths outside the local base (defensive)
-    .filter(target => target.relPath && !target.relPath.startsWith('..'));
+    }));
+  for(const target of targets)if(!target.relPath||target.relPath==='..'||target.relPath.startsWith('..'+path.sep)||path.isAbsolute(target.relPath))throw new Error('Backup source escapes the configured local context');
 
   if (!targets.length) {
     return;
