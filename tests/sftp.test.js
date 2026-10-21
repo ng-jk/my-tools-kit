@@ -1112,3 +1112,11 @@ test('FTP direct metadata distinguishes explicit absence, unsafe replies and typ
  replies.push(failure('No such file or directory'),failure('No such file or directory'),'Rename ready');await assert.rejects(remote.lstat('/dangling-link'),/confirms.*exists/);
  assert.equal(replies.length,0);assert.ok(calls.some(command=>command.startsWith('STAT ')));
 });
+
+test('FTP hidden-list rejection still runs conservative direct path probes',async()=>{
+ const calls=[],ftp={list:(name,cb)=>{calls.push(name);name.startsWith('-al ')?cb(Object.assign(new Error('hidden listing rejected'),{code:550})):cb(null,[]);},_send:(command,cb)=>{calls.push(command);command==='NOOP'?cb(null,'OK'):cb(Object.assign(new Error('No such file or directory'),{code:550}));}};
+ const adapter=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>ftp}});
+ await assert.rejects(adapter.lstat('/new.txt'),e=>e.code==='ENOENT');assert.ok(calls.includes('MLST /new.txt'));assert.ok(calls.includes('RNFR /new.txt'));
+ ftp._send=(command,cb)=>command==='NOOP'?cb(null,'OK'):cb(Object.assign(new Error('Permission denied'),{code:550}));
+ await assert.rejects(adapter.lstat('/denied.txt'),e=>e.code!=='ENOENT'&&/did not confirm/.test(e.message));
+});

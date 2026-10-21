@@ -62,7 +62,7 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-ftp-'));
   fs.writeFileSync(path.join(root,'local.txt'),'ftp payload');
   let referentReads=0;const linkTargets=new Map([['/.hidden-link','/outside/private']]);
-  const files=new Map([['/nul',Buffer.from('valid remote sibling')],['/.hidden.txt',Buffer.from('hidden original')],['/.hidden-link',Buffer.from('link placeholder')]]),modes=new Map(),directories=new Set(),payloadParents=[],commands=[],sockets=new Set(),servers=new Set();let permissionsSupported=true,permissionsHonored=true,filePermissionsHonored=true,failStore=false,probeMode='mlst',probeDenied='',probeAmbiguous='';const omitted=new Set();
+  const files=new Map([['/nul',Buffer.from('valid remote sibling')],['/.hidden.txt',Buffer.from('hidden original')],['/.hidden-link',Buffer.from('link placeholder')]]),modes=new Map(),directories=new Set(),payloadParents=[],commands=[],sockets=new Set(),servers=new Set();let permissionsSupported=true,permissionsHonored=true,filePermissionsHonored=true,failStore=false,probeMode='mlst',probeDenied='',probeAmbiguous='',rejectHidden=false;const omitted=new Set();
   const rights=mode=>[6,3,0].map(shift=>[4,2,1].map((bit,index)=>((mode>>shift)&bit)?'rwx'[index]:'-').join('')).join('');
   const server=net.createServer(socket=>{
     sockets.add(socket);socket.on('close',()=>sockets.delete(socket));socket.on('error',()=>{});
@@ -97,6 +97,7 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
         }else if(cmd==='RETR'){
           if(linkTargets.has(arg)){referentReads++;reply('550 Symlink must not be dereferenced');dataSocket.destroy();}else if(!files.has(arg)){reply('550 Missing');dataSocket.destroy();}else{reply('150 Sending');dataSocket.end(files.get(arg),()=>reply('226 Done'));}
         }else if(cmd==='LIST'){
+          if(rejectHidden&&arg.startsWith('-al ')){reply('550 Hidden listing not supported');dataSocket.destroy();continue;}
           reply('150 Listing');let names=[...files.keys(),...directories].filter(name=>!omitted.has(name));const target=arg.replace(/^-al\s*/, '');if(!arg.startsWith('-al '))names=names.filter(name=>!path.posix.basename(name).startsWith('.'));names=names.filter(name=>path.posix.dirname(name)===(target||'/'));
           const listing=names.map(name=>(directories.has(name)?'d':linkTargets.has(name)?'l':'-')+rights(modes.get(name)||0o644)+' 1 user group '+(files.get(name)?.length||0)+' Jan 01 2026 '+path.posix.basename(name)+(linkTargets.has(name)?' -> '+linkTargets.get(name):'')+'\r\n').join('');dataSocket.end(listing,()=>reply('226 Done'));
         }else if(cmd==='MKD'){
@@ -126,6 +127,8 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
   await engine.operate(session,'upload','local.txt');assert.equal(files.get('/local.txt').toString(),'ftp payload');
   const backup=engine.defaultBackupPath(session.service.workspace,session.service.baseDir,session.config,session.service.profile);
   t.after(()=>fs.rmSync(backup,{recursive:true,force:true}));
+  rejectHidden=true;fs.writeFileSync(path.join(root,'hidden-list-new.txt'),'new despite LIST -al rejection');await engine.operate(session,'upload','hidden-list-new.txt');assert.equal(files.get('/hidden-list-new.txt').toString(),'new despite LIST -al rejection');
+  files.set('/hidden-list-existing.txt',Buffer.from('existing despite LIST -al rejection'));omitted.add('/hidden-list-existing.txt');fs.writeFileSync(path.join(root,'hidden-list-existing.txt'),'replacement');await engine.operate(session,'upload','hidden-list-existing.txt');assert.equal(files.get('/hidden-list-existing.txt').toString(),'replacement');omitted.clear();rejectHidden=false;
   for(const name of ['.hidden.txt','.hidden-link']){fs.writeFileSync(path.join(root,name),'hidden replacement');await engine.operate(session,'upload',name);assert.equal(files.get('/'+name).toString(),'hidden replacement');}
   files.set('/.unlisted.txt',Buffer.from('unlisted original'));omitted.add('/.unlisted.txt');fs.writeFileSync(path.join(root,'.unlisted.txt'),'typed replacement');await engine.operate(session,'upload','.unlisted.txt');assert.equal(files.get('/.unlisted.txt').toString(),'typed replacement');omitted.clear();
   files.set('/.unlisted-link',Buffer.from('placeholder'));linkTargets.set('/.unlisted-link','/outside/private');omitted.add('/.unlisted-link');fs.writeFileSync(path.join(root,'.unlisted-link'),'new link destination');await engine.operate(session,'upload','.unlisted-link');assert.equal(files.get('/.unlisted-link').toString(),'new link destination');omitted.clear();
@@ -133,6 +136,7 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
   const git=require('isomorphic-git'),oid=await git.resolveRef({fs,dir:backup,ref:'HEAD'});
   assert.equal(Buffer.from((await git.readBlob({fs,dir:backup,oid,filepath:'.hidden-link'})).blob).toString(),'/outside/private');
   assert.equal(Buffer.from((await git.readBlob({fs,dir:backup,oid,filepath:'.unlisted.txt'})).blob).toString(),'unlisted original');
+  assert.equal(Buffer.from((await git.readBlob({fs,dir:backup,oid,filepath:'hidden-list-existing.txt'})).blob).toString(),'existing despite LIST -al rejection');
   assert.equal(Buffer.from((await git.readBlob({fs,dir:backup,oid,filepath:'.unlisted-link'})).blob).toString(),'/outside/private');
   assert.equal(files.get('/nul').toString(),'valid remote sibling','reserved Windows names on the server do not block or change uploads');
   if(process.platform==='win32')await assert.rejects(engine.operate(session,'download','nul'),/Windows reserved device name/);

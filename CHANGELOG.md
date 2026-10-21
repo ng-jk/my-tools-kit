@@ -1,5 +1,10 @@
 # Release notes
 
+## 0.7.6 — 2026-10-22
+
+- Continue direct FTP path checks when the server rejects hidden-list requests with 550. Explicit absence permits new uploads; denied or ambiguous probes still block replacement.
+- Includes the new-file creation and protected-backup fixes from 0.7.5.
+
 ## 0.7.5 — 2026-10-22
 
 - Allow new FTP files when direct MLST/STAT checks or an RNFR existence probe explicitly report that the destination does not exist; omitted LIST entries no longer automatically block creation.

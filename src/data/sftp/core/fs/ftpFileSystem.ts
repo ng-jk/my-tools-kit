@@ -124,7 +124,7 @@ export default class FTPFileSystem extends RemoteFileSystem {
     let fileStat = stats.find(ns => ns.name === nameIdentity);
     if(!fileStat){
       try{fileStat=(await this.list(parentPath,{showHiddenFiles:true})).find(entry=>entry.name===nameIdentity);}
-      catch(error){if(![500,501,502,504].includes(Number(error.code)))throw error;}
+      catch(error){if(![500,501,502,504,550].includes(Number(error.code)))throw error;}
     }
 
     if (!fileStat) {
