@@ -27,7 +27,8 @@ export default class MirrorService {
           if(target.remoteFs.supportsCompleteDirectoryListing!==false)continue;
           // Never RETR a path of unknown type: it could be a symlink.
           if(typeof (target.remoteFs as any).lstatForBackup!=='function')throw new Error('FTP cannot establish destination type or absence. Use SFTP.');
-          stat=await (target.remoteFs as any).lstatForBackup(target.remotePath);
+          try{stat=await (target.remoteFs as any).lstatForBackup(target.remotePath);}
+          catch(probeError){if(probeError.code==='ENOENT'||probeError.code===2)continue;throw probeError;}
         }else throw new Error('Upload stopped: unable to inspect backup source '+target.relPath+'. '+error.message);
       }
       if(stat.type!==FileType.File&&stat.type!==FileType.SymbolicLink)throw new Error('Upload stopped: backup destination is not a regular file: '+target.relPath);

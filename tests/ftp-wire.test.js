@@ -62,7 +62,7 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-ftp-'));
   fs.writeFileSync(path.join(root,'local.txt'),'ftp payload');
   let referentReads=0;const linkTargets=new Map([['/.hidden-link','/outside/private']]);
-  const files=new Map([['/nul',Buffer.from('valid remote sibling')],['/.hidden.txt',Buffer.from('hidden original')],['/.hidden-link',Buffer.from('link placeholder')]]),modes=new Map(),directories=new Set(),payloadParents=[],commands=[],sockets=new Set(),servers=new Set();let permissionsSupported=true,permissionsHonored=true,filePermissionsHonored=true,failStore=false;
+  const files=new Map([['/nul',Buffer.from('valid remote sibling')],['/.hidden.txt',Buffer.from('hidden original')],['/.hidden-link',Buffer.from('link placeholder')]]),modes=new Map(),directories=new Set(),payloadParents=[],commands=[],sockets=new Set(),servers=new Set();let permissionsSupported=true,permissionsHonored=true,filePermissionsHonored=true,failStore=false,probeMode='mlst',probeDenied='',probeAmbiguous='';const omitted=new Set();
   const rights=mode=>[6,3,0].map(shift=>[4,2,1].map((bit,index)=>((mode>>shift)&bit)?'rwx'[index]:'-').join('')).join('');
   const server=net.createServer(socket=>{
     sockets.add(socket);socket.on('close',()=>sockets.delete(socket));socket.on('error',()=>{});
@@ -79,6 +79,14 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
         else if(cmd==='PWD')reply('257 "/"');
         else if(['TYPE','OPTS','NOOP'].includes(cmd))reply('200 OK');
         else if(cmd==='CWD')reply('250 Changed');
+        else if(cmd==='MLST'||cmd==='STAT'){
+          if(['unsupported','rnfr'].includes(probeMode)||(cmd==='MLST'&&probeMode==='stat'))reply('502 Unsupported');
+          else if(arg===probeDenied)reply('550 Permission denied');
+          else if(arg===probeAmbiguous)reply('550 File unavailable');
+          else if(!files.has(arg)&&!directories.has(arg))reply('550 '+arg+': No such file or directory');
+          else if(cmd==='MLST')reply('250-Listing\r\n type='+(directories.has(arg)?'dir':linkTargets.has(arg)?'OS.unix=slink':'file')+';size='+(files.get(arg)?.length||0)+';unix.mode='+(modes.get(arg)||0o644).toString(8)+'; '+arg+'\r\n250 End');
+          else reply('213-Status\r\n '+(directories.has(arg)?'d':linkTargets.has(arg)?'l':'-')+rights(modes.get(arg)||0o644)+' 1 user group '+(files.get(arg)?.length||0)+' Jan 01 2026 '+arg+(linkTargets.has(arg)?' -> '+linkTargets.get(arg):'')+'\r\n213 End');
+        }
         else if(cmd==='PASV'){
           const data=net.createServer(s=>{dataSocket=s;sockets.add(s);s.on('error',()=>{});s.on('close',()=>sockets.delete(s));data.close();});servers.add(data);
           data.listen(0,'127.0.0.1',()=>{const port=data.address().port;reply('227 Entering Passive Mode (127,0,0,1,'+Math.floor(port/256)+','+(port%256)+')');});
@@ -89,7 +97,7 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
         }else if(cmd==='RETR'){
           if(linkTargets.has(arg)){referentReads++;reply('550 Symlink must not be dereferenced');dataSocket.destroy();}else if(!files.has(arg)){reply('550 Missing');dataSocket.destroy();}else{reply('150 Sending');dataSocket.end(files.get(arg),()=>reply('226 Done'));}
         }else if(cmd==='LIST'){
-          reply('150 Listing');let names=[...files.keys(),...directories];const target=arg.replace(/^-al\s*/, '');if(!arg.startsWith('-al '))names=names.filter(name=>!path.posix.basename(name).startsWith('.'));names=names.filter(name=>path.posix.dirname(name)===(target||'/'));
+          reply('150 Listing');let names=[...files.keys(),...directories].filter(name=>!omitted.has(name));const target=arg.replace(/^-al\s*/, '');if(!arg.startsWith('-al '))names=names.filter(name=>!path.posix.basename(name).startsWith('.'));names=names.filter(name=>path.posix.dirname(name)===(target||'/'));
           const listing=names.map(name=>(directories.has(name)?'d':linkTargets.has(name)?'l':'-')+rights(modes.get(name)||0o644)+' 1 user group '+(files.get(name)?.length||0)+' Jan 01 2026 '+path.posix.basename(name)+(linkTargets.has(name)?' -> '+linkTargets.get(name):'')+'\r\n').join('');dataSocket.end(listing,()=>reply('226 Done'));
         }else if(cmd==='MKD'){
           if(Buffer.byteLength(path.posix.basename(arg))>255)reply('550 Filename too long');else if(files.has(arg)||directories.has(arg))reply('550 Already exists');else{directories.add(arg);modes.set(arg,0o755);reply('257 Directory created');}
@@ -99,7 +107,7 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
         else if(cmd==='MDTM')reply(files.has(arg)?'213 20260101000000':'550 Missing');
         else if(cmd==='MFMT')reply('213 Modified');
         else if(cmd==='SITE'){const match=/^CHMOD ([0-7]+) (.+)$/.exec(arg);if(!permissionsSupported||!match)reply('502 Unsupported');else{if(permissionsHonored&&(!files.has(match[2])||filePermissionsHonored))modes.set(match[2],parseInt(match[1],8));reply('200 Permissions set');}}
-        else if(cmd==='RNFR'){renameFrom=arg;reply(files.has(arg)?'350 Rename ready':'550 Missing');}
+        else if(cmd==='RNFR'){renameFrom=arg;reply(arg===probeDenied?'550 Permission denied':arg===probeAmbiguous||probeMode==='unsupported'?'550 File unavailable':files.has(arg)?'350 Rename ready':"550 Sorry, but that file doesn't exist");}
         else if(cmd==='RNTO'){linkTargets.delete(arg);files.set(arg,files.get(renameFrom));files.delete(renameFrom);modes.set(arg,modes.get(renameFrom));modes.delete(renameFrom);reply('250 Renamed');}
         else if(cmd==='DELE'){files.delete(arg);modes.delete(arg);reply('250 Deleted');}
         else if(cmd==='QUIT'){reply('221 Bye');socket.end();}
@@ -110,16 +118,22 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   const session=engine.createSession(root,{protocol:'ftp',host:'127.0.0.1',port:server.address().port,username:'fixture',password:'fixture',remotePath:'/'});
   t.after(async()=>{session.service.dispose();for(const socket of sockets)socket.destroy();for(const data of servers)if(data.listening)data.close();await new Promise(resolve=>server.close(resolve));fs.rmSync(root,{recursive:true,force:true});});
-  await assert.rejects(engine.operate(session,'upload','local.txt'),/FTP cannot establish destination type or absence/);
-  assert.equal(files.has('/local.txt'),false,'ambiguous FTP absence cannot authorize an overwrite');
+  await engine.operate(session,'upload','local.txt');assert.equal(files.get('/local.txt').toString(),'ftp payload','explicit not-found permits creating a new FTP file');
+  fs.mkdirSync(path.join(root,'nested'));fs.writeFileSync(path.join(root,'nested','fresh.php'),'new nested content');await engine.operate(session,'upload','nested/fresh.php');assert.equal(files.get('/nested/fresh.php').toString(),'new nested content');
+  probeMode='stat';fs.writeFileSync(path.join(root,'stat-new.txt'),'new via STAT');await engine.operate(session,'upload','stat-new.txt');assert.equal(files.get('/stat-new.txt').toString(),'new via STAT');probeMode='rnfr';fs.writeFileSync(path.join(root,'rnfr-new.txt'),'new via RNFR');await engine.operate(session,'upload','rnfr-new.txt');assert.equal(files.get('/rnfr-new.txt').toString(),'new via RNFR');probeMode='mlst';
+  for(const [name,kind]of [['denied.txt','denied'],['ambiguous.txt','ambiguous'],['unsupported.txt','unsupported']]){fs.writeFileSync(path.join(root,name),'do not upload');if(kind==='denied')probeDenied='/'+name;if(kind==='ambiguous')probeAmbiguous='/'+name;if(kind==='unsupported')probeMode='unsupported';const before=payloadParents.length;await assert.rejects(engine.operate(session,'upload',name),/did not confirm|cannot establish destination type/);assert.equal(payloadParents.length,before);assert.equal(files.has('/'+name),false);probeDenied='';probeAmbiguous='';probeMode='mlst';}
   files.set('/local.txt',Buffer.from('previous payload'));
   await engine.operate(session,'upload','local.txt');assert.equal(files.get('/local.txt').toString(),'ftp payload');
   const backup=engine.defaultBackupPath(session.service.workspace,session.service.baseDir,session.config,session.service.profile);
   t.after(()=>fs.rmSync(backup,{recursive:true,force:true}));
   for(const name of ['.hidden.txt','.hidden-link']){fs.writeFileSync(path.join(root,name),'hidden replacement');await engine.operate(session,'upload',name);assert.equal(files.get('/'+name).toString(),'hidden replacement');}
+  files.set('/.unlisted.txt',Buffer.from('unlisted original'));omitted.add('/.unlisted.txt');fs.writeFileSync(path.join(root,'.unlisted.txt'),'typed replacement');await engine.operate(session,'upload','.unlisted.txt');assert.equal(files.get('/.unlisted.txt').toString(),'typed replacement');omitted.clear();
+  files.set('/.unlisted-link',Buffer.from('placeholder'));linkTargets.set('/.unlisted-link','/outside/private');omitted.add('/.unlisted-link');fs.writeFileSync(path.join(root,'.unlisted-link'),'new link destination');await engine.operate(session,'upload','.unlisted-link');assert.equal(files.get('/.unlisted-link').toString(),'new link destination');omitted.clear();
   assert.equal(referentReads,0,'hidden symlinks are backed up as metadata, never RETR');
   const git=require('isomorphic-git'),oid=await git.resolveRef({fs,dir:backup,ref:'HEAD'});
   assert.equal(Buffer.from((await git.readBlob({fs,dir:backup,oid,filepath:'.hidden-link'})).blob).toString(),'/outside/private');
+  assert.equal(Buffer.from((await git.readBlob({fs,dir:backup,oid,filepath:'.unlisted.txt'})).blob).toString(),'unlisted original');
+  assert.equal(Buffer.from((await git.readBlob({fs,dir:backup,oid,filepath:'.unlisted-link'})).blob).toString(),'/outside/private');
   assert.equal(files.get('/nul').toString(),'valid remote sibling','reserved Windows names on the server do not block or change uploads');
   if(process.platform==='win32')await assert.rejects(engine.operate(session,'download','nul'),/Windows reserved device name/);
   modes.set('/local.txt',0o600);fs.writeFileSync(path.join(root,'local.txt'),'ftp payload');
@@ -135,12 +149,12 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
   assert.equal(files.get('/local.txt').toString(),'ftp payload','post-STOR mode mismatch preserves original');filePermissionsHonored=true;
   failStore=true;await assert.rejects(engine.operate(session,'upload','local.txt'),/Simulated transfer failure/);failStore=false;
   assert.equal(files.get('/local.txt').toString(),'ftp payload','failed STOR preserves original');
-  assert.equal(commands.includes('APPE'),false);assert.equal(commands.includes('REST'),false);assert.ok(payloadParents.length>0&&payloadParents.every(mode=>mode===0o700));assert.equal(directories.size,0,'private directories are removed after success and failure');
+  assert.equal(commands.includes('APPE'),false);assert.equal(commands.includes('REST'),false);assert.ok(payloadParents.length>0&&payloadParents.every(mode=>mode===0o700));assert.deepEqual([...directories],['/nested'],'private directories are removed after success and failure');
   const list=await engine.operate(session,'list');assert.ok(list.some(item=>item.name==='local.txt'));
   const remoteFs=await session.service.getRemoteFileSystem(session.config);
   const longTarget='/'+ 'a'.repeat(204)+'.devkit-00000000-0000-4000-8000-000000000000';
   await remoteFs.put(require('node:stream').Readable.from(['long filename payload']),longTarget,{mode:0o600});
-  assert.equal(files.get(longTarget).toString(),'long filename payload');assert.equal(modes.get(longTarget),0o600);assert.equal(directories.size,0);
+  assert.equal(files.get(longTarget).toString(),'long filename payload');assert.equal(modes.get(longTarget),0o600);assert.deepEqual([...directories],['/nested']);
   for(const relative of ['.','./']) assert.equal((await remoteFs.lstat(relative)).type,engine.FileType.Directory);
   await assert.rejects(remoteFs.rename('/local.txt\r\nDELE /local.txt\r\nNOOP','/renamed.txt'),/prohibited control/);
   assert.equal(files.get('/local.txt').toString(),'ftp payload');

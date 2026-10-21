@@ -1,5 +1,11 @@
 # Release notes
 
+## 0.7.5 — 2026-10-22
+
+- Allow new FTP files when direct MLST/STAT checks or an RNFR existence probe explicitly report that the destination does not exist; omitted LIST entries no longer automatically block creation.
+- Obtain typed metadata for existing unlisted files and links before backing them up. Permission-denied, ambiguous and malformed responses still stop replacement.
+- Add socket and shared-engine regressions for new files, STAT fallback, hidden originals, symlinks and denied/unsupported metadata checks.
+
 ## 0.7.4 — 2026-10-21
 
 - Add a visual database connection editor with engine, host, port, credentials, verified TLS and advanced settings; separate Save, Test and Save & connect actions.

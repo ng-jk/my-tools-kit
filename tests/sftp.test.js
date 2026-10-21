@@ -613,7 +613,7 @@ test('SSH final jump destination receives default port without mutating configur
 
 test('incomplete FTP listing semantics cannot delete omitted local dotfiles',async t=>{
   const {local,session}=fixture(t,{syncOption:{delete:true}});fs.writeFileSync(path.join(local,'.htaccess'),'keep');
-  const ftp=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({list:(_,cb)=>cb(null,[])})}});
+  const ftp=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({list:(_,cb)=>cb(null,[]),_send:(command,cb)=>cb(null,'type=dir;unix.mode=0755; '+command.slice(5))})}});
   session.service.getRemoteFileSystem=async()=>ftp;
   await assert.rejects(engine.operate(session,'sync-down','.',{yes:true}),/complete source directory listing/);
   assert.equal(fs.readFileSync(path.join(local,'.htaccess'),'utf8'),'keep');
@@ -1095,4 +1095,19 @@ test('an unlisted FTP symlink is preserved as a link without reading its referen
  await engine.operate(session,'upload','.hidden-link');assert.equal(reads,0);
  const oid=await git.resolveRef({fs,dir:backup,ref:'HEAD'});assert.equal(Buffer.from((await git.readBlob({fs,dir:backup,oid,filepath:'.hidden-link'})).blob).toString(),'/outside/private');
  remoteFs.lstatForBackup=undefined;await assert.rejects(engine.operate(session,'upload','.hidden-link'),/cannot establish destination type/);assert.equal(reads,0);
+});
+
+test('FTP direct metadata distinguishes explicit absence, unsafe replies and typed originals',async()=>{
+ const replies=[],calls=[],remote=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({list:(_,cb)=>cb(null,[]),_send:(command,cb)=>{calls.push(command);if(command==='NOOP'){cb(null,'OK');return;}const r=replies.shift();if(r instanceof Error)cb(r);else cb(null,r);}})}});
+ const failure=(text,code=550)=>Object.assign(new Error(text),{code});
+ for(const text of ['No such file or directory','/new.txt: No such file or directory','File not found']){replies.push(failure(text),failure(text),failure(text));await assert.rejects(remote.lstat('/new.txt'),e=>e.code==='ENOENT');}
+ for(const text of ['Permission denied','File unavailable','No access: file not found','No such file or directory: permission denied']){replies.push(failure(text),failure(text),failure(text));await assert.rejects(remote.lstat('/new.txt'),e=>e.code!=='ENOENT'&&/did not confirm/.test(e.message));}
+ replies.push(...Array.from({length:3},()=>failure('/No such file or directory: unavailable')));await assert.rejects(remote.lstat('/No such file or directory'),e=>e.code!=='ENOENT');
+ replies.push('type=file;size=7;unix.mode=0640; /hidden');const stat=await remote.lstat('/hidden');assert.equal(stat.mode,0o640);assert.equal(stat.type,engine.FileType.File);
+ replies.push('type=file;size=7;unix.mode=0640; /different','not metadata',failure('Unsupported',502));await assert.rejects(remote.lstat('/hidden'),/cannot establish/);
+ replies.push('type=file;size=7;unix.mode=invalid; /hidden','not metadata',failure('Unsupported',502));await assert.rejects(remote.lstat('/hidden'),/cannot establish/);
+ replies.push(failure('Unsupported',502),'-rw-r----- 1 user group 7 Jan 01 2026 /hidden');assert.equal((await remote.lstat('/hidden')).mode,0o640);
+ replies.push('type=OS.unix=slink; /link','lrwxrwxrwx 1 user group 8 Jan 01 2026 /link -> /private');const link=await remote.lstat('/link');assert.equal(link.type,engine.FileType.SymbolicLink);assert.equal(link.target,'/private');
+ replies.push(failure('No such file or directory'),failure('No such file or directory'),'Rename ready');await assert.rejects(remote.lstat('/dangling-link'),/confirms.*exists/);
+ assert.equal(replies.length,0);assert.ok(calls.some(command=>command.startsWith('STAT ')));
 });

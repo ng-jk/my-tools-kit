@@ -7,6 +7,7 @@ import { FileEntry, FileType, FileStats, FileOption } from './fileSystem';
 import RemoteFileSystem from './remoteFileSystem';
 import { FTPClient } from '../remote-client/index';
 import { assertEntryName, checkedEntries } from '../../path-safety';
+import {missingPathReply,mlstMetadata,statMetadata} from './ftp-metadata';
 
 interface FtpFileHandle {
   path: string;
@@ -117,7 +118,8 @@ export default class FTPFileSystem extends RemoteFileSystem {
 
     const parentPath = this.pathResolver.dirname(path);
     const nameIdentity = this.pathResolver.basename(path);
-    const stats = await this.list(parentPath);
+    let stats:FileEntry[];
+    try{stats=await this.list(parentPath);}catch(error){if(Number(error.code)===550)return this.probePath(path);throw error;}
 
     let fileStat = stats.find(ns => ns.name === nameIdentity);
     if(!fileStat){
@@ -126,17 +128,38 @@ export default class FTPFileSystem extends RemoteFileSystem {
     }
 
     if (!fileStat) {
-      throw Object.assign(new Error('file not exist'), { code: 'ENOENT' });
+      return this.probePath(path);
     }
 
     return fileStat;
   }
 
-  async lstatForBackup(path:string):Promise<FileStats> {
-    const parent=this.pathResolver.dirname(path),name=this.pathResolver.basename(path);
-    const entry=(await this.list(parent,{showHiddenFiles:true})).find(item=>item.name===name);
-    if(!entry)throw new Error('FTP cannot establish destination type or absence. The server omitted the path even with hidden entries requested. Use SFTP for safely creating a new destination.');
-    return entry;
+  async lstatForBackup(path:string):Promise<FileStats> {return this.lstat(path);}
+
+  private async probePath(path:string):Promise<FileStats> {
+    const diagnostics:string[]=[];
+    for(const command of ['MLST','STAT','RNFR']){
+      let reply:string;
+      try{reply=await this.queue.add(async()=>{
+        try{return await new Promise<string>((resolve,reject)=>this.ftp._send(command+' '+path,(error:any,text:string)=>error?reject(error):resolve(text||'')));}
+        finally{if(command==='RNFR')await new Promise<void>((resolve,reject)=>this.ftp._send('NOOP',(error:any)=>error?reject(error):resolve()));}
+      });}
+      catch(error){
+        if(missingPathReply(error,path)){
+          // Confirm missing metadata through the rename-side existence check:
+          // an omitted/dangling link must not be treated as a new destination.
+          if(command==='RNFR')throw Object.assign(new Error('Remote path does not exist: '+path),{code:'ENOENT'});
+          diagnostics.push(command+' reported missing');continue;
+        }
+        if(![500,501,502,504,550].includes(Number(error.code)))throw new Error('FTP could not inspect remote path '+path+' ('+command+', code '+(error.code||'unknown')+'). Check the connection and server permissions.');
+        diagnostics.push(command+' code '+error.code);continue;
+      }
+      if(command==='RNFR')throw new Error('FTP confirms that '+path+' exists, but cannot identify its file type/permissions for backup. Check listing/read permissions. No file was renamed.');
+      const stat=command==='MLST'?mlstMetadata(reply,path):statMetadata(reply,path);
+      if(stat)return stat;
+      diagnostics.push(command+' returned unusable metadata');
+    }
+    throw new Error('FTP cannot establish destination type or absence for '+path+'. '+diagnostics.join('; ')+'. The server did not confirm that the path is missing; check listing/read permissions.');
   }
 
   async open(path: string, flags: string, mode?: number): Promise<FtpFileHandle> {
