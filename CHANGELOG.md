@@ -1,5 +1,11 @@
 # Release notes
 
+## 0.7.2 — 2026-10-21
+
+- Clarify that the Git commit picker selects filenames and uploads current local contents, not historical file contents. Display this in the picker and SFTP Output without an overwrite popup.
+- Includes the automatic verified upload backups and FTP metadata improvements from 0.7.1.
+
+
 ## 0.7.1 — 2026-10-21
 
 - Remove overwrite popups from ordinary, Git upload-only and all-profile uploads. Automatically save existing remote files to a private local Git backup before replacement; a failed backup stops the upload.

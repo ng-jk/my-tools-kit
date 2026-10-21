@@ -153,6 +153,15 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     fs.writeFileSync(path.join(root,'ui.txt'),'included change');
     fs.writeFileSync(path.join(root,'.env'),'private');
     fs.appendFileSync(path.join(root,'.git','info','exclude'),'!batch-second.txt\n');fs.writeFileSync(path.join(root,'batch-second.txt'),'second selected');
+    const historical=cp.execFileSync('git',['-C',root,'show','HEAD:ui.txt'],{encoding:'utf8'});assert.notEqual(historical,'included change');
+    const commitPicker=vscode.window.showQuickPick;
+    vscode.window.showQuickPick=async(items,options)=>{
+      const commit=items.find(item=>item.oid&&item.oid!=='__uncommitted__');
+      if(commit){assert.match(options.placeHolder,/CURRENT LOCAL contents/);assert.match(commit.detail,/not historical commit contents/);return commit;}
+      return commitPicker(items,options);
+    };
+    await commands.get('devkit.sftp.upload.fileChanged')();vscode.window.showQuickPick=commitPicker;
+    assert.equal(fs.readFileSync(path.join(dir,'remote','ui.txt'),'utf8'),'included change');
     const batchRoot=(await views.get('devkit.remoteExplorer').getChildren())[0];
     const batchFs=await batchRoot.explorerContext.fileService.getRemoteFileSystem(batchRoot.explorerContext.config);
     const batchPut=batchFs.put;let activeBatch=0,peakBatch=0;

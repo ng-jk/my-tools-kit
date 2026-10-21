@@ -52,6 +52,7 @@ export default checkCommand({
       return;
     }
 
+    if(oid!==UNCOMMITTED){logger.info('Selected commit '+oid+' determines filenames only. Uploading CURRENT LOCAL contents, not historical commit contents.');output.show(true);}
     const uploaded: string[] = [];
     const skipped: string[] = [];
     const selected=relPaths.map(rel=>{
@@ -141,7 +142,8 @@ async function pickSource(dir: string): Promise<string | undefined> {
     commits.forEach(commit => {
       items.push({
         label: `${commit.oid.slice(0, 7)}  ${commit.summary}`,
-        description: new Date(commit.timestamp * 1000).toLocaleString(),
+        description: new Date(commit.timestamp * 1000).toLocaleString()+' - filenames only',
+        detail: 'Uploads current local contents, not historical commit contents.',
         oid: commit.oid,
       });
     });
@@ -151,7 +153,7 @@ async function pickSource(dir: string): Promise<string | undefined> {
   }
 
   const pick = await vscode.window.showQuickPick(items, {
-    placeHolder: 'Upload created + modified files from…',
+    placeHolder: 'Select filenames by commit or working changes; uploads CURRENT LOCAL contents, not historical commit contents',
     matchOnDescription: true,
   });
   return pick && pick.oid;

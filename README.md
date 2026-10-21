@@ -88,7 +88,7 @@ SFTP verifies host keys: use a trusted `knownHostsPath` or independently verifie
 | Compare with remote | Choose the SFTP **Diff** action for a local file to open VS Code’s diff editor. |
 | Create or delete | Use **Create File**, **Create Folder**, or **Delete Remote** from the SFTP menu or remote context menu. Select the destination when prompted. |
 | Synchronize | Choose **Sync Local → Remote**, **Sync Remote → Local**, or **Sync Both Directions**. Set `syncOption` within the selected context. `delete: true` can remove destination-only files. |
-| Upload Git changes | Use **Upload Changed Files** for staged/working-tree changes, or **Upload File Changed** to select a commit’s changed files. Upload-only batches start automatically after backup; batches containing remote deletions or renames still show their scope for confirmation. |
+| Upload Git changes | Use **Upload Changed Files** for staged/working-tree changes, or **Upload File Changed** to select filenames changed by a commit. This uploads their **current local contents**, not historical commit contents; the picker and SFTP Output state that distinction. Upload-only batches start automatically after backup; batches containing remote deletions or renames still show their scope for confirmation. |
 | Watch local changes | Set `watcher.files`, `watcher.autoUpload`, and optionally `watcher.autoDelete` inside the context. Saving its configuration recreates the watcher. |
 | Connect with SSH | Choose the SSH terminal action for the selected SFTP server; requires your system SSH client. |
 | Stop or troubleshoot | Choose **Cancel All Transfers**, **Show Output**, or Remote Explorer’s refresh button. |
