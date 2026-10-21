@@ -52,6 +52,16 @@ test('plain-text documentation templates never affect outgoing requests',async t
   const result=await execute({url:base,documentation:'Examples: {{customerId}} and {{secret.UNSTORED}} are plain text.'});
   assert.equal(result.status,200);assert.equal(result.body,'sent');
 });
+test('pre-request collection defaults cannot retarget requests or leak into another collection',async t=>{
+  const seen=[];
+  const auth=await fixture(t,(req,res)=>{seen.push(['auth',req.url,req.headers.authorization]);res.setHeader('content-type','application/json');res.end('{"token":"extracted-token"}');});
+  const api=await fixture(t,(req,res)=>{seen.push(['api',req.url,req.headers.authorization]);res.end('main');});
+  const collections=[{id:'auth',version:1,variables:{base:auth,credential:'auth-only'},requests:[{id:'login',url:'{{base}}/login',auth:{type:'bearer',token:'{{credential}}'},extract:[{variable:'token',path:'token'}],postScript:'env.set("published",env.get("credential"));'}]}];
+  const request={url:'{{base}}/main?token={{token}}',auth:{type:'bearer',token:'{{credential}}'},preRequests:[{collectionId:'auth',requestId:'login'}]};
+  const result=await execute(request,{collections,collectionVariables:{base:api,credential:'main-only'},variables:{},allowScripts:true});
+  assert.deepEqual(seen,[['auth','/login','Bearer auth-only'],['api','/main?token=extracted-token','Bearer main-only']]);
+  assert.equal(result.variables.published,'auth-only');assert.equal(result.variables.credential,'main-only');
+});
 test('NTLM does not mutate non-challenging endpoints or report an empty negotiation as success',async t=>{
   const methods=[];const base=await fixture(t,(req,res)=>{methods.push(req.method);res.end('anonymous endpoint');});
   await assert.rejects(execute({url:base,method:'POST',body:{type:'text',value:'must not be silently omitted'},auth:{type:'ntlm',username:'fixture',password:'fixture'}}),/negotiation was not offered.*No authenticated payload/);

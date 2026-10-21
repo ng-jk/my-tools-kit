@@ -44,9 +44,10 @@ function render() {
   collection.requests.forEach((r, i) => {
     if (!(r.name || '').toLowerCase().includes($('search').value.toLowerCase())) return;
     const button = document.createElement('button'); button.className = 'request-item' + (i === selected ? ' selected' : '');
+    button.setAttribute('aria-current',String(i===selected));
     const method = document.createElement('span'); method.className = 'method-badge'; method.textContent = r.method || 'GET';
     const name = document.createElement('span'); name.className = 'request-title'; name.textContent = r.name;
-    button.append(method, name); button.onclick = action(() => { capture(); load(i); }); $('requests').append(button);
+    button.append(method, name); button.onclick = action(() => { capture(); load(i);$('requests').querySelector('[aria-current="true"]')?.focus(); }); $('requests').append(button);
   });
 }
 function authHint() {
@@ -81,7 +82,7 @@ $('undoDelete').onclick=action(()=>{if(!deletedRequest)return;capture();const or
 $('search').oninput = render; $('authType').onchange = ()=>{authDrafts[authMode]=$('auth').value;authMode=$('authType').value;$('auth').value=authDrafts[authMode]||'{}';authHint();};
 $('addTest').onclick = action(() => { const tests = json('tests', []); let value = $('testValue').value; try { value = JSON.parse(value); } catch {} tests.push({ source: $('testSource').value, path: $('testPath').value, operator: $('testOperator').value, value }); $('tests').value = JSON.stringify(tests, null, 2);renderTests(); });
 for (const type of ['send', 'run']) $(type).onclick = action(() => {
-  const request = capture(); const environment = { ...collection.variables, ...json('environment', {}) };
+  const request = capture(); const environment = json('environment', {});
   pendingRequestId=requestKey(request);
   busy(true); notice(type === 'send' ? 'Sending request…' : 'Running collection…');
   vscode.postMessage({ type, request,requestKey:pendingRequestId, collection,collections:catalog, environment, allowScripts: $('allowScripts').checked });
@@ -133,7 +134,7 @@ function renderPairs(id){
     const enabled=document.createElement('input');enabled.type='checkbox';enabled.checked=row.enabled!==false&&row.disabled!==true;enabled.setAttribute('aria-label',id+' enabled '+(index+1));enabled.onchange=()=>{row.enabled=enabled.checked;delete row.disabled;emit();};
     const key=document.createElement('input');key.value=row.name;key.placeholder=id==='headers'?'Header':'Parameter';key.setAttribute('aria-label',id+' name '+(index+1));key.oninput=()=>{row.name=key.value;emit();};
     const value=document.createElement('input');value.value=row.file??row.value??'';value.placeholder=row.file?'Project-relative file path':'Value';value.setAttribute('aria-label',id+' value '+(index+1));value.oninput=()=>{if(row.file!==undefined)row.file=value.value;else row.value=value.value;emit();};
-    const remove=document.createElement('button');remove.textContent='Remove';remove.className='secondary';remove.setAttribute('aria-label','Remove '+id+' row '+(index+1));remove.onclick=()=>{rows.splice(index,1);emit();renderPairs(id);};
+    const remove=document.createElement('button');remove.textContent='Remove';remove.className='secondary';remove.setAttribute('aria-label','Remove '+id+' row '+(index+1));remove.onclick=()=>{rows.splice(index,1);emit();renderPairs(id);const next=container.querySelectorAll('.pair-row')[Math.min(index,container.children.length-1)];next?.querySelector('input:not([type=checkbox])')?.focus();};
     line.append(enabled,key,value);
     if(id==='body'&&$('bodyType').value==='multipart'){
       const type=document.createElement('select');type.setAttribute('aria-label','Field type '+(index+1));for(const name of ['text','file']){const option=document.createElement('option');option.textContent=name;option.value=name;type.append(option);}type.value=row.file!==undefined?'file':'text';type.onchange=()=>{if(type.value==='file'){row.file=value.value;delete row.value;}else{row.value=value.value;delete row.file;}emit();};line.append(type);
@@ -141,18 +142,18 @@ function renderPairs(id){
     line.append(remove);container.append(line);
   });
 }
-function addPair(id){const rows=id==='headers'?rowValues(headerValues()):rowValues(json(id,[]));rows.push({name:'',value:'',enabled:true});$(id).value=JSON.stringify(rows);renderPairs(id);}
+function addPair(id){const rows=id==='headers'?rowValues(headerValues()):rowValues(json(id,[]));rows.push({name:'',value:'',enabled:true});$(id).value=JSON.stringify(rows);renderPairs(id);$(id+'Rows').lastElementChild?.querySelector('input:not([type=checkbox])')?.focus();}
 function bodyControls(){const type=$('bodyType').value,form=['form','multipart'].includes(type);$('bodyRows').classList.toggle('hidden',!form);$('addBodyField').classList.toggle('hidden',!form);$('bodyLabel').classList.toggle('hidden',form||type==='none');for(const id of ['graphqlVariablesLabel','graphqlOperationLabel'])$(id).classList.toggle('hidden',type!=='graphql');$('binaryHint').classList.toggle('hidden',type!=='binary'&&type!=='multipart');$('formatBody').disabled=type!=='json';if(form)renderPairs('body');}
 function renderTests(){
-  $('testRows').replaceChildren();json('tests',[]).forEach((test,index)=>{const row=document.createElement('div');row.className='test-row';const text=document.createElement('span');text.textContent=[test.source,test.path,test.operator||'equals',JSON.stringify(test.value)].join(' ');const remove=document.createElement('button');remove.textContent='Remove test';remove.className='secondary';remove.onclick=()=>{const tests=json('tests',[]);tests.splice(index,1);$('tests').value=JSON.stringify(tests,null,2);renderTests();};row.append(text,remove);$('testRows').append(row);});
+  $('testRows').replaceChildren();json('tests',[]).forEach((test,index)=>{const row=document.createElement('div');row.className='test-row';const text=document.createElement('span');text.textContent=[test.source,test.path,test.operator||'equals',JSON.stringify(test.value)].join(' ');const remove=document.createElement('button');remove.textContent='Remove test';remove.className='secondary';remove.onclick=()=>{const tests=json('tests',[]);tests.splice(index,1);$('tests').value=JSON.stringify(tests,null,2);renderTests();($('testRows').querySelectorAll('button')[Math.min(index,tests.length-1)]||$('addTest')).focus();};row.append(text,remove);$('testRows').append(row);});
 }
 function renderPreRequests(){
   $('preRequests').replaceChildren();preRequests.forEach((reference,index)=>{
     const row=document.createElement('fieldset'),legend=document.createElement('legend');legend.textContent='Pre-request '+(index+1);row.append(legend);
     const addSelect=(labelText,items,current,changed)=>{const label=document.createElement('label');label.textContent=labelText;const select=document.createElement('select');select.setAttribute('aria-label',labelText+' '+(index+1));for(const item of [{id:'',name:'Select '+labelText},...items]){const option=document.createElement('option');option.value=item.id??item.name;option.textContent=item.name;select.append(option);}select.value=current||'';select.onchange=()=>changed(select.value);label.append(select);row.append(label);};
-    addSelect('Collection',catalog,reference.collectionId,value=>{reference.collectionId=value;reference.requestId='';renderPreRequests();});
+    addSelect('Collection',catalog,reference.collectionId,value=>{reference.collectionId=value;reference.requestId='';renderPreRequests();$('preRequests').children[index]?.querySelectorAll('select')[1]?.focus();});
     const source=catalog.find(c=>c.id===reference.collectionId);addSelect('Request',source?.requests||[],reference.requestId,value=>{reference.requestId=value;});
-    const remove=document.createElement('button');remove.textContent='Remove pre-request';remove.className='secondary';remove.onclick=()=>{preRequests.splice(index,1);renderPreRequests();};row.append(remove);$('preRequests').append(row);
+    const remove=document.createElement('button');remove.textContent='Remove pre-request';remove.className='secondary';remove.onclick=()=>{preRequests.splice(index,1);renderPreRequests();($('preRequests').children[Math.min(index,preRequests.length-1)]?.querySelector('select')||$('addPreRequest')).focus();};row.append(remove);$('preRequests').append(row);
   });
 }
 function rawInputs(){return Object.fromEntries([...document.querySelectorAll('input[id],select[id],textarea[id]')].map(input=>[input.id,input.type==='checkbox'?input.checked:input.value]));}
@@ -162,7 +163,7 @@ $('rawHeaders').onchange=action(()=>{if(!$('rawHeaders').checked)renderPairs('he
 $('bodyType').onchange=action(()=>{bodyDrafts[bodyMode]={text:$('body').value,variables:$('graphqlVariables').value,operation:$('graphqlOperation').value};bodyMode=$('bodyType').value;const draft=bodyDrafts[bodyMode]||{text:['form','multipart'].includes(bodyMode)?'[]':'',variables:'{}',operation:''};$('body').value=draft.text;$('graphqlVariables').value=draft.variables;$('graphqlOperation').value=draft.operation;bodyControls();});
 $('formatBody').onclick=()=>vscode.postMessage({type:'formatBody',text:$('body').value});
 $('auth').onchange=authHint;$('tests').onchange=action(renderTests);
-$('addPreRequest').onclick=()=>{preRequests.push({collectionId:'',requestId:'',enabled:true});renderPreRequests();};
+$('addPreRequest').onclick=()=>{preRequests.push({collectionId:'',requestId:'',enabled:true});renderPreRequests();$('preRequests').lastElementChild.querySelector('select').focus();};
 $('activeCollection').onchange=action(()=>{capture();collection=catalog.find(c=>c.id===$('activeCollection').value);$('collectionName').value=collection.name;load(0);});
 $('saveLibrary').onclick=action(()=>{capture();vscode.postMessage({type:'saveLibrary',collections:catalog});});
 $('responseRaw').onchange=showResponse;$('responseWrap').onchange=()=>{$('response').classList.toggle('no-wrap',!$('responseWrap').checked);};

@@ -115,11 +115,12 @@ async function execute(request, options = {}) {
     if(!preRequest)throw new Error('Pre-request not found in the selected collection');
     const key=JSON.stringify([reference.collectionId,reference.requestId]),stack=options.preStack||[];
     if(stack.includes(key))throw new Error('Pre-request dependency cycle');
-    const result=await execute(preRequest,{...options,variables:{...collection.variables,...variables},jar,preDepth:(options.preDepth||0)+1,preStack:[...stack,key],preBudget:budget});
+    const result=await execute(preRequest,{...options,variables,collectionVariables:collection.variables,exportGlobalsOnly:true,jar,preDepth:(options.preDepth||0)+1,preStack:[...stack,key],preBudget:budget});
     preResults.push({name:preRequest.name,status:result.status,time:result.time,passed:result.passed,tests:result.tests});
     if(!result.passed)throw new Error('Pre-request failed: '+(preRequest.name||reference.requestId));
     variables=result.variables;
   }
+  const globalVariables={...variables},initialVariables={...options.collectionVariables,...variables};variables={...initialVariables};
   const pre = await script(request.preScript, request, null, variables, options); variables = pre.variables; tests.push(...pre.tests); logs.push(...pre.logs);
   const r = substitute({ ...requestTemplate(pre.request||request), preScript: undefined, postScript: undefined }, variables);
   let url = new URL(r.url); for (const [k, v] of pairs(r.query)) url.searchParams.append(k, v);
@@ -170,7 +171,9 @@ async function execute(request, options = {}) {
     if (value === undefined) throw new Error('Extraction path not found: ' + extraction.path);
     variables[extraction.variable] = value;
   }
-  return { ...result, cookies:jar.cookies.map(cookie=>({...cookie})),preResults, tests, logs, variables, passed: tests.every(t => t.passed) && result.status < 400 };
+  const assigned=new Set([...(pre.assigned||[]),...(post.assigned||[]),...(r.extract||[]).map(value=>value.variable)]);
+  const exported={...globalVariables};for(const [key,value] of Object.entries(variables))if(assigned.has(key)||!Object.hasOwn(initialVariables,key)||!isDeepStrictEqual(initialVariables[key],value))exported[key]=value;
+  return { ...result, cookies:jar.cookies.map(cookie=>({...cookie})),preResults, tests, logs, variables:options.exportGlobalsOnly?exported:variables, passed: tests.every(t => t.passed) && result.status < 400 };
 }
 function flatten(collection, inherited = {}) {
   const requests = [];
@@ -198,12 +201,12 @@ function dependencyRequests(request,collections,stack=[]) {
 }
 async function runCollection(collection, options = {}) {
   if (collection.version !== 1) throw new Error('Unsupported collection version');
-  let variables = { ...collection.variables, ...options.variables }; const results = []; const jar = new CookieJar();
+  let variables = { ...options.variables }; const results = []; const jar = new CookieJar();
   for (const request of flatten(collection)) {
     if (options.signal?.aborted) break;
-    try { const result = await execute(request, { ...options, variables, jar,collections:options.collections||[collection] }); variables = result.variables; results.push({ name: request.name || request.url, ...result }); }
+    try { const result = await execute(request, { ...options, variables, jar,collectionVariables:collection.variables,exportGlobalsOnly:true,collections:options.collections||[collection] }); variables = result.variables; results.push({ name: request.name || request.url, ...result }); }
     catch (e) { results.push({ name: request.name || request.url, passed: false, error: e.message, tests: [] }); }
   }
-  return { passed: results.length > 0 && results.every(r => r.passed) && !options.signal?.aborted, results, variables };
+  return { passed: results.length > 0 && results.every(r => r.passed) && !options.signal?.aborted, results, variables:{...collection.variables,...variables} };
 }
 module.exports = { execute, runCollection, substitute, assertions, CookieJar, flatten,dependencyRequests,pairs,requestTemplate };

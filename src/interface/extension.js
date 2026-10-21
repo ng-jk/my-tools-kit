@@ -52,7 +52,7 @@ function activate(context) {
       const values = { ...data.environment };
       for (const [key, value] of Object.entries(process.env)) values['env.' + key] = value;
       const requests=(data.type==='run'?flatten(data.collection):[data.request]).flatMap(request=>dependencyRequests(request,data.collections||[data.collection]));
-      const source = JSON.stringify({requests:requests.map(requestTemplate),environment:data.environment});
+      const source = JSON.stringify({requests:requests.map(requestTemplate),environment:data.environment,collectionVariables:data.collection?.variables});
       for (const match of source.matchAll(/\{\{\s*secret\.([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g)) {
         const value = await context.secrets.get(root + ':' + match[1]);
         if (value === undefined) throw new Error('Store the secret first: ' + match[1]);
@@ -72,7 +72,7 @@ function activate(context) {
           if (controller) throw new Error('A request is already running');
           controller = new AbortController();
           try {
-            const options = { root, variables: await variables(message), signal: controller.signal, allowScripts: !!message.allowScripts,collections:message.collections||[message.collection],jar };
+            const options = { root, variables: await variables(message),collectionVariables:message.collection?.variables, signal: controller.signal, allowScripts: !!message.allowScripts,collections:message.collections||[message.collection],jar };
             const result = message.type === 'send' ? await execute(message.request, options) : await runCollection(message.collection, options);
             const key=message.requestKey||message.request?.id||'legacy';
             if(message.type==='send'){downloadPayloads.set(key,result.base64);if(downloadPayloads.size>6)downloadPayloads.delete(downloadPayloads.keys().next().value);}else downloadPayloads.delete(key);

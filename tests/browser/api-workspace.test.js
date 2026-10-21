@@ -26,6 +26,7 @@ test('API editor preserves raw drafts across hide/reload and drives shared reque
     await page.exposeFunction('bridge',message=>receive(message));await page.addInitScript(()=>{window.acquireVsCodeApi=()=>({postMessage:message=>window.bridge(message)});});
     await page.goto(base);await page.locator('#url').fill(base+'/echo');
     await page.locator('[aria-label="query name 1"]').fill('q');await page.locator('[aria-label="query value 1"]').fill('hello');
+    await page.locator('#addQuery').click();await page.locator('[aria-label="Remove query row 2"]').focus();await page.keyboard.press('Enter');await expect(page.locator('[aria-label="query name 1"]')).toBeFocused();
     await page.locator('[data-tab="body"]').click();await page.locator('#bodyType').selectOption('json');await page.locator('#body').fill('{"draft":');
     await page.evaluate(()=>window.dispatchEvent(new Event('blur')));await page.reload();await expect(page.locator('#notice')).toContainText('draft restored');await expect(page.locator('#body')).toHaveValue('{"draft":');await expect(page.locator('#url')).toHaveValue(base+'/echo');
     await page.locator('#body').fill('{"draft":true}');await page.locator('#method').selectOption('POST');
@@ -40,10 +41,13 @@ test('API editor preserves raw drafts across hide/reload and drives shared reque
     await page.locator('[data-view="cookies"]').click();await expect(page.locator('#response')).toContainText('browser');
     await page.locator('[data-view="docs"]').click();await page.locator('#editDocs').click();await page.locator('#documentation').fill('Request notes <script>not executable</script>');await page.locator('#editDocs').click();
     await page.locator('[data-tab="tests"]').click();await page.locator('#addTest').click();await expect(page.locator('#testRows')).toContainText('status');
+    await page.locator('#testRows button').focus();await page.keyboard.press('Enter');await expect(page.locator('#addTest')).toBeFocused();await page.locator('#addTest').click();
     await page.locator('[data-tab="preRun"]').click();await page.locator('#addPreRequest').click();await page.locator('[aria-label="Collection 1"]').selectOption({label:'My collection'});await expect(page.locator('[aria-label="Request 1"]')).toBeVisible();
+    await expect(page.locator('[aria-label="Request 1"]')).toBeFocused();
     await page.locator('#new').click();await page.locator('#name').fill('Setup');await page.locator('#url').fill(base+'/echo?setup=1');
     await page.locator('#send').click();await expect(page.locator('#notice')).toContainText('Completed successfully');
     await page.locator('.request-item').filter({hasText:'New request'}).click();await page.locator('[aria-label="Request 1"]').selectOption({label:'Setup'});
+    await expect(page.locator('.request-item').filter({hasText:'New request'})).toHaveAttribute('aria-current','true');
     await page.locator('#download').click();await expect.poll(()=>fs.existsSync(path.join(root,'response.bin'))).toBe(true);assert.equal(JSON.parse(fs.readFileSync(path.join(root,'response.bin'),'utf8')).url,'/echo?q=hello');fs.unlinkSync(path.join(root,'response.bin'));
     await page.locator('#send').click();await expect(page.locator('#notice')).toContainText('Completed successfully');await page.locator('[data-view="tests"]').click();await expect(page.locator('#response')).toContainText('Setup');
     const originalCollection=await page.locator('#activeCollection').inputValue();await page.locator('.request-item').filter({hasText:'Setup'}).click();await page.locator('#delete').click();
