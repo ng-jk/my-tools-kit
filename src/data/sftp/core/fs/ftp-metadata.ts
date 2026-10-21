@@ -5,11 +5,17 @@ import {FileStats,FileType} from './fileSystem';
 // wording is absence; remove the requested name before examining server text.
 export function missingPathReply(error:any,path:string) {
   if(Number(error.code)!==550)return false;
-  const name=path.split('/').pop()!;
-  let text=String(error.message||'').replaceAll(path,'<path>');
-  if(name)text=text.replaceAll(name,'<path>');
-  text=text.trim().replace(/^550[ -]/,'').replace(/["']/g,'');
-  return /^(?:<path>\s*[: -]\s*)?(?:no such file(?: or directory)?|file not found|path not found|not found|file does not exist|path does not exist|sorry, but that file doesnt exist)[.!\s]*$/i.test(text);
+  let text=String(error.message||'').trim().replace(/^550[ -]/,'');
+  const names=[path,path.split('/').pop()!].filter(Boolean);
+  for(const name of names){
+    // Strip only an explicitly delimited echo, never words inside a diagnostic.
+    for(const prefix of [name+':',"'"+name+"':",'"'+name+'":']){
+      if(text.startsWith(prefix)){text=text.slice(prefix.length).trim();break;}
+    }
+  }
+  if(names.some(name=>text===name||text==="'"+name+"'"||text==='"'+name+'"'))return false;
+  text=text.replace(/["']/g,'');
+  return /^(?:no such file(?: or directory)?|file not found|path not found|not found|file does not exist|path does not exist|sorry, but that file doesnt exist)[.!\s]*$/i.test(text);
 }
 export function mlstMetadata(reply:string,path:string):FileStats|undefined {
   for(const line of reply.split(/\r?\n/)){
