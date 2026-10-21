@@ -14,7 +14,7 @@ export async function uploadSelection(ctx: FileHandlerContext, kind: 'file' | 'f
     return;
   }
   if(force&&!ctx.transient){
-    const answer=await window.showInformationMessage('Force Upload bypasses credential-file exclusions.',{modal:true,detail:'Ignore rules will be bypassed, including credential-file exclusions. Destination: '+target.remoteFsPath},'Upload');
+    const answer=await window.showInformationMessage('Force Upload bypasses credential-file exclusions.',{modal:true,detail:'Ignore rules will be bypassed, including credential-file exclusions. '+`${fileService.name||config.host} - profile ${fileService.profile||'base'} (${config.host}:${config.port})\n${target.localFsPath} -> ${target.remoteFsPath}`},'Upload');
     if(answer!=='Upload')return;
   }
   check();

@@ -20,20 +20,24 @@ export default class MirrorService {
     const originals:Array<{target:MirrorTarget;relative:string;stat:any}>=[];
     for(const target of targets){
       const relative=path.normalize(target.relPath);
-      if(path.isAbsolute(relative)||relative==='..'||relative.startsWith('..'+path.sep)||relative.split(path.sep).includes('.git'))throw new Error('Unsafe mirror path');
+      if(path.isAbsolute(relative)||relative==='..'||relative.startsWith('..'+path.sep)||relative.split(path.sep).some(part=>part.toLowerCase()==='.git'))throw new Error('Unsafe mirror path');
       let stat;
       try{stat=await target.remoteFs.lstat(target.remotePath);}catch(error){if(error.code==='ENOENT'||error.code===2)continue;throw new Error('Upload stopped: unable to inspect backup source '+target.relPath+'. '+error.message);}
-      if(stat.type!==FileType.File)throw new Error('Upload stopped: backup destination is not a regular file: '+target.relPath);
+      if(stat.type!==FileType.File&&stat.type!==FileType.SymbolicLink)throw new Error('Upload stopped: backup destination is not a regular file: '+target.relPath);
       originals.push({target,relative,stat});
     }
     if(!originals.length)return;
     await this.repository.initialize();
-    const queue=originals.slice(),touched=new Set<string>();
+    const queue=originals.slice(),touched=new Set<string>(),links=new Map<string,string>();
     const count=Math.max(1,Math.min(option.concurrency||1,queue.length));
     const outcomes=await Promise.allSettled(Array.from({length:count},async()=>{
       while(queue.length) {
         const {target,relative,stat}=queue.shift()!;
         try {
+          if(stat.type===FileType.SymbolicLink){
+            links.set(relative.split(path.sep).join('/'),await target.remoteFs.readlink(target.remotePath));
+            continue;
+          }
           const local=path.join(this.repoRoot,relative);
           await this.repository.files.ensureDir(path.dirname(local));
           await new TransferTask({fsPath:target.remotePath,fileSystem:target.remoteFs},{fsPath:local,fileSystem:this.repository.files},
@@ -44,12 +48,13 @@ export default class MirrorService {
     }));
     const failed=outcomes.find(result=>result.status==='rejected');
     if(failed&&failed.status==='rejected')throw failed.reason;
-    if(!touched.size) return;
+    if(!touched.size&&!links.size) return;
     for(const file of touched) await this.repository.add(file);
+    for(const [file,target] of links)await this.repository.stageLink(file,target);
     const matrix=await this.repository.status(touched);
-    if(!matrix.some(([,head,work,stage])=>head!==1||work!==1||stage!==1)) return;
+    if(!links.size&&!matrix.some(([,head,work,stage])=>head!==1||work!==1||stage!==1)) return;
     const oid=await this.repository.commit(option.message||`before upload ${new Date().toISOString()}`,{name:'vscode-sftp mirror',email:'sftp@localhost'});
-    logger.info(`mirror: committed ${touched.size} file(s) (${oid.slice(0,7)})`);
+    logger.info(`mirror: committed ${touched.size+links.size} file(s) (${oid.slice(0,7)})`);
   }
 }
 const instances=new Map<string,MirrorService>();

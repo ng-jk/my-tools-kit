@@ -962,3 +962,26 @@ test('FTP planning shares directory metadata and invalidates it on writes and sc
  await remote.mutation(async()=>{});await remote.lstat('/files/a.txt');assert.equal(calls,2);
  finish();await remote.lstat('/files/a.txt');assert.equal(calls,3);
 });
+
+test('upload and sync back up leaf symlink targets in Git without dereferencing them',async t=>{
+ const {local,remote,session}=fixture(t),git=require('isomorphic-git');
+ const backup=engine.defaultBackupPath(session.service.workspace,session.service.baseDir,session.config,session.service.profile);
+ t.after(()=>fs.rmSync(backup,{recursive:true,force:true}));
+ const localFs=session.service.getLocalFileSystem(),remoteFs=await session.service.getRemoteFileSystem(session.config);
+ for(const adapter of [localFs,remoteFs]){
+   const stat=adapter.lstat.bind(adapter),get=adapter.get.bind(adapter);
+   adapter.lstat=async file=>{const entry=await stat(file);return entry.type===engine.FileType.File&&fs.readFileSync(file,'utf8').startsWith('LINK:')?{...entry,type:engine.FileType.SymbolicLink}:entry;};
+   adapter.readlink=async file=>fs.readFileSync(file,'utf8').slice(5);
+   adapter.get=async file=>{assert.equal(fs.readFileSync(file,'utf8').startsWith('LINK:'),false,'must not dereference a backup symlink');return get(file);};
+   adapter.symlink=async(target,file)=>fs.writeFileSync(file,'LINK:'+target);
+ }
+ for(const action of ['upload','sync-up'])for(const source of ['regular replacement','LINK:./new-target']){
+   fs.writeFileSync(path.join(local,'leaf.txt'),source);fs.writeFileSync(path.join(remote,'leaf.txt'),'LINK:/outside/private-content');
+   await engine.operate(session,action,action==='upload'?'leaf.txt':'.');
+   assert.equal(fs.readFileSync(path.join(remote,'leaf.txt'),'utf8'),source);
+   const oid=await git.resolveRef({fs,dir:backup,ref:'HEAD'});
+   const blob=await git.readBlob({fs,dir:backup,oid,filepath:'leaf.txt'});assert.equal(Buffer.from(blob.blob).toString(),'/outside/private-content');
+   const tree=await git.readTree({fs,dir:backup,oid});assert.equal(tree.tree.find(entry=>entry.path==='leaf.txt').mode,'120000');
+   assert.equal(fs.existsSync(path.join(backup,'leaf.txt')),false,'backup stores link in Git without creating an executable filesystem link');
+ }
+});

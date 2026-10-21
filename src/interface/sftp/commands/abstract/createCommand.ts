@@ -105,7 +105,7 @@ export function createFileMultiCommand(commandOption: FileCommandOption & { name
                 }
                 if (!ownedContexts.length) throw new Error('No legacy profiles are configured for these targets.');
                 if(this.id.includes('forceUpload')){
-                    const answer=await window.showInformationMessage('Force Upload to all listed profiles bypasses credential-file exclusions.',{modal:true,detail:'Ignore rules will be bypassed, including credential-file exclusions. Destinations: '+ownedContexts.map(ctx=>ctx.target.remoteFsPath).join(', ')},'Upload');
+                    const answer=await window.showInformationMessage('Force Upload to all listed profiles bypasses credential-file exclusions.',{modal:true,detail:'Ignore rules will be bypassed, including credential-file exclusions. Destinations: '+ownedContexts.map(({fileService,config,target})=>`${fileService.name||config.host} - profile ${fileService.profile||'base'} (${config.host}:${config.port})\n${target.localFsPath} -> ${target.remoteFsPath}`).join('\n\n')},'Upload');
                     if(answer!=='Upload')return;
                 }
                 checks.forEach(check => check());

@@ -194,7 +194,7 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     const acceptInformation=vscode.window.showInformationMessage;
     for(const variant of ['upload','upload.activeFile','upload.activeFolder','upload.file','upload.folder','forceUpload','upload.project']) {
       let confirmations=0;
-      vscode.window.showInformationMessage=async()=>{confirmations++;return undefined;};
+      vscode.window.showInformationMessage=async(message,options)=>{confirmations++;assert.match(options.detail,/profile dev/);assert.match(options.detail,/profile prod/);assert.match(options.detail,/fixture:/);assert.ok(options.detail.replaceAll('\\','/').toLowerCase().includes(root.replaceAll('\\','/').toLowerCase()));assert.ok(options.detail.includes('remote-other'));return undefined;};
       await commands.get('devkit.sftp.'+variant+'.to.allProfiles')(variant==='upload'?[path.join(root,'ui.txt')]:URI.file(variant==='upload.folder'?root:path.join(root,'ui.txt')));
       assert.equal(confirmations,variant==='forceUpload'?1:0,variant);
       assert.equal(fs.readFileSync(path.join(dir,'remote-other','ui.txt'),'utf8'),'from other context');
