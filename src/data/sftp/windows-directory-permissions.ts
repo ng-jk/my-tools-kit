@@ -34,8 +34,11 @@ const fileScript = `
 $ErrorActionPreference = 'Stop'
 $file = $env:DEVKIT_ACL_FILE
 $destination = $env:DEVKIT_ACL_DESTINATION
+$original = $null
 if ([System.IO.File]::Exists($destination)) {
-  $original = [System.IO.File]::GetAccessControl($destination)
+  try { $original = [System.IO.File]::GetAccessControl($destination) } catch [System.IO.FileNotFoundException] { $original = $null }
+}
+if ($null -ne $original) {
   $acl = [System.Security.AccessControl.FileSecurity]::new()
   $acl.SetSecurityDescriptorSddlForm($original.GetSecurityDescriptorSddlForm([System.Security.AccessControl.AccessControlSections]::Access), [System.Security.AccessControl.AccessControlSections]::Access)
 } else {
@@ -72,11 +75,15 @@ while ($queue.Count -gt 0) {
     $attributes = [System.IO.File]::GetAttributes($entry)
     if (($attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'Mirror repository contains a link' }
     if (($attributes -band [System.IO.FileAttributes]::Directory) -ne 0) {
-      [System.IO.Directory]::SetAccessControl($entry, $acl)
+      $entryAcl = [System.Security.AccessControl.DirectorySecurity]::new()
+      $entryAcl.SetSecurityDescriptorSddlForm($acl.GetSecurityDescriptorSddlForm([System.Security.AccessControl.AccessControlSections]::Access), [System.Security.AccessControl.AccessControlSections]::Access)
+      [System.IO.Directory]::SetAccessControl($entry, $entryAcl)
       $value = [System.IO.Directory]::GetAccessControl($entry)
       $queue.Enqueue($entry)
     } else {
-      [System.IO.File]::SetAccessControl($entry, $fileAcl)
+      $entryAcl = [System.Security.AccessControl.FileSecurity]::new()
+      $entryAcl.SetSecurityDescriptorSddlForm($fileAcl.GetSecurityDescriptorSddlForm([System.Security.AccessControl.AccessControlSections]::Access), [System.Security.AccessControl.AccessControlSections]::Access)
+      [System.IO.File]::SetAccessControl($entry, $entryAcl)
       $value = [System.IO.File]::GetAccessControl($entry)
     }
     if (-not $value.AreAccessRulesProtected) { throw 'Mirror ACL inheritance remains enabled' }

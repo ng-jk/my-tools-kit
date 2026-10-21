@@ -28,6 +28,7 @@ export async function executeTransfer(service: any, config: any, local: string, 
   active.add(cancel);
   const directoryScope = new DirectoryPermissionScope();
   let scheduler: any;
+  let finishMetadata: (()=>void)|undefined;
   let planning = true;
   const guard = (fs: any) => new Proxy(fs, {get(target, key) {
     if (key === filesystemIdentity) return target;
@@ -38,6 +39,7 @@ export async function executeTransfer(service: any, config: any, local: string, 
   try {
     checkCancelled();
     const remoteFs = guard(await service.getRemoteFileSystem(config));
+    finishMetadata=(remoteFs as any).beginMetadataReadScope?.();
     checkCancelled();
     await assertRemoteAncestors(remoteFs, remote, config.remotePath, true, true);
     checkCancelled();
@@ -57,6 +59,7 @@ export async function executeTransfer(service: any, config: any, local: string, 
     checkCancelled();
     if (!down) await backupBeforeUpload({config, fileService: service}, tasks, remoteFs);
     checkCancelled();
+    finishMetadata?.();finishMetadata=undefined;
     planning = false;
     tasks.forEach(task => scheduler.add(task));
     await scheduler.run();
@@ -66,6 +69,7 @@ export async function executeTransfer(service: any, config: any, local: string, 
     checkCancelled();
     return {passed: true, transferred: tasks.length, deleted: deleted || []};
   } finally {
+    finishMetadata?.();
     scheduler?.stop(); active.delete(cancel);
     await directoryScope.finish();
   }

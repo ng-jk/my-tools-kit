@@ -934,3 +934,31 @@ test('folder planning feedback never claims transfer success before a failed exe
   assert.ok(planning>=0);assert.ok(logs.indexOf('execution failed')>planning);
   assert.equal(logs.some(message=>/folder transfer(?:r)?ed/i.test(message)),false);
 });
+
+test('automatic upload backups retain previous revisions and stop uploads on backup failure',async t=>{
+ const {local,remote,session}=fixture(t);
+ const backup=engine.defaultBackupPath(session.service.workspace,session.service.baseDir,session.config,session.service.profile);
+ t.after(()=>fs.rmSync(backup,{recursive:true,force:true}));
+ fs.writeFileSync(path.join(local,'auto.txt'),'replacement');fs.writeFileSync(path.join(remote,'auto.txt'),'original');
+ await engine.operate(session,'upload','auto.txt');
+ assert.equal(fs.readFileSync(path.join(backup,'auto.txt'),'utf8'),'original');
+ assert.equal(fs.readFileSync(path.join(remote,'auto.txt'),'utf8'),'replacement');
+ fs.writeFileSync(path.join(local,'auto.txt'),'third');await engine.operate(session,'upload','auto.txt');
+ assert.equal(fs.readFileSync(path.join(backup,'auto.txt'),'utf8'),'replacement');
+ const git=require('isomorphic-git');assert.equal((await git.log({fs,dir:backup})).length,2);
+ const remoteFs=await session.service.getRemoteFileSystem(session.config),get=remoteFs.get;
+ remoteFs.get=async()=>{throw new Error('synthetic backup read failure');};
+ fs.writeFileSync(path.join(local,'auto.txt'),'must not upload');
+ await assert.rejects(engine.operate(session,'upload','auto.txt'),/unable to back up/);
+ remoteFs.get=get;assert.equal(fs.readFileSync(path.join(remote,'auto.txt'),'utf8'),'third');
+ assert.notEqual(backup,engine.defaultBackupPath(session.service.workspace,session.service.baseDir,{...session.config,username:'other'},session.service.profile));
+});
+
+test('FTP planning shares directory metadata and invalidates it on writes and scope exit',async()=>{
+ const remote=new engine.FTPFileSystem(path.posix,{client:{}});let calls=0;
+ remote.atomicList=async()=>{calls++;return [{name:'a.txt',type:'-',size:1,date:new Date(),rights:{user:'rw',group:'r',other:''}}];};
+ const finish=remote.beginMetadataReadScope();
+ await Promise.all([remote.lstat('/files/a.txt'),remote.lstat('/files/a.txt'),remote.list('/files')]);assert.equal(calls,1);
+ await remote.mutation(async()=>{});await remote.lstat('/files/a.txt');assert.equal(calls,2);
+ finish();await remote.lstat('/files/a.txt');assert.equal(calls,3);
+});

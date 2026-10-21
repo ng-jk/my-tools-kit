@@ -15,25 +15,35 @@ export default class MirrorService {
   }
   private async backup(targets:MirrorTarget[],option:{concurrency?:number;message?:string}) {
     if (!targets.length) return;
+    // New destinations have no original: avoid creating/scanning a Git backup
+    // repository or applying Windows ACLs for files that do not exist yet.
+    const originals:Array<{target:MirrorTarget;relative:string;stat:any}>=[];
+    for(const target of targets){
+      const relative=path.normalize(target.relPath);
+      if(path.isAbsolute(relative)||relative==='..'||relative.startsWith('..'+path.sep)||relative.split(path.sep).includes('.git'))throw new Error('Unsafe mirror path');
+      let stat;
+      try{stat=await target.remoteFs.lstat(target.remotePath);}catch(error){if(error.code==='ENOENT'||error.code===2)continue;throw new Error('Upload stopped: unable to inspect backup source '+target.relPath+'. '+error.message);}
+      if(stat.type!==FileType.File)throw new Error('Upload stopped: backup destination is not a regular file: '+target.relPath);
+      originals.push({target,relative,stat});
+    }
+    if(!originals.length)return;
     await this.repository.initialize();
-    const queue=targets.slice(),touched=new Set<string>();
+    const queue=originals.slice(),touched=new Set<string>();
     const count=Math.max(1,Math.min(option.concurrency||1,queue.length));
-    await Promise.all(Array.from({length:count},async()=>{
+    const outcomes=await Promise.allSettled(Array.from({length:count},async()=>{
       while(queue.length) {
-        const target=queue.shift()!;
+        const {target,relative,stat}=queue.shift()!;
         try {
-          const relative=path.normalize(target.relPath);
-          if(path.isAbsolute(relative)||relative==='..'||relative.startsWith('..'+path.sep)||relative.split(path.sep).includes('.git')) throw new Error('Unsafe mirror path');
-          const stat=await target.remoteFs.lstat(target.remotePath);
-          if(stat.type!==FileType.File) continue;
           const local=path.join(this.repoRoot,relative);
           await this.repository.files.ensureDir(path.dirname(local));
           await new TransferTask({fsPath:target.remotePath,fileSystem:target.remoteFs},{fsPath:local,fileSystem:this.repository.files},
             {fileType:FileType.File,transferDirection:TransferDirection.REMOTE_TO_LOCAL,transferOption:{fallbackMode:stat.mode,mtime:stat.mtime,atime:stat.atime,perserveTargetMode:true}}).run();
           touched.add(relative.split(path.sep).join('/'));
-        } catch(error) {logger.warn(`mirror: skip ${target.relPath}: ${error.message}`);}
+        } catch(error) {throw new Error('Upload stopped: unable to back up '+target.relPath+'. '+error.message);}
       }
     }));
+    const failed=outcomes.find(result=>result.status==='rejected');
+    if(failed&&failed.status==='rejected')throw failed.reason;
     if(!touched.size) return;
     for(const file of touched) await this.repository.add(file);
     const matrix=await this.repository.status(touched);

@@ -202,3 +202,9 @@ Use the `contexts` object and `activeContext` selector shown in the [user guide]
 Remote delete and rename verify each ancestor inside the configured root with lstat and reject symlink/non-directory ancestors. Configure a canonical directory root for destructive operations. Leaf symlinks can be removed or renamed without following their targets.
 
 The same ancestor validation runs before shared UI/CLI transfer planning (upload, download and every sync direction) and remote creation. Missing directories may be created, but existing symlink ancestors are rejected before any payload or sync deletion.
+
+## Automatic upload backups and speed
+
+Ordinary file, folder, upload-only Git and all-profile uploads start without an overwrite popup. Existing remote files are copied into a private local Git backup before replacement; backup failure stops upload. New destinations skip backup repository setup. Open **SFTP: Show Output** for the exact recovery folder, normally `~/.devkit-backups/sftp/<connection-id>` (under `%USERPROFILE%` on Windows). Each workspace, context, profile, server and account is isolated. An enabled `mirror.path` overrides this location and must be outside the workspace. Use Git history in that folder to restore an earlier file locally, then upload it again. Do not push backup repositories: they can contain server credentials or private data.
+
+FTP planning shares directory listings for repeated metadata reads, clears them on mutations, and discards them before payload transfer. This reduces network round trips, especially on high-latency servers; required backup downloads still take time. File permission verification and staged replacement remain active. Force Upload keeps its credential-exclusion warning; remote deletions, renames, and destructive synchronization retain their separate confirmations.

@@ -1,5 +1,13 @@
 # Release notes
 
+## 0.7.1 — 2026-10-21
+
+- Remove overwrite popups from ordinary, Git upload-only and all-profile uploads. Automatically save existing remote files to a private local Git backup before replacement; a failed backup stops the upload.
+- Isolate default backups by workspace, context, profile and server identity under ~/.devkit-backups/sftp. Keep prior revisions and log the recovery folder in SFTP Output.
+- Reduce repeated FTP directory listings during transfer planning and backup; invalidate metadata on mutations and discard it before payload transfer. Preserve permission checks and staged replacement.
+- Fix Windows backup-tree ACL propagation by creating a fresh DACL descriptor for each entry.
+
+
 ## 0.7.0 — 2026-10-21
 
 - Associate downloaded responses and undo recovery with their originating collection/request. Keep duplicate imported collections and their draft credentials isolated. Architecture checks inspect generated bundle dependency inputs to prevent hidden layer violations.

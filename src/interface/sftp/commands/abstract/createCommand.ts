@@ -98,23 +98,25 @@ export function createFileMultiCommand(commandOption: FileCommandOption & { name
             const ownedContexts: FileHandlerContext[] = [];
             const checks: Array<() => void> = [];
             try {
-                // Resolve every destination before prompting or starting any transfer.
+                // Resolve every destination before starting any transfer.
                 for (const uri of targetList) {
                     checks.push(handleCtxFromUri(uri).fileService.cancellationCheck());
                     ownedContexts.push(...allHandleCtxFromUri(uri));
                 }
                 if (!ownedContexts.length) throw new Error('No legacy profiles are configured for these targets.');
+                if(this.id.includes('forceUpload')){
+                    const answer=await window.showInformationMessage('Force Upload to all listed profiles bypasses credential-file exclusions.',{modal:true,detail:'Ignore rules will be bypassed, including credential-file exclusions. Destinations: '+ownedContexts.map(ctx=>ctx.target.remoteFsPath).join(', ')},'Upload');
+                    if(answer!=='Upload')return;
+                }
                 checks.forEach(check => check());
-                const detail = ownedContexts.map(({fileService, config, target}) =>
-                    `${fileService.name || config.host} — profile ${fileService.profile || 'base'} (${config.host}:${config.port})\n${target.localFsPath} → ${target.remoteFsPath}`
-                ).join('\n\n');
-                const answer = await window.showInformationMessage('Upload to all listed profiles?', {
-                    modal: true,
-                    detail: `Existing remote files will be overwritten; folders are uploaded recursively. Recovery requires a backup.${this.id.includes('forceUpload') ? ' Ignore rules will be bypassed, including credential-file exclusions.' : ' Configured ignore rules remain active.'}\n\n${detail}`,
-                }, 'Upload'); // VS Code supplies the modal Cancel button.
-                if (answer !== 'Upload') return;
-                checks.forEach(check => check());
-                const results = await Promise.allSettled(ownedContexts.map(commandOption.handleFile));
+                // Profiles on the same server can overlap; avoid racing backup
+                // reads and replacement writes. Independent servers still run together.
+                const chains=new Map<string,Promise<unknown>>();
+                const results=await Promise.allSettled(ownedContexts.map(ctx=>{
+                    const key=JSON.stringify([ctx.config.protocol,ctx.config.host,ctx.config.port,ctx.config.username]);
+                    const task=(chains.get(key)||Promise.resolve()).then(()=>{checkPending();checks.forEach(check=>check());return commandOption.handleFile(ctx);});
+                    chains.set(key,task.catch(()=>{}));return task;
+                }));
                 const failure = results.find(result => result.status === 'rejected');
                 if (failure && failure.status === 'rejected') throw failure.reason;
             }

@@ -42,6 +42,18 @@ export default class FTPFileSystem extends RemoteFileSystem {
   // LIST cannot prove completeness: servers may silently omit dotfiles.
   supportsCompleteDirectoryListing = false;
   private _supportMFMT: boolean = true;
+  private metadataReaders=0;
+  private metadata=new Map<string,Promise<any[]>>();
+  // Scoped to planning/backup only; every mutation invalidates the snapshot.
+  beginMetadataReadScope() {
+    this.metadataReaders++;
+    let done=false;
+    return ()=>{if(!done){done=true;this.metadataReaders--;this.metadata.clear();}};
+  }
+  private async mutation(task:()=>Promise<any>) {
+    this.metadata.clear();
+    try{return await task();}finally{this.metadata.clear();}
+  }
 
   static getFileType(type: string) {
     if (type === 'd') {
@@ -274,7 +286,10 @@ export default class FTPFileSystem extends RemoteFileSystem {
     { showHiddenFiles = false } = {}
   ): Promise<FileEntry[]> {
     // -al flag only get partially support
-    const stats = await this.atomicList(dir);
+    const key=this.pathResolver.normalize(dir);
+    let pending=this.metadataReaders?this.metadata.get(key):undefined;
+    if(!pending){pending=this.atomicList(dir);if(this.metadataReaders){this.metadata.set(key,pending);pending.catch(()=>{if(this.metadata.get(key)===pending)this.metadata.delete(key);});}}
+    const stats = await pending;
     if (!Array.isArray(stats) || stats.some(item => !item || typeof item !== 'object' || typeof item.name !== 'string' || !item.name)) {
       throw new Error('FTP listing contains unparseable entries; refusing an incomplete directory snapshot');
     }
@@ -319,7 +334,7 @@ export default class FTPFileSystem extends RemoteFileSystem {
         });
       });
 
-    return this.queue.add(task);
+    return this.queue.add(()=>this.mutation(task));
   }
 
   private async atomicList(path: string): Promise<any[]> {
@@ -364,13 +379,13 @@ export default class FTPFileSystem extends RemoteFileSystem {
         });
       });
 
-    return this.queue.add(task);
+    return this.queue.add(()=>this.mutation(task));
   }
 
   private async atomicAppend(input: Readable, path: string): Promise<void> {
-    return this.queue.add(() => new Promise<void>((resolve,reject) => {
+    return this.queue.add(() => this.mutation(()=>new Promise<void>((resolve,reject) => {
       this.ftp.append(input,path,(error:any)=>error?reject(error):resolve());
-    }));
+    })));
   }
 
   private async atomicDeleteFile(path: string): Promise<void> {
@@ -385,7 +400,7 @@ export default class FTPFileSystem extends RemoteFileSystem {
         });
       });
 
-    return this.queue.add(task);
+    return this.queue.add(()=>this.mutation(task));
   }
 
   private async atomicMakeDir(path: string): Promise<void> {
@@ -400,7 +415,7 @@ export default class FTPFileSystem extends RemoteFileSystem {
         });
       });
 
-    return this.queue.add(task);
+    return this.queue.add(()=>this.mutation(task));
   }
 
   private async atomicRemoveDir(
@@ -418,7 +433,7 @@ export default class FTPFileSystem extends RemoteFileSystem {
         });
       });
 
-    return this.queue.add(task);
+    return this.queue.add(()=>this.mutation(task));
   }
 
   private async atomicSite(command: string): Promise<void> {
@@ -433,7 +448,7 @@ export default class FTPFileSystem extends RemoteFileSystem {
         });
       });
 
-    return this.queue.add(task);
+    return this.queue.add(()=>this.mutation(task));
   }
 
   private async atomicSetLastMod(path: string, date: Date): Promise<void> {
@@ -448,6 +463,6 @@ export default class FTPFileSystem extends RemoteFileSystem {
         });
       });
 
-    return this.queue.add(task);
+    return this.queue.add(()=>this.mutation(task));
   }
 }

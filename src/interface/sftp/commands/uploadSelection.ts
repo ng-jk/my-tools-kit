@@ -13,12 +13,9 @@ export async function uploadSelection(ctx: FileHandlerContext, kind: 'file' | 'f
     if (!ctx.transient) await window.showInformationMessage(`Skipped excluded upload: ${target.localFsPath}. Review your ignore rules before using Force Upload.`);
     return;
   }
-  if (!ctx.transient) {
-    const answer = await window.showInformationMessage('Upload to this destination?', {
-      modal: true,
-      detail: `${fileService.name || config.host} — profile ${fileService.profile || 'base'} (${config.host}:${config.port})\n${target.localFsPath} → ${target.remoteFsPath}\n${entry.type === FileType.Directory ? 'This folder will be uploaded recursively. ' : ''}Existing remote files will be overwritten; recovery requires a backup.${force ? ' Ignore rules will be bypassed, including credential-file exclusions.' : ' Configured ignore rules remain active.'}`,
-    }, 'Upload'); // VS Code supplies the modal Cancel button.
-    if (answer !== 'Upload') return;
+  if(force&&!ctx.transient){
+    const answer=await window.showInformationMessage('Force Upload bypasses credential-file exclusions.',{modal:true,detail:'Ignore rules will be bypassed, including credential-file exclusions. Destination: '+target.remoteFsPath},'Upload');
+    if(answer!=='Upload')return;
   }
   check();
   await upload(ctx, {...(force ? {ignore: null} : {}), expectedSourceType:kind==='any'?undefined:kind==='folder'?'directory':'file'});

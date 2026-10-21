@@ -169,8 +169,8 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     repository.state.indexChanges=[{status:0,uri:URI.file(path.join(root,'ui.txt'))}];
     for(const command of ['devkit.sftp.upload.changedFiles','devkit.sftp.upload.fileChanged']) {
       let prompts=0;
-      vscode.window.showInformationMessage=async(message,options)=>{prompts++;assert.equal(options.modal,true);assert.match(options.detail,/profile prod/);assert.match(options.detail,/overwrite remote files/);assert.match(options.detail,/ui.txt/);return 'Cancel';};
-      await commands.get(command)();assert.equal(prompts,1);assert.equal(fs.readFileSync(path.join(dir,'remote','ui.txt'),'utf8'),batchBefore);
+      vscode.window.showInformationMessage=async(message,options)=>{if(options?.modal)prompts++;return undefined;};
+      await commands.get(command)();assert.equal(prompts,0);assert.equal(fs.readFileSync(path.join(dir,'remote','ui.txt'),'utf8'),'must wait for batch approval');
     }
     vscode.window.showInformationMessage=previousInfo;
     const priorBatchError=vscode.window.showErrorMessage;const sent=[];let failedNotice=0;
@@ -192,18 +192,12 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     repository.state.workingTreeChanges=[];
     errors.length=0;
     const acceptInformation=vscode.window.showInformationMessage;
-    const remoteBefore=fs.readFileSync(path.join(dir,'remote','ui.txt'),'utf8');
     for(const variant of ['upload','upload.activeFile','upload.activeFolder','upload.file','upload.folder','forceUpload','upload.project']) {
       let confirmations=0;
-      vscode.window.showInformationMessage=async(message,options)=>{
-        confirmations++;assert.match(message,/all listed profiles/);assert.equal(options.modal,true);
-        for(const text of ['profile dev','profile prod','profile other','fixture:','remote-other','overwritten'])assert.ok(options.detail.includes(text),options.detail);
-        if(variant==='forceUpload')assert.match(options.detail,/Ignore rules will be bypassed/);
-        return undefined;
-      };
-      await commands.get('devkit.sftp.'+variant+'.to.allProfiles')(variant==='upload'?[path.join(root,'ui.txt')]:URI.file(path.join(root,'ui.txt')));
-      assert.equal(confirmations,1,variant);assert.equal(fs.readFileSync(path.join(dir,'remote','ui.txt'),'utf8'),remoteBefore);
-      assert.equal(fs.existsSync(path.join(dir,'remote-other','ui.txt')),false,'cancellation starts no profile transfer');
+      vscode.window.showInformationMessage=async()=>{confirmations++;return undefined;};
+      await commands.get('devkit.sftp.'+variant+'.to.allProfiles')(variant==='upload'?[path.join(root,'ui.txt')]:URI.file(variant==='upload.folder'?root:path.join(root,'ui.txt')));
+      assert.equal(confirmations,variant==='forceUpload'?1:0,variant);
+      assert.equal(fs.readFileSync(path.join(dir,'remote-other','ui.txt'),'utf8'),'from other context');
     }
     vscode.window.showInformationMessage=acceptInformation;
     await commands.get('devkit.sftp.upload.activeFile.to.allProfiles')();
@@ -218,7 +212,7 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     progressFs.put=async function(input,target,...args){if(target.includes('slow.txt')){startedSlow();await slowReady;}return originalPut.call(this,input,target,...args);};
     const slowUpload=commands.get('devkit.sftp.upload.file')(URI.file(path.join(root,'slow.txt')));
     try {
-      await slowStarted;
+      await Promise.race([slowStarted,new Promise((_,reject)=>setTimeout(()=>reject(new Error('Slow upload did not start: '+JSON.stringify(errors))),5000))]);
       await commands.get('devkit.sftp.upload.file')(URI.file(path.join(root,'ui.txt')));
       assert.match(statusTexts.at(-1),/sync~spin.*1 operation\(s\) running/);
     } finally {resumeSlow();await slowUpload;progressFs.put=originalPut;}
@@ -278,7 +272,7 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
 
     // Cancel All must invalidate work before a scheduler exists, even if the
     // user subsequently accepts its outstanding overwrite confirmation.
-    for(const id of ['devkit.sftp.upload.file','devkit.sftp.download.file','devkit.sftp.sync.localToRemote','devkit.sftp.upload.file.to.allProfiles']) {
+    for(const id of ['devkit.sftp.download.file','devkit.sftp.sync.localToRemote']) {
       errors.length=0;let prompted=false;
       const localFile=path.join(root,'nested','incoming.txt'),remoteFile=path.join(dir,'remote-other','incoming.txt');
       const localBefore=fs.readFileSync(localFile),remoteBefore=fs.readFileSync(remoteFile);
@@ -332,7 +326,7 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     readHook=function(directory,callback){
       if (path.basename(directory)==='batch') {
         delayed.push(()=>originalRead.call(this,directory,callback));
-        if(delayed.length===3)release();
+        if(delayed.length===1)release();
         return;
       }
       return originalRead.call(this,directory,callback);
