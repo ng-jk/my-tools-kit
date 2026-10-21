@@ -14,7 +14,7 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
   fs.writeFileSync(path.join(root,'nested','ui.txt'),'from other context');
   fs.writeFileSync(path.join(root,'ui.txt'),'uploaded from the UI adapter');
   fs.writeFileSync(path.join(root,'.vscode','sftp.json'),JSON.stringify({name:'fixture',protocol:'local',host:'fixture',username:'fixture',remotePath:path.join(dir,'remote').replaceAll('\\','/'),syncOption:{delete:true},defaultProfile:'dev',profiles:{dev:{watcher:{files:'**/*',autoUpload:true,autoDelete:true}},prod:{watcher:{files:false}},other:{context:'nested',remotePath:path.join(dir,'remote-other').replaceAll('\\','/')}}}));
-  const outputLines=[];let outputShows=0;
+  const outputLines=[];let outputShows=0,outputHook;
   const statusTexts=[],loading=[];
   let savedDocument, changedFolders, openedDocument; const contextValues=new Map(),commands=new Map(),views=new Map(),errors=[],watchers=[];const disposable=()=>({dispose(){}});
   const repository={rootUri:URI.file(root),ui:{selected:true},state:{indexChanges:[],workingTreeChanges:[]}};
@@ -26,7 +26,7 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
       createFileSystemWatcher:()=>{const watcher={disposed:false,handlers:{},onDidCreate(fn){this.handlers.create=fn;return disposable();},onDidChange(fn){this.handlers.change=fn;return disposable();},onDidDelete(fn){this.handlers.delete=fn;return disposable();},dispose(){this.disposed=true;}};watchers.push(watcher);return watcher;},
       onDidSaveTextDocument:fn=>{savedDocument=fn;return disposable();},onDidOpenTextDocument:fn=>{openedDocument=fn;return disposable();},registerTextDocumentContentProvider:disposable},
     commands:{registerCommand:(id,fn,self)=>{assert.equal(commands.has(id),false,'duplicate '+id);commands.set(id,fn.bind(self));return disposable();},executeCommand:async(id,...args)=>id==='setContext'?contextValues.set(args[0],args[1]):commands.has(id)?commands.get(id)(...args):undefined},
-    window:{withProgress:async(options,run)=>{loading.push(options.title);return run();},activeTextEditor:{document:{uri:URI.file(path.join(root,'ui.txt'))}},createStatusBarItem:()=>({set text(value){this.value=value;statusTexts.push(value);},get text(){return this.value;},show(){},hide(){},dispose(){}}),createOutputChannel:()=>({appendLine(line){outputLines.push(line);},show(){outputShows++;},hide(){},dispose(){}}),
+    window:{withProgress:async(options,run)=>{loading.push(options.title);return run();},activeTextEditor:{document:{uri:URI.file(path.join(root,'ui.txt'))}},createStatusBarItem:()=>({set text(value){this.value=value;statusTexts.push(value);},get text(){return this.value;},show(){},hide(){},dispose(){}}),createOutputChannel:()=>({appendLine(line){outputLines.push(line);},show(){outputShows++;outputHook?.();},hide(){},dispose(){}}),
       showQuickPick:async choices=>choices.find(item=>item.command==='devkit.sftp.upload.file') || choices[0],
       showOpenDialog:async()=>[URI.file(path.join(root,'ui.txt'))],
       showInformationMessage:async(message,...choices)=>{if(choices[0]?.modal && /^Upload to (this destination|all listed profiles)/.test(message))assert.equal(choices.slice(1).includes('Cancel'),false,'VS Code supplies modal Cancel');return choices[0]?.modal?choices[1]:choices[0];},showErrorMessage:async message=>{errors.push(message);},registerTreeDataProvider:(id,provider)=>{views.set(id,provider);return disposable();},
@@ -181,6 +181,14 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
       let prompts=0;
       vscode.window.showInformationMessage=async(message,options)=>{if(options?.modal)prompts++;return undefined;};
       await commands.get(command)();assert.equal(prompts,0);assert.equal(fs.readFileSync(path.join(dir,'remote','ui.txt'),'utf8'),'must wait for batch approval');
+    }
+    for(const command of ['devkit.sftp.upload.changedFiles','devkit.sftp.upload.fileChanged']){
+      const before=fs.readFileSync(path.join(dir,'remote','ui.txt'));let mappingsShown=false;
+      outputHook=()=>{outputHook=undefined;mappingsShown=true;commands.get('devkit.sftp.cancelAllTransfer')();};
+      await commands.get(command)();outputHook=undefined;
+      assert.equal(mappingsShown,true);assert.ok(errors.some(message=>/cancelled/.test(message)));errors.length=0;
+      assert.deepEqual(fs.readFileSync(path.join(dir,'remote','ui.txt')),before,'cancel from resolved scope prevents upload');
+      const scope=outputLines.join('\n');assert.match(scope,/Git upload scope/);assert.match(scope,/profile prod/);assert.match(scope,/ui.txt/);
     }
     vscode.window.showInformationMessage=previousInfo;
     const priorBatchError=vscode.window.showErrorMessage;const sent=[];let failedNotice=0;
