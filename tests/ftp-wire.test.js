@@ -103,6 +103,9 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   const session=engine.createSession(root,{protocol:'ftp',host:'127.0.0.1',port:server.address().port,username:'fixture',password:'fixture',remotePath:'/'});
   t.after(async()=>{session.service.dispose();for(const socket of sockets)socket.destroy();for(const data of servers)if(data.listening)data.close();await new Promise(resolve=>server.close(resolve));fs.rmSync(root,{recursive:true,force:true});});
+  await assert.rejects(engine.operate(session,'upload','local.txt'),/FTP could not read the exact destination/);
+  assert.equal(files.has('/local.txt'),false,'ambiguous FTP absence cannot authorize an overwrite');
+  files.set('/local.txt',Buffer.from('previous payload'));
   await engine.operate(session,'upload','local.txt');assert.equal(files.get('/local.txt').toString(),'ftp payload');
   assert.equal(files.get('/nul').toString(),'valid remote sibling','reserved Windows names on the server do not block or change uploads');
   if(process.platform==='win32')await assert.rejects(engine.operate(session,'download','nul'),/Windows reserved device name/);

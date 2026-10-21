@@ -22,7 +22,14 @@ export default class MirrorService {
       const relative=path.normalize(target.relPath);
       if(path.isAbsolute(relative)||relative==='..'||relative.startsWith('..'+path.sep)||relative.split(path.sep).some(part=>part.toLowerCase()==='.git'))throw new Error('Unsafe mirror path');
       let stat;
-      try{stat=await target.remoteFs.lstat(target.remotePath);}catch(error){if(error.code==='ENOENT'||error.code===2)continue;throw new Error('Upload stopped: unable to inspect backup source '+target.relPath+'. '+error.message);}
+      try{stat=await target.remoteFs.lstat(target.remotePath);}catch(error){
+        if(error.code==='ENOENT'||error.code===2){
+          if(target.remoteFs.supportsCompleteDirectoryListing!==false)continue;
+          // FTP LIST can omit an existing file. Try the exact RETR path; never
+          // interpret LIST absence or an ambiguous FTP 550 as permission to replace.
+          stat={type:FileType.File,mode:0o600,mtime:0,atime:0};
+        }else throw new Error('Upload stopped: unable to inspect backup source '+target.relPath+'. '+error.message);
+      }
       if(stat.type!==FileType.File&&stat.type!==FileType.SymbolicLink)throw new Error('Upload stopped: backup destination is not a regular file: '+target.relPath);
       originals.push({target,relative,stat});
     }
@@ -44,7 +51,7 @@ export default class MirrorService {
           await new TransferTask({fsPath:target.remotePath,fileSystem:target.remoteFs},{fsPath:local,fileSystem:this.repository.files},
             {fileType:FileType.File,transferDirection:TransferDirection.REMOTE_TO_LOCAL,transferOption:{fallbackMode:stat.mode,mtime:stat.mtime,atime:stat.atime,perserveTargetMode:true}}).run();
           touched.add(relative.split(path.sep).join('/'));
-        } catch(error) {throw new Error('Upload stopped: unable to back up '+target.relPath+'. '+error.message);}
+        } catch(error) {throw new Error('Upload stopped: unable to back up '+target.relPath+'. '+(target.remoteFs.supportsCompleteDirectoryListing===false?'FTP could not read the exact destination; LIST cannot prove a file is absent. Check server read permissions or use SFTP for safely creating a new destination. ':'')+error.message);}
       }
     }));
     const failed=outcomes.find(result=>result.status==='rejected');

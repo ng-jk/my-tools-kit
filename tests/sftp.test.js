@@ -1029,3 +1029,18 @@ test('valid dot-dot-prefixed upload paths are backed up before replacement',asyn
  const unsafe=engine.createSession(local,{...raw,mirror:{enabled:true,path:path.join(local,'..backups')}});t.after(()=>unsafe.service.dispose());
  await assert.rejects(engine.operate(unsafe,'upload','..notes.txt'),/outside the workspace/);
 });
+
+test('FTP omitted originals are read directly and unreadable ambiguity stops replacement',async t=>{
+ const {local,remote,session}=fixture(t);
+ const backup=engine.defaultBackupPath(session.service.workspace,session.service.baseDir,session.config,session.service.profile);
+ t.after(()=>fs.rmSync(backup,{recursive:true,force:true}));
+ const remoteFs=await session.service.getRemoteFileSystem(session.config),stat=remoteFs.lstat.bind(remoteFs),get=remoteFs.get.bind(remoteFs);
+ remoteFs.supportsCompleteDirectoryListing=false;
+ const destination=path.join(remote,'.htaccess');fs.writeFileSync(destination,'hidden original');fs.writeFileSync(path.join(local,'.htaccess'),'replacement');
+ remoteFs.lstat=async file=>{if(path.resolve(file)===destination)throw Object.assign(new Error('omitted by LIST'),{code:'ENOENT'});return stat(file);};
+ await engine.operate(session,'upload','.htaccess');assert.equal(fs.readFileSync(path.join(backup,'.htaccess'),'utf8'),'hidden original');
+ assert.equal(fs.readFileSync(destination,'utf8'),'replacement');
+ remoteFs.get=async file=>{if(path.resolve(file)===destination)throw Object.assign(new Error('550 unavailable'),{code:550});return get(file);};
+ fs.writeFileSync(path.join(local,'.htaccess'),'must not replace');await assert.rejects(engine.operate(session,'upload','.htaccess'),/FTP could not read the exact destination/);
+ assert.equal(fs.readFileSync(destination,'utf8'),'replacement');
+});
