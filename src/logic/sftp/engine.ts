@@ -7,6 +7,7 @@ import { mergedDefault, validateConfig } from './config';
 import { resolveProfileContext } from './core/profileContext';
 import {removeRemotePath,renameRemotePath,assertRemoteAncestors} from './remote-operations';
 export { configurePorts } from '../../data/sftp/ports';
+export {configurationProblem} from './config-diagnostic';
 export { sshArguments } from './ssh-arguments';
 export { watchPolicy } from './watch-policy';
 export {findGitRoot, getCommitChangedFiles, getUncommittedChangedFiles, getUncommittedTransfers} from './git-changes';

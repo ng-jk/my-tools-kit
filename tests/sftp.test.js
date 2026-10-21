@@ -28,6 +28,11 @@ test('profiles-only connections independently resolve protocol, port, paths and 
   const external=engine.createSession(workspace,{host:'fixture-alias',sshConfigPath:sshConfig,remotePath:'/base',profiles:raw.profiles});t.after(()=>external.service.dispose());
   assert.equal(external.profile,null);assert.equal(external.config.host,'base.invalid');assert.equal(external.config.username,'from-ssh-config');assert.equal(external.config.remotePath,'/base');
   assert.equal(engine.inspectConfig({remote:'saved-connection',profiles:raw.profiles}).selected,null);
+  assert.equal(engine.configurationProblem('/config',workspace,{value:{host:'fixture-alias',sshConfigPath:sshConfig,remotePath:'/base',profiles:raw.profiles}},{}),undefined);
+  assert.equal(engine.configurationProblem('/config',workspace,{value:{...raw,defaultProfile:'api_log'}},{}),undefined);
+  const invalid=engine.configurationProblem('/config',workspace,{value:{password:'do-not-print',remotePath:'/base'}},{});
+  assert.match(invalid.message,/host/);assert.match(invalid.message,/username/);assert.equal(invalid.message.includes('do-not-print'),false);
+  assert.match(engine.configurationProblem('/config',workspace,{value:{...raw,defaultProfile:'unknown'}},{}).message,/defaultProfile/);
 });
 test('configuration parse errors never echo credential-bearing JSON',async t=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-config-error-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
