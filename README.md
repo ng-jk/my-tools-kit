@@ -101,15 +101,15 @@ If Configure SFTP cannot open the editor, use the error notification’s Detail 
 
 1. Choose **API Debugger** from the toolbox.
 2. Click **＋** to add a request; give it a name, select **GET**, and enter your endpoint URL.
-3. In **Headers & query**, enter JSON objects, for example headers `{"Accept":"application/json"}` and query `{"page":"1"}`.
-4. Click **Send**. Read status and duration above **Response**, then switch between **Body**, **Headers**, **Tests**, and **Logs**. Use **Cancel** to stop a pending request.
+3. Open **Query** or **Headers**. Enter names and values in rows; check/uncheck rows to include/exclude them. Duplicate query names are supported. **Raw** headers accepts `Name: value` lines or JSON; turn it off to return to rows.
+4. Click **Send**. Read **Status / Size / Time**, then switch between **Response**, **Headers**, **Cookies**, **Results**, **Docs** and **Logs**. Use **Raw response**, **Wrap**, **Copy response**, or **Save response** to inspect/export it. Use **Cancel** to stop a pending request.
 5. Click **Save** under Collection to keep your requests. **Save response** writes the response to a file.
 
 ### Bodies and authentication
 
-For POST/PUT/PATCH, open **Body**, choose **JSON**, and enter a JSON object. Other choices accept text/XML/GraphQL, URL-encoded form objects, multipart field arrays, or a project-relative binary file path. Choose **None** when no body is needed.
+For POST/PUT/PATCH, open **Body** and choose **JSON**, **XML**, **Text**, **Form (multipart)**, **Form-encode**, **GraphQL**, or **Binary**. JSON Format preserves large number and string values. Form rows have enable switches; multipart rows can be text or project-relative file paths. GraphQL provides query, variables JSON and an optional operation name. Binary takes a project-relative file path. **None** sends no body. Switching body types retains each mode's unsent draft.
 
-Open **Auth**, select a method, and enter the JSON shown by its hint:
+Open **Auth**, select a method, and fill the labeled fields. Advanced JSON is optional:
 
 | Method | Example fields |
 | --- | --- |
@@ -117,18 +117,26 @@ Open **Auth**, select a method, and enter the JSON shown by its hint:
 | Basic | `{"username":"user","password":"{{secret.PASSWORD}}"}` |
 | API key | `{"name":"X-API-Key","value":"{{secret.KEY}}","in":"header"}` |
 | OAuth 2 client credentials | `{"tokenUrl":"https://example.com/token","clientId":"client","clientSecret":"{{secret.CLIENT_SECRET}}","scope":"read"}` |
+| NTLMv2 | Username, password, domain and workstation. Servers must provide extended security and target information; NTLMv1 fallback is blocked. |
+| AWS Signature V4 | Explicit accessKeyId, secretAccessKey, region and service; optional sessionToken. No ambient AWS credentials are selected. |
+
+OAuth 2 also accepts `grantType` values `password`, `authorization_code`, and `refresh_token` with their corresponding fields. For authorization code, obtain the code through your provider's authorization page and supply code, redirectUri and optional PKCE codeVerifier. This editor does not automatically open a browser callback listener.
 
 Click **Store secret securely** to save a named secret in VS Code SecretStorage. Use `{{secret.NAME}}` in the request. For reusable values, enter an environment JSON object such as `{"baseUrl":"https://example.com"}` and use `{{baseUrl}}` in URLs. **Load env / Save env** manage environment files; keep credential files local and out of Git.
 
 ### Tests, collections and imports
 
-- Open **Tests** and add assertions with the controls, then send the request and inspect the **Tests** response tab.
+- Open **Tests → Tests** and add status, time, header, body or JSON-path assertions. Remove individual rules as needed and inspect **Results** after Send. **Tests → Scripting** edits the after-response script.
 - Add multiple requests with **＋**, save the collection, and choose **Run collection** to run it sequentially. Use **Duplicate**, **Delete request**, and the request search to organize it.
 - Use **Import / Open** for native collections, supported Postman/Thunder Client data, or OpenAPI endpoints. Inspect import warnings; scripts/assertions may not migrate completely. **Export Postman** and **Copy cURL template** are partial exports.
 - In **Advanced**, set timeout, redirects, response extraction and TLS files as needed. Extraction entries such as `[{"variable":"id","path":"data.id"}]` make response values available to later requests.
-- **Scripts** supports trusted pre/post scripts when explicitly enabled. Scripts run with local process privileges; only enable your own trusted code.
+- **Pre Run → Pre Requests → Add request** selects a collection and saved request to run first. Add multiple entries to set order. Extracted variables, scripts and cookies carry forward; missing references, failed pre-requests and cycles stop the main request. Import/Open keeps collections in the session library; switch with **Active collection**. **Save collection library for CLI** writes the library for `node cli.js send request.json --collections api-library.json` (also accepted by `run`). Save the main request/collection separately.
+- **Pre Run → Scripting** edits the before-request script. Enable **Advanced → Run trusted scripts** only for trusted code: scripts have local process privileges and a two-second execution limit. The API is `env.get/set`, `request`, `response`, `test(name, fn)`, `assert(condition)` and `console.log`. Pre-scripts can change the outgoing request. Importing a collection disables script execution until enabled again.
+- **Docs → Edit** writes plain-text request documentation; **Save docs** keeps it in the request draft and collection Save writes it to disk. **Undo delete** restores the last removed request.
 
-This is not full Thunder Client parity: interactive OAuth, Digest/NTLM/AWS auth, proxies, WebSockets/gRPC and complete script migration are not implemented.
+Changing editor focus or returning to the API command reuses the same panel. Unsent values, including incomplete JSON and raw headers, survive hiding and webview reload while the extension session remains alive. Drafts, auth-mode histories, response cookies and response history stay in memory; Save is required to survive panel closure or a VS Code restart. Saved JSON may contain credentials: export warns before writing, and secret placeholders are recommended.
+
+The screenshot workflows above are implemented independently. Digest auth, an automatic OAuth browser callback, proxies, WebSockets/gRPC and complete Thunder Client/Postman script migration are outside these workflows.
 
 ## JSON Formatter
 

@@ -17,5 +17,5 @@ const assert = require('node:assert/strict');
   });
   await new vm.Script('(async () => {\n' + workerData.source + '\n})()').runInContext(context, { timeout: 1000 });
   await Promise.all(pending);
-  parentPort.postMessage({ variables, tests, logs });
+  parentPort.postMessage({ variables, tests, logs,request:workerData.request });
 })().catch(e => parentPort.postMessage({ error: e.message }));

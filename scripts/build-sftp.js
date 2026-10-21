@@ -6,11 +6,11 @@ const {patchFtp}=require('./patch-ftp');
 async function main() {
   const root = path.resolve(__dirname, '..');
   const dependencies = new Set();
-  for (const [entry, name] of [['src/interface/sftp/extension.ts', 'extension'], ['src/logic/sftp/engine.ts', 'engine'], ['src/data/sftp/watch-match.js', 'watch-match'], ['src/logic/database.js', 'database']]) {
+  for (const [entry, name] of [['src/interface/sftp/extension.ts', 'extension'], ['src/logic/sftp/engine.ts', 'engine'], ['src/data/sftp/watch-match.js', 'watch-match'], ['src/logic/database.js', 'database'],['src/logic/auth-libraries.js','api-auth']]) {
     const result = await esbuild.build({ absWorkingDir: root, entryPoints: [entry], outfile: 'build/sftp/' + name + '.js',
       platform: 'node', target: 'node20', format: 'cjs', bundle: true, sourcemap: false, metafile: true,
       external: ['vscode', '*.node', 'cpu-features', 'pg-native'], logLevel: 'warning',
-      plugins:[{name:'ftp-transport-security',setup(build){build.onLoad({filter:/[\\/]ftp[\\/]lib[\\/]connection\.js$/},args=>({contents:patchFtp(fs.readFileSync(args.path,'utf8')),loader:'js'}));}}],
+      plugins:[{name:'ftp-transport-security',setup(build){build.onLoad({filter:/[\\/]ftp[\\/]lib[\\/]connection\.js$/},args=>({contents:patchFtp(fs.readFileSync(args.path,'utf8')),loader:'js'}));build.onLoad({filter:/[\\/]httpntlm[\\/]ntlm\.js$/},args=>{const source=fs.readFileSync(args.path,'utf8'),old='String.fromCharCode( Math.floor(Math.random()*256) )';if(!source.includes(old))throw new Error('NTLM random challenge patch no longer applies');return {contents:source.replaceAll(old,'String.fromCharCode( crypto.randomBytes(1)[0] )'),loader:'js'};});}}],
       tsconfigRaw: { compilerOptions: { esModuleInterop: false, useDefineForClassFields: false } } });
     if (name === 'engine' && Object.keys(result.metafile.inputs).some(file => file.startsWith('src/interface/'))) throw new Error('Engine imports interface code');
     for (const input of Object.keys(result.metafile.inputs).filter(file => file.includes('node_modules/'))) {

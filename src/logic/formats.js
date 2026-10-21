@@ -1,6 +1,6 @@
 'use strict';
 const { randomUUID } = require('node:crypto');
-const { flatten } = require('./api');
+const { flatten,pairs } = require('./api');
 function importCollection(data) {
   if (data.version === 1 && Array.isArray(data.requests)) return { collection: data, warnings: [] };
   const warnings = [];
@@ -46,7 +46,7 @@ function importCollection(data) {
 const shQuote = value => "'" + String(value).replaceAll("'", "'\\''") + "'";
 function curl(request) {
   const args = ['curl', '-X', shQuote(request.method || 'GET'), shQuote(request.url)];
-  for (const [key, value] of Object.entries(request.headers || {})) args.push('-H', shQuote(key + ': ' + value));
+  for (const [key, value] of pairs(request.headers)) args.push('-H', shQuote(key + ': ' + value));
   if (request.body?.value !== undefined) args.push('--data-raw', shQuote(typeof request.body.value === 'string' ? request.body.value : JSON.stringify(request.body.value)));
   return args.join(' ');
 }

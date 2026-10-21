@@ -57,7 +57,8 @@
       [
         "node",
         "--test",
-        "tests/api.test.js"
+        "tests/api.test.js",
+        "tests/api-workspace.test.js"
       ],
       [
         "{python}",
@@ -131,7 +132,8 @@
       [
         "node",
         "--test",
-        "tests/browser/text-tools.test.js"
+        "tests/browser/text-tools.test.js",
+        "tests/browser/api-workspace.test.js"
       ]
     ],
     "build": [

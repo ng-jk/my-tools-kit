@@ -12,7 +12,7 @@ async function main(args = process.argv.slice(2)) {
   if (args[0] === 'pipeline') return require('./pipeline-cli').main(args.slice(1));
   const [command, file, ...rest] = args;
   if (!command || command === '--help') { console.log(`devkit run <collection.json> [--env file.json] [--allow-scripts] [--json report.json] [--junit report.xml]
-devkit send <request.json> [--env file.json] [--allow-scripts] [--out response.json] [--download body.bin]
+devkit send <request.json> [--env file.json] [--collections library.json] [--allow-scripts] [--out response.json] [--download body.bin]
 devkit curl <request.json> [--out request.sh]
 devkit import <input.json> --out collection.json
 devkit export <collection.json> --out postman.json
@@ -29,7 +29,7 @@ devkit git-compare <root> <base> <target> <left-path> [right-path]`); return; }
   const flags = {};
   for (let i = 0; i < rest.length; i++) {
     if (rest[i] === '--allow-scripts') { flags[rest[i]] = true; continue; }
-    if (!['--env', '--json', '--junit', '--out', '--download'].includes(rest[i]) || !rest[i + 1]) throw new Error('Invalid option: ' + rest[i]);
+    if (!['--env','--collections', '--json', '--junit', '--out', '--download'].includes(rest[i]) || !rest[i + 1]) throw new Error('Invalid option: ' + rest[i]);
     flags[rest[i]] = rest[++i];
   }
   if (command === 'run' || command === 'send') {
@@ -39,7 +39,7 @@ devkit git-compare <root> <base> <target> <left-path> [right-path]`); return; }
     for (const [key, value] of Object.entries(process.env)) variables['env.' + key] = value;
     const controller = new AbortController(); const interrupt = () => controller.abort(); process.once('SIGINT', interrupt);
     try {
-      const run = await (command === 'send' ? execute : runCollection)(readJson(file), { root: path.dirname(path.resolve(file)), variables, allowScripts: !!flags['--allow-scripts'], signal: controller.signal });
+      const run = await (command === 'send' ? execute : runCollection)(readJson(file), { root: path.dirname(path.resolve(file)), variables, allowScripts: !!flags['--allow-scripts'], signal: controller.signal,collections:flags['--collections']?readJson(flags['--collections']):undefined });
       const summary = command === 'send' ? { ...run, variables: undefined, base64: undefined } : report(run);
       if (flags['--out']) writeAtomic(path.resolve(flags['--out']), JSON.stringify(summary, null, 2) + '\n');
       if (flags['--download']) writeAtomic(path.resolve(flags['--download']), Buffer.from(run.base64, 'base64'));

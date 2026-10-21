@@ -5,6 +5,8 @@ const { isDeepStrictEqual } = require('node:util');
 const { inside, readBuffer } = require('../data/files');
 const { transport } = require('../data/http');
 const { script } = require('../data/scripts');
+const {sign}=require('../../build/sftp/api-auth');
+const {ntlmTransport}=require('../data/ntlm');
 
 function substitute(value, variables, seen = []) {
   if (typeof value === 'string') return value.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (_, key) => {
@@ -19,7 +21,7 @@ function substitute(value, variables, seen = []) {
   return value;
 }
 function pairs(value) {
-  return Array.isArray(value) ? value.filter(x => x.enabled !== false && x.disabled !== true).map(x => [x.name ?? x.key, x.value ?? '']) : Object.entries(value || {});
+  return Array.isArray(value) ? value.filter(x => x.enabled !== false && x.disabled !== true && (x.name??x.key)).map(x => [x.name ?? x.key, x.value ?? '']) : Object.entries(value || {});
 }
 function jsonPath(value, pointer = '') {
   return pointer.replace(/^\$\.?/, '').replace(/\[(\d+)\]/g, '.$1').split('.').filter(Boolean).reduce((v, key) => v?.[key], value);
@@ -55,6 +57,8 @@ class CookieJar {
         const [key, ...rest] = attr.trim().split('='); const val = rest.join('=');
         if (key.toLowerCase() === 'path' && val.startsWith('/')) cookie.path = val;
         if (key.toLowerCase() === 'secure') cookie.secure = true;
+        if(key.toLowerCase()==='httponly')cookie.httpOnly=true;
+        if(key.toLowerCase()==='samesite')cookie.sameSite=val;
         if (key.toLowerCase() === 'max-age' && /^-?\d+$/.test(val)) cookie.expires = Date.now() + Number(val) * 1000;
         if (key.toLowerCase() === 'expires' && !cookie.expires) cookie.expires = Date.parse(val);
         // Host-only storage deliberately avoids public-suffix/domain sharing errors.
@@ -68,12 +72,15 @@ class CookieJar {
 function buildBody(body, headers, root) {
   if (!body || body.type === 'none') return undefined;
   if (body.type === 'json') { headers['content-type'] ||= 'application/json'; return Buffer.from(typeof body.value === 'string' ? body.value : JSON.stringify(body.value)); }
+  if(body.type==='xml'){headers['content-type']||='application/xml';return Buffer.from(String(body.value??''));}
+  if(body.type==='graphql'){headers['content-type']||='application/json';const value=body.variables||{};if(typeof value!=='object'||Array.isArray(value))throw new Error('GraphQL variables must be a JSON object');return Buffer.from(JSON.stringify({query:String(body.query??body.value??''),variables:value,...(body.operationName?{operationName:body.operationName}:{})}));}
   if (body.type === 'form') { headers['content-type'] ||= 'application/x-www-form-urlencoded'; return Buffer.from(new URLSearchParams(pairs(body.value)).toString()); }
-  if (body.type === 'binary') return readBuffer(inside(root, body.file));
+  if (body.type === 'binary') {headers['content-type']||='application/octet-stream';return readBuffer(inside(root, body.file));}
   if (body.type === 'multipart') {
     const boundary = 'devkit-' + crypto.randomUUID(); headers['content-type'] = 'multipart/form-data; boundary=' + boundary;
     const chunks = [];
-    for (const field of body.fields || []) {
+    for (const field of (body.fields || []).filter(field=>field.enabled!==false&&field.disabled!==true)) {
+      if(typeof field.name!=='string'||!field.name)throw new Error('Multipart field name is required');
       if (/[\r\n"]/.test(field.name)) throw new Error('Invalid multipart field name');
       let disposition = `Content-Disposition: form-data; name="${field.name}"`;
       let value = Buffer.from(String(field.value ?? ''));
@@ -93,10 +100,27 @@ async function execute(request, options = {}) {
   if (!request || typeof request.url !== 'string' || !request.url.trim()) throw new Error('Request URL is required');
   if (request.timeout !== undefined && (!Number.isFinite(request.timeout) || request.timeout <= 0)) throw new Error('Timeout must be a positive number');
   if (request.tests !== undefined && !Array.isArray(request.tests)) throw new Error('Tests must be an array');
+  if(request.preRequests!==undefined&&!Array.isArray(request.preRequests))throw new Error('Pre-requests must be an array');
   const start = performance.now(); const root = options.root || process.cwd();
-  let variables = { ...options.variables }; const tests = [], logs = [];
+  let variables = { ...options.variables }; const tests = [], logs = [],preResults=[];
+  const jar=options.jar||new CookieJar();
+  if((options.preDepth||0)>10)throw new Error('Pre-request dependency depth or cycle limit exceeded');
+  const budget=options.preBudget||{count:0};
+  for(const reference of request.preRequests||[]) {
+    if(reference.enabled===false)continue;
+    if(++budget.count>100)throw new Error('Pre-request execution limit exceeded');
+    const collection=(options.collections||request.collections||[]).find(c=>(c.id||c.name)===reference.collectionId);
+    const preRequest=collection&&flatten(collection).find(r=>(r.id||r.name)===reference.requestId);
+    if(!preRequest)throw new Error('Pre-request not found in the selected collection');
+    const key=reference.collectionId+':'+reference.requestId,stack=options.preStack||[];
+    if(stack.includes(key))throw new Error('Pre-request dependency cycle');
+    const result=await execute(preRequest,{...options,variables:{...collection.variables,...variables},jar,preDepth:(options.preDepth||0)+1,preStack:[...stack,key],preBudget:budget});
+    preResults.push({name:preRequest.name,status:result.status,time:result.time,passed:result.passed,tests:result.tests});
+    if(!result.passed)throw new Error('Pre-request failed: '+(preRequest.name||reference.requestId));
+    variables=result.variables;
+  }
   const pre = await script(request.preScript, request, null, variables, options); variables = pre.variables; tests.push(...pre.tests); logs.push(...pre.logs);
-  const r = substitute({ ...request, preScript: undefined, postScript: undefined }, variables);
+  const r = substitute({ ...(pre.request||request), preScript: undefined, postScript: undefined }, variables);
   let url = new URL(r.url); for (const [k, v] of pairs(r.query)) url.searchParams.append(k, v);
   let headers = Object.fromEntries(pairs(r.headers).map(([k, v]) => [k.toLowerCase(), String(v)]));
   headers['accept-encoding'] = 'identity';
@@ -105,19 +129,28 @@ async function execute(request, options = {}) {
   else if (auth.type === 'bearer') headers.authorization = 'Bearer ' + auth.token;
   else if (auth.type === 'apiKey') { if (auth.in === 'query') url.searchParams.set(auth.name, auth.value); else headers[auth.name.toLowerCase()] = auth.value; }
   else if (auth.type === 'oauth2') {
-    const token = await execute({ url: auth.tokenUrl, method: 'POST', auth: { type: 'basic', username: auth.clientId, password: auth.clientSecret }, body: { type: 'form', value: { grant_type: 'client_credentials', ...(auth.scope ? { scope: auth.scope } : {}) } } }, { ...options, allowScripts: false });
+    const grant=auth.grantType||'client_credentials';if(!['client_credentials','password','authorization_code','refresh_token'].includes(grant))throw new Error('Unsupported OAuth grant type');
+    const fields={grant_type:grant,...(auth.scope?{scope:auth.scope}:{})};
+    for(const [key,value] of Object.entries(grant==='password'?{username:auth.username,password:auth.password}:grant==='authorization_code'?{code:auth.code,redirect_uri:auth.redirectUri,...(auth.codeVerifier?{code_verifier:auth.codeVerifier}:{})}:grant==='refresh_token'?{refresh_token:auth.refreshToken}:{})){if(!value)throw new Error('OAuth grant requires '+key);fields[key]=value;}
+    if(!auth.clientSecret)fields.client_id=auth.clientId;
+    const token = await execute({ url: auth.tokenUrl, method: 'POST', auth: auth.clientSecret?{ type: 'basic', username: auth.clientId, password: auth.clientSecret }:{type:'none'}, body: { type: 'form', value: fields } }, { ...options, allowScripts: false });
     if (token.status >= 400 || !token.json?.access_token) throw new Error('OAuth token request failed');
     headers.authorization = 'Bearer ' + token.json.access_token;
-  } else if (auth.type && auth.type !== 'none') throw new Error('Unsupported authentication type: ' + auth.type);
+  } else if (auth.type && !['none','aws','ntlm'].includes(auth.type)) throw new Error('Unsupported authentication type: ' + auth.type);
   let method = (r.method || 'GET').toUpperCase();
   let body = buildBody(r.body, headers, root);
   const tls = {};
   for (const key of ['ca', 'cert', 'key']) if (r.tls?.[key]) tls[key] = readBuffer(inside(root, r.tls[key]));
   if (r.tls?.passphrase) tls.passphrase = r.tls.passphrase;
-  const jar = options.jar || new CookieJar(); let response;
+  let response;
   for (let redirects = 0; ; redirects++) {
     const outgoing = { ...headers }; const cookie = jar.get(url); if (cookie && !outgoing.cookie) outgoing.cookie = cookie;
-    response = await transport(url, { method, headers: outgoing, body, tls }, { ...options, timeout: r.timeout || options.timeout });
+    if(auth.type==='aws'){
+      for(const field of ['accessKeyId','secretAccessKey','region','service'])if(!auth[field])throw new Error('AWS authentication requires '+field);
+      const signed=sign({host:url.host,path:url.pathname+url.search,method,headers:outgoing,body,region:auth.region,service:auth.service},{accessKeyId:auth.accessKeyId,secretAccessKey:auth.secretAccessKey,sessionToken:auth.sessionToken});
+      Object.assign(outgoing,signed.headers);
+    }
+    response = await (auth.type==='ntlm'?ntlmTransport:transport)(url, { method, headers: outgoing, body, tls }, { ...options, timeout: r.timeout || options.timeout },auth);
     jar.set(url, response.headers['set-cookie']);
     if (!r.followRedirects && r.followRedirects !== undefined) break;
     if (![301, 302, 303, 307, 308].includes(response.status) || !response.headers.location) break;
@@ -136,7 +169,7 @@ async function execute(request, options = {}) {
     if (value === undefined) throw new Error('Extraction path not found: ' + extraction.path);
     variables[extraction.variable] = value;
   }
-  return { ...result, tests, logs, variables, passed: tests.every(t => t.passed) && result.status < 400 };
+  return { ...result, cookies:jar.cookies.map(cookie=>({...cookie})),preResults, tests, logs, variables, passed: tests.every(t => t.passed) && result.status < 400 };
 }
 function flatten(collection, inherited = {}) {
   const requests = [];
@@ -148,14 +181,28 @@ function flatten(collection, inherited = {}) {
   for (const folder of collection.folders || []) requests.push(...flatten(folder, defaults));
   return requests;
 }
+function dependencyRequests(request,collections,stack=[]) {
+  if(stack.length>10)throw new Error('Pre-request dependency depth limit exceeded');
+  const result=[request];
+  for(const reference of request.preRequests||[]) {
+    if(reference.enabled===false)continue;
+    const key=reference.collectionId+':'+reference.requestId;if(stack.includes(key))throw new Error('Pre-request dependency cycle');
+    const collection=(collections||[]).find(c=>(c.id||c.name)===reference.collectionId);
+    const child=collection&&flatten(collection).find(r=>(r.id||r.name)===reference.requestId);
+    if(!child)throw new Error('Pre-request not found in the selected collection');
+    result.push(...dependencyRequests({...child,variables:collection.variables},collections,[...stack,key]));
+    if(result.length>100)throw new Error('Pre-request execution limit exceeded');
+  }
+  return result;
+}
 async function runCollection(collection, options = {}) {
   if (collection.version !== 1) throw new Error('Unsupported collection version');
   let variables = { ...collection.variables, ...options.variables }; const results = []; const jar = new CookieJar();
   for (const request of flatten(collection)) {
     if (options.signal?.aborted) break;
-    try { const result = await execute(request, { ...options, variables, jar }); variables = result.variables; results.push({ name: request.name || request.url, ...result }); }
+    try { const result = await execute(request, { ...options, variables, jar,collections:options.collections||[collection] }); variables = result.variables; results.push({ name: request.name || request.url, ...result }); }
     catch (e) { results.push({ name: request.name || request.url, passed: false, error: e.message, tests: [] }); }
   }
   return { passed: results.length > 0 && results.every(r => r.passed) && !options.signal?.aborted, results, variables };
 }
-module.exports = { execute, runCollection, substitute, assertions, CookieJar, flatten };
+module.exports = { execute, runCollection, substitute, assertions, CookieJar, flatten,dependencyRequests,pairs };

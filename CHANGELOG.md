@@ -1,5 +1,13 @@
 # Release notes
 
+## 0.7.0 — 2026-10-21
+
+- Rebuild API request editing around Query/Headers row editors, raw headers, typed authentication fields, seven body modes, test rules/scripting and Pre Run request chains/scripting.
+- Add XML and GraphQL bodies, independent unsent body/auth drafts, NTLMv2 authentication on a single connection and AWS Signature V4. Add OAuth authorization-code/PKCE, password and refresh-token exchange fields alongside client credentials.
+- Add response cookies, structured results, plain-text request documentation, raw/pretty response viewing, wrapping and copying. Collections can form an in-memory dependency library shared with CLI via --collections.
+- Fix API input loss when changing focus: retain/reuse the panel and restore unsent raw fields from host memory after webview reload. No automatic credential/draft persistence to the project or VS Code state.
+- Add protocol, shared-engine, host and rendered-browser regressions as mandatory pipeline checks. Keep credential-bearing export explicit and warn before saving JSON.
+
 ## 0.6.3 — 2026-10-21
 
 - Add Undo clear for both comparison inputs and file labels; restoring preserves later edits in a reversible snapshot instead of discarding them.

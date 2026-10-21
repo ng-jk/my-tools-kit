@@ -1,5 +1,7 @@
 # Third-party notices
 
+API authentication bundles MIT-licensed `aws4@1.13.2` and the NTLM message helpers from MIT-licensed `httpntlm@1.8.13`. Only the helpers and their actual dependency graph are bundled; the upstream HTTP transport is not used. The build replaces the helper's Math.random client challenge with Node crypto.randomBytes. The toolkit requires NTLMv2 extended security and target information and uses its own bounded, cancellable HTTP transport with the same socket throughout the handshake. Dependency licenses are included in the generated bundled notices.
+
 The bundled `ftp@0.3.10` dependency is repaired at build time by `scripts/patch-ftp.js`: implicit FTPS retains its TLS control socket, requests protected data transfers, and verifies passive TLS connections before transfer commands. Its original license remains included. The adapter also associates idle abort replies with their pending callback so rejected data handshakes fail promptly.
 
 The integrated SFTP implementation is adapted from [ng-jk/vscode-sftp](https://github.com/ng-jk/vscode-sftp), revision `ef4d3ca3e6fd2c0c24e05079d3dcf6093d633ce8` (SFTP plus 1.16.3). Credit belongs to ng-jk (NG JUN KAI), Natizyskunk (Natan FOURIÉ), liximomo, and the preceding contributors. The complete upstream license is retained in `vendor/sftp/LICENSE` and included in the extension package.

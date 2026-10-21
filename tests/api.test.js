@@ -67,7 +67,7 @@ test('multipart and binary uploads constrain paths', async () => {
 });
 test('missing variables and unsupported auth fail explicitly', async () => {
   assert.throws(() => substitute('{{missing}}', {}), /Missing variable/);
-  await assert.rejects(execute({ url: base, auth: { type: 'ntlm' } }), /Unsupported/);
+  await assert.rejects(execute({ url: base, auth: { type: 'unsupported-test' } }), /Unsupported/);
   assert.equal(substitute('{{token}}', { token: '{{secret.TOKEN}}', 'secret.TOKEN': 'resolved' }), 'resolved');
   assert.throws(() => substitute('{{a}}', { a: '{{b}}', b: '{{a}}' }), /Circular/);
 });
