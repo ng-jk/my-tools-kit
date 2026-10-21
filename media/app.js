@@ -150,6 +150,8 @@ function renderTests(){
 function renderPreRequests(){
   $('preRequests').replaceChildren();preRequests.forEach((reference,index)=>{
     const row=document.createElement('fieldset'),legend=document.createElement('legend');legend.textContent='Pre-request '+(index+1);row.append(legend);
+    const enabledLabel=document.createElement('label');enabledLabel.className='check';const enabled=document.createElement('input');enabled.type='checkbox';enabled.checked=reference.enabled!==false;enabled.setAttribute('aria-label','Run pre-request '+(index+1));enabledLabel.append(enabled,document.createTextNode('Enabled'));row.append(enabledLabel);
+    const updateEnabled=()=>{reference.enabled=enabled.checked;legend.textContent='Pre-request '+(index+1)+(enabled.checked?'':' (disabled — skipped)');};enabled.onchange=updateEnabled;updateEnabled();
     const addSelect=(labelText,items,current,changed)=>{const label=document.createElement('label');label.textContent=labelText;const select=document.createElement('select');select.setAttribute('aria-label',labelText+' '+(index+1));for(const item of [{id:'',name:'Select '+labelText},...items]){const option=document.createElement('option');option.value=item.id??item.name;option.textContent=item.name;select.append(option);}select.value=current||'';select.onchange=()=>changed(select.value);label.append(select);row.append(label);};
     addSelect('Collection',catalog,reference.collectionId,value=>{reference.collectionId=value;reference.requestId='';renderPreRequests();$('preRequests').children[index]?.querySelectorAll('select')[1]?.focus();});
     const source=catalog.find(c=>c.id===reference.collectionId);addSelect('Request',source?.requests||[],reference.requestId,value=>{reference.requestId=value;});
@@ -164,7 +166,13 @@ $('bodyType').onchange=action(()=>{bodyDrafts[bodyMode]={text:$('body').value,va
 $('formatBody').onclick=()=>vscode.postMessage({type:'formatBody',text:$('body').value});
 $('auth').onchange=authHint;$('tests').onchange=action(renderTests);
 $('addPreRequest').onclick=()=>{preRequests.push({collectionId:'',requestId:'',enabled:true});renderPreRequests();$('preRequests').lastElementChild.querySelector('select').focus();};
-$('activeCollection').onchange=action(()=>{capture();collection=catalog.find(c=>c.id===$('activeCollection').value);$('collectionName').value=collection.name;load(0);});
+$('activeCollection').onchange=action(()=>{
+  const requested=$('activeCollection').value,previous=collection,previousIndex=selected;
+  try{capture();}catch(error){$('activeCollection').value=previous.id;throw error;}
+  const target=catalog.find(c=>c.id===requested);if(!target){$('activeCollection').value=previous.id;throw new Error('Selected collection is unavailable');}
+  try{collection=target;$('collectionName').value=collection.name;load(0);}
+  catch(error){collection=previous;$('collectionName').value=previous.name;load(previousIndex);throw error;}
+});
 $('saveLibrary').onclick=action(()=>{capture();vscode.postMessage({type:'saveLibrary',collections:catalog});});
 $('responseRaw').onchange=showResponse;$('responseWrap').onchange=()=>{$('response').classList.toggle('no-wrap',!$('responseWrap').checked);};
 $('copyResponse').onclick=()=>vscode.postMessage({type:'copyResponse',text:$('response').textContent});
