@@ -4,7 +4,7 @@ const {connection}=require('../../build/sftp/database');
 const ui=require('./database-workbench');
 function activateBrowser(vscode,context,api) {
   const panels=new Map(),secret=id=>'devkit.database.password.'+id;
-  let mutation=Promise.resolve();
+  let mutation=Promise.resolve(),nextQuery=1;
   const changes=new vscode.EventEmitter(),overrides=new Map();
   const refresh=()=>{overrides.clear();changes.fire(undefined);};
   const live=p=>{api.trust();if(!api.profiles().some(x=>x.id===p.id))throw new Error('Database connection changed or was removed. Reopen it from the sidebar.');};
@@ -19,9 +19,9 @@ function activateBrowser(vscode,context,api) {
     panel.webview.onDidReceiveMessage(m=>{if(m?.type==='ready')postResult(panel,value);});
   }
   function query(p,config,initial='') {
-    live(p);const id='query:'+JSON.stringify([p.id,config.database,config.querySchema]);
-    if(panels.has(id)){panels.get(id).reveal();return;}
-    const panel=create(id,'SQL — '+p.name+'/'+(config.database||'server')+(config.querySchema?'/'+config.querySchema:''));panel.webview.html=ui.queryPage(p,config,initial);let busy=false;
+    live(p);let id='query:'+JSON.stringify([p.id,config.database,config.querySchema]);
+    if(panels.has(id)){if(!initial.trim()){panels.get(id).reveal();return;}id+=':'+crypto.randomUUID();}
+    const panel=create(id,'SQL '+nextQuery+++' — '+p.name+'/'+(config.database||'server')+(config.querySchema?'/'+config.querySchema:''));panel.webview.html=ui.queryPage(p,config,initial);let busy=false;
     panel.webview.onDidReceiveMessage(async m=>{
       if(m?.type!=='query'||busy)return;busy=true;
       try {
@@ -98,7 +98,7 @@ function activateBrowser(vscode,context,api) {
   context.subscriptions.push(changes,vscode.window.registerTreeDataProvider('devkit.databaseExplorer',provider));
   const register=(id,fn)=>context.subscriptions.push(vscode.commands.registerCommand(id,async(...args)=>{try{api.trust();await fn(...args);}catch(error){await vscode.window.showErrorMessage(error.message);}}));
   register('devkit.database.refresh',refresh);
-  register('devkit.database.preview',async n=>{live(n.p);result(await api.invoke(n.p,'preview',n.args,n.config),n.p.name+' / '+n.config.database+' / '+n.args.table);});
+  register('devkit.database.preview',async n=>{live(n.p);result(await api.invoke(n.p,'preview',n.args,n.config),n.p.name+' — '+n.config.host+':'+n.config.port+' / '+n.config.database+' / '+n.args.schema+' / '+n.args.table);});
   register('devkit.database.nodeQuery',n=>query(n.p,n.kind==='schema'?{...n.config,querySchema:n.args.schema}:n.config));
   register('devkit.database.find',async n=>{live(n.p);const [action,args,config,title]=metadata(n),name=await api.chooseMetadata(n.p,action,args,config,title);if(name){overrides.set(n.id,[[name]]);changes.fire(n);}});
   context.subscriptions.push({dispose:()=>{for(const p of panels.values())p.dispose();}});

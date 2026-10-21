@@ -101,7 +101,7 @@ function activateDatabase(vscode,context) {
     'devkit.database.query':async()=>{const p=await pick();if(p){const config=await chooseDatabase(p);if(config)await query(p,config);}},
     'devkit.database.edit':async node=>{const p=node?.p||await pick();if(p)await add(p);},
     'devkit.database.remove':async node=>{const p=node?.p||await pick();if(p&&await vscode.window.showWarningMessage(`Remove saved connection ${p.name}? This deletes its stored password, not the remote database.`,{modal:true},'Remove connection')==='Remove connection'){trust();await context.secrets.delete(secret(p.id));await save(profiles().filter(x=>x.id!==p.id));}},
-    'devkit.database.test':async node=>{const p=node?.p||await pick();if(p)await result(await invoke(p,'test'),'Connection test');},
+    'devkit.database.test':async node=>{const p=node?.p||await pick();if(p)await result(await invoke(p,'test'),'Connection test — '+p.name+' ('+p.config.host+':'+p.config.port+')');},
     'devkit.database.menu':async()=>{
       const actions=[['Add Connection','add'],['Browse Databases / Schemas / Tables','browse'],['Execute SQL','query'],['Test Connection','test'],['Edit Connection','edit'],['Remove Connection','remove']];
       const chosen=await vscode.window.showQuickPick(actions.map(([label,id])=>({label,id})),{title:'Database — choose a function'});if(chosen)await handlers['devkit.database.'+chosen.id]();
