@@ -759,8 +759,8 @@ test('sync saves relevant dirty documents before comparison and aborts on unsucc
   } finally {engine.configurePorts({documents:()=>[]});}
 });
 
-test('concurrent transfers retain directory population permissions until both finish',async t=>{
-  const {local,remote,session}=fixture(t);fs.mkdirSync(path.join(local,'readonly'));fs.writeFileSync(path.join(local,'readonly','file.txt'),'content');
+test('concurrent disjoint transfers retain directory population permissions until both finish',async t=>{
+  const {local,remote,session}=fixture(t);fs.mkdirSync(path.join(local,'readonly'));fs.writeFileSync(path.join(local,'readonly','one.txt'),'one');fs.writeFileSync(path.join(local,'readonly','two.txt'),'two');
   const source=session.service.getLocalFileSystem(),target=await session.service.getRemoteFileSystem(session.config);
   const stat=source.lstat,establish=target.establishDirectoryMode,put=target.put;const modes=new Map(),release=[],started=[];
   const waits=[0,1].map(index=>new Promise(resolve=>started[index]=resolve));let count=0;
@@ -769,7 +769,7 @@ test('concurrent transfers retain directory population permissions until both fi
   target.put=async function(...args){const index=count++;await new Promise(resolve=>{release[index]=resolve;started[index]();});return put.apply(this,args);};
   let first,second;
   try {
-    first=engine.operate(session,'upload','readonly');await waits[0];second=engine.operate(session,'upload','readonly');await waits[1];
+    first=engine.operate(session,'upload','readonly/one.txt');await waits[0];second=engine.operate(session,'upload','readonly/two.txt');await waits[1];
     release[0]();await first;assert.equal(modes.get(path.join(remote,'readonly')),0o755);
     release[1]();await second;assert.equal(modes.get(path.join(remote,'readonly')),0o555);
   } finally {release.forEach(fn=>fn());await Promise.allSettled([first,second]);source.lstat=stat;target.establishDirectoryMode=establish;target.put=put;}
