@@ -25,7 +25,7 @@ function capture() {
 function load(index) {
   selected = index; const r = collection.requests[index];
   $('download').disabled=!responses.get(requestKey(r))||!!responses.get(requestKey(r)).results;
-  response=responses.get(requestKey(r))||null;if(!response){$('response').textContent='Send this request to inspect its response.';$('metrics').textContent='Status: — · Size: — · Time: —';}else{$('metrics').textContent=`Status: ${response.status} · Size: ${response.size} bytes · Time: ${response.time} ms`;showResponse();}
+  response=responses.get(requestKey(r))||null;if(!response){$('response').textContent='Send this request to inspect its response.';$('metrics').textContent='Status: — · Size: — · Time: —';}else{renderMetrics();showResponse();}
   for (const key of ['name', 'url', 'preScript', 'postScript','documentation']) $(key).value = r[key] || '';
   $('method').value = r.method || 'GET';
   for (const key of ['headers', 'query', 'tls']) $(key).value = JSON.stringify(r[key] || {}, null, 2);
@@ -62,6 +62,7 @@ function authHint() {
   }
 }
 function busy(value) { $('send').disabled = value; $('run').disabled = value; $('cancel').disabled = !value; }
+function renderMetrics(){$('metrics').textContent=response.results?`${response.results.length} requests`:`Status: ${response.status} · Size: ${response.size} bytes · Time: ${response.time} ms`;}
 function showResponse() {
   $('docsPanel').classList.toggle('hidden',view!=='docs');$('response').classList.toggle('hidden',view==='docs');
   if(view==='docs')return;
@@ -100,8 +101,11 @@ window.addEventListener('message', event => {
   if (message.type === 'notice') notice(message.text);
   if (message.type === 'environment') { $('environment').value = JSON.stringify(message.value, null, 2); notice('Environment loaded.'); }
   if (message.type === 'collection') {
+    try{capture();}catch(error){notice('Import not applied. Fix the incomplete JSON and choose Import / Open again. Your draft is retained. '+error.message,true);return;}
+    const previous=collection,previousIndex=selected;let imported;
+    try{
     $('allowScripts').checked=false;
-    capture();collection = message.collection;if(typeof collection.id!=='string'||!collection.id)collection.id=crypto.randomUUID();
+    collection = structuredClone(message.collection);imported=collection;if(typeof collection.id!=='string'||!collection.id)collection.id=crypto.randomUUID();
     function flatten(folder, defaults = {}) { const inherited = { ...defaults, ...folder.defaults }; return [...(folder.requests || []).map(r => ({ ...inherited, ...r })), ...(folder.folders || []).flatMap(f => flatten(f, inherited))]; }
     collection.requests = flatten(collection); delete collection.folders; delete collection.defaults;
     const requestIds=new Set();for(const request of collection.requests){if(typeof request.id!=='string'||!request.id||requestIds.has(request.id))request.id=crypto.randomUUID();requestIds.add(request.id);}
@@ -110,13 +114,14 @@ window.addEventListener('message', event => {
     if (!collection.requests.length) collection.requests.push(blank());
     $('collectionName').value = collection.name; load(0);
     notice(message.warnings.length ? message.warnings.join('\n') : 'Collection loaded.');
+    }catch(error){catalog=catalog.filter(item=>item!==imported);collection=previous;$('collectionName').value=collection.name;load(previousIndex);notice('Import not applied. Check the collection fields and try again. Previous request retained. '+error.message,true);}
   }
   if (message.type === 'result') {
     pendingRequestId=message.requestKey||pendingRequestId;
     responses.set(pendingRequestId,message.result);
     if(responses.size>6)responses.delete(responses.keys().next().value);
     if(!collection.requests[selected]||requestKey(collection.requests[selected])!==pendingRequestId){notice('Background request completed; select its request to inspect the response.');return;}
-    response = message.result; $('metrics').textContent = response.results ? `${response.results.length} requests` : `Status: ${response.status} · Size: ${response.size} bytes · Time: ${response.time} ms`;
+    response = message.result;renderMetrics();
     $('download').disabled=!!response.results;
     notice(response.passed ? 'Completed successfully.' : 'Completed with failed tests or an HTTP error.', !response.passed);
     history.unshift(new Date().toLocaleTimeString() + ' · ' + (response.status || 'Collection') + ' · ' + (response.passed ? 'PASS' : 'FAIL'));
