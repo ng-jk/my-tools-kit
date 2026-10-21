@@ -23,7 +23,7 @@ function substitute(value, variables, seen = []) {
 function pairs(value) {
   return Array.isArray(value) ? value.filter(x => x.enabled !== false && x.disabled !== true && (x.name??x.key)).map(x => [x.name ?? x.key, x.value ?? '']) : Object.entries(value || {});
 }
-function requestTemplate(request,forSecrets=false){
+function requestTemplate(request){
   const {documentation,name,id,preRequests,collections,variables,bodyDrafts,authDrafts,...template}=request;
   const enabled=rows=>Array.isArray(rows)?rows.filter(row=>row&&row.enabled!==false&&row.disabled!==true&&(row.name??row.key)):rows;
   template.headers=enabled(template.headers);template.query=enabled(template.query);
@@ -40,8 +40,22 @@ function requestTemplate(request,forSecrets=false){
     if(auth.type==='oauth2')selected=['tokenUrl','clientId','clientSecret','scope','grantType',...({password:['username','password'],authorization_code:['code','redirectUri','codeVerifier'],refresh_token:['refreshToken']}[auth.grantType]||[])];
     if(selected)template.auth=Object.fromEntries(['type',...selected].filter(key=>Object.hasOwn(auth,key)).map(key=>[key,auth[key]]));
   }
-  if(forSecrets&&variables)template.variables=variables;
   return template;
+}
+function referencedSecrets(requests,environment={}){
+  const names=new Set();
+  for(const request of requests){
+    const variables={...request.variables,...environment};
+    const key=(name,seen=[])=>{
+      if(/^secret\.[A-Za-z_][A-Za-z0-9_]*$/.test(name)){names.add(name.slice(7));return;}
+      if(seen.includes(name)||seen.length>=20||!Object.hasOwn(variables,name))return;
+      walk(variables[name],[...seen,name]);
+    };
+    const walk=(value,seen=[])=>{if(typeof value==='string'){for(const match of value.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g))key(match[1],seen);}else if(Array.isArray(value))value.forEach(item=>walk(item,seen));else if(value&&typeof value==='object')Object.values(value).forEach(item=>walk(item,seen));};
+    walk(requestTemplate(request));
+    for(const script of [request.preScript,request.postScript])for(const match of String(script||'').matchAll(/env\.get\(\s*['"]([^'"]+)['"]\s*\)/g))key(match[1]);
+  }
+  return [...names];
 }
 function jsonPath(value, pointer = '') {
   return pointer.replace(/^\$\.?/, '').replace(/\[(\d+)\]/g, '.$1').split('.').filter(Boolean).reduce((v, key) => v?.[key], value);
@@ -229,4 +243,4 @@ async function runCollection(collection, options = {}) {
   }
   return { passed: results.length > 0 && results.every(r => r.passed) && !options.signal?.aborted, results, variables:{...collection.variables,...variables} };
 }
-module.exports = { execute, runCollection, substitute, assertions, CookieJar, flatten,dependencyRequests,pairs,requestTemplate };
+module.exports = { execute, runCollection, substitute, assertions, CookieJar, flatten,dependencyRequests,pairs,requestTemplate,referencedSecrets };

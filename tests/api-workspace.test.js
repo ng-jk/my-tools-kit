@@ -61,6 +61,12 @@ test('disabled and unnamed fields do not require variables or secrets',async t=>
   await assert.rejects(execute({url:base,method:'POST',body:{type:'multipart',fields:[{name:'file',file:''}]}}),/Multipart file path is required/);
   await assert.rejects(execute({url:base,method:'POST',body:{type:'binary',file:''}}),/Binary body requires/);
 });
+test('secret lookup follows only active variable chains within each collection',()=>{
+  const {referencedSecrets}=require('../src/logic/api');
+  const request={variables:{unused:'{{secret.UNUSED}}',token:'{{secret.NEEDED}}'},url:'https://example.invalid',headers:[{name:'skip',value:'{{unused}}',enabled:false}],auth:{type:'bearer',token:'{{token}}'}};
+  assert.deepEqual(referencedSecrets([request],{}),['NEEDED']);
+  assert.deepEqual(referencedSecrets([{...request,auth:{type:'none'},preScript:'env.get("token")'}],{}),['NEEDED']);
+});
 test('pre-request collection defaults cannot retarget requests or leak into another collection',async t=>{
   const seen=[];
   const auth=await fixture(t,(req,res)=>{seen.push(['auth',req.url,req.headers.authorization]);res.setHeader('content-type','application/json');res.end('{"token":"extracted-token"}');});

@@ -2,7 +2,7 @@
 const vscode = require('vscode');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { execute, runCollection, flatten,CookieJar,dependencyRequests,requestTemplate } = require('../logic/api');
+const { execute, runCollection, flatten,CookieJar,dependencyRequests,referencedSecrets } = require('../logic/api');
 const { importCollection, exportPostman, curl } = require('../logic/formats');
 const { readBuffer, readJson, writeAtomic } = require('../data/files');
 const { configurePipeline } = require('./pipeline-extension');
@@ -51,12 +51,11 @@ function activate(context) {
     async function variables(data) {
       const values = { ...data.environment };
       for (const [key, value] of Object.entries(process.env)) values['env.' + key] = value;
-      const requests=(data.type==='run'?flatten(data.collection):[data.request]).flatMap(request=>dependencyRequests(request,data.collections||[data.collection]));
-      const source = JSON.stringify({requests:requests.map(request=>requestTemplate(request,true)),environment:data.environment,collectionVariables:data.collection?.variables});
-      for (const match of source.matchAll(/\{\{\s*secret\.([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g)) {
-        const value = await context.secrets.get(root + ':' + match[1]);
-        if (value === undefined) throw new Error('Store the secret first: ' + match[1]);
-        values['secret.' + match[1]] = value;
+      const requests=(data.type==='run'?flatten(data.collection):[data.request]).flatMap(request=>dependencyRequests({...request,variables:data.collection?.variables},data.collections||[data.collection]));
+      for (const name of referencedSecrets(requests,values)) {
+        const value = await context.secrets.get(root + ':' + name);
+        if (value === undefined) throw new Error('Store the secret first: ' + name);
+        values['secret.' + name] = value;
       }
       return values;
     }
