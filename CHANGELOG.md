@@ -1,5 +1,11 @@
 # Release notes
 
+## 0.7.7 — 2026-10-22
+
+- Fix FTP folder creation on shared hosting: parse setuid/setgid/sticky permission markers correctly instead of rejecting valid directory permissions.
+- Show requested and server-reported directory modes and entry type when verification fails. Missing permission metadata and unsafe modes still stop transfers.
+- Add shared-engine permission regressions and FTP socket coverage for nested uploads into setgid directories.
+
 ## 0.7.6 — 2026-10-22
 
 - Continue direct FTP path checks when the server rejects hidden-list requests with 550. Explicit absence permits new uploads; denied or ambiguous probes still block replacement.

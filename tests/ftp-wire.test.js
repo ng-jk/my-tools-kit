@@ -99,7 +99,7 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
         }else if(cmd==='LIST'){
           if(rejectHidden&&arg.startsWith('-al ')){reply('550 Hidden listing not supported');dataSocket.destroy();continue;}
           reply('150 Listing');let names=[...files.keys(),...directories].filter(name=>!omitted.has(name));const target=arg.replace(/^-al\s*/, '');if(!arg.startsWith('-al '))names=names.filter(name=>!path.posix.basename(name).startsWith('.'));names=names.filter(name=>path.posix.dirname(name)===(target||'/'));
-          const listing=names.map(name=>(directories.has(name)?'d':linkTargets.has(name)?'l':'-')+rights(modes.get(name)||0o644)+' 1 user group '+(files.get(name)?.length||0)+' Jan 01 2026 '+path.posix.basename(name)+(linkTargets.has(name)?' -> '+linkTargets.get(name):'')+'\r\n').join('');dataSocket.end(listing,()=>reply('226 Done'));
+          const listing=names.map(name=>(directories.has(name)?'d':linkTargets.has(name)?'l':'-')+(directories.has(name)?rights(modes.get(name)||0o644).replace(/^(.{5})x/, '$1s'):rights(modes.get(name)||0o644))+' 1 user group '+(files.get(name)?.length||0)+' Jan 01 2026 '+path.posix.basename(name)+(linkTargets.has(name)?' -> '+linkTargets.get(name):'')+'\r\n').join('');dataSocket.end(listing,()=>reply('226 Done'));
         }else if(cmd==='MKD'){
           if(Buffer.byteLength(path.posix.basename(arg))>255)reply('550 Filename too long');else if(files.has(arg)||directories.has(arg))reply('550 Already exists');else{directories.add(arg);modes.set(arg,0o755);reply('257 Directory created');}
         }else if(cmd==='RMD'){

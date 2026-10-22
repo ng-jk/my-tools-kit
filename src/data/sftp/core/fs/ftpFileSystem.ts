@@ -16,27 +16,21 @@ interface FtpFileHandle {
   prepared?: boolean;
 }
 
-const numMap: { [char: string]: number } = {
-  r: 4,
-  w: 2,
-  x: 1,
-};
-
+// Lowercase setuid/setgid/sticky markers include execute; uppercase do not.
+// Use a fixed field order and never invent rights when Unix metadata is absent.
 function toNumMode(rightObj: any) {
-  // some ftp server would reusult rightObj undefined.
-  if (!rightObj) return 0o666;
-
-  // tslint:disable-next-line:no-shadowed-variable
-  const modeStr = Object.keys(rightObj).reduce((modeStr: string, key: string) => {
-    const rightStr: string = rightObj[key];
-    let cur = 0;
-    for (const char of rightStr) {
-      cur += numMap[char];
-    }
-    return modeStr + cur;
-  }, '');
-
-  return parseInt(modeStr, 8);
+  if (!rightObj) return Number.NaN;
+  let mode = 0;
+  for (const key of ['user', 'group', 'other']) {
+    const rights = rightObj[key];
+    if (typeof rights !== 'string' || /[^rwxstST-]/.test(rights)) return Number.NaN;
+    let bits = 0;
+    if (rights.includes('r')) bits |= 4;
+    if (rights.includes('w')) bits |= 2;
+    if (/[xst]/.test(rights)) bits |= 1;
+    mode = (mode << 3) | bits;
+  }
+  return mode;
 }
 
 export default class FTPFileSystem extends RemoteFileSystem {
@@ -79,7 +73,7 @@ export default class FTPFileSystem extends RemoteFileSystem {
     const mtime = this.toLocalTime(stat.date.getTime());
     return {
       type: FTPFileSystem.getFileType(stat.type),
-      mode: toNumMode(stat.rights), // Caution: windows will always get 0o666
+      mode: toNumMode(stat.rights),
       size: stat.size,
       mtime,
       atime: mtime,

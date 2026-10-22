@@ -1125,3 +1125,23 @@ test('FTP hidden-list rejection still runs conservative direct path probes',asyn
  ftp._send=(command,cb)=>command==='NOOP'?cb(null,'OK'):cb(Object.assign(new Error('Permission denied'),{code:550}));
  await assert.rejects(adapter.lstat('/denied.txt'),e=>e.code!=='ENOENT'&&/did not confirm/.test(e.message));
 });
+
+
+test('FTP directory permissions parse special bits and reject unverifiable modes', async()=>{
+ const adapter=new engine.FTPFileSystem(path.posix,{client:{}});
+ const stat=rights=>adapter.toFileStat({type:'d',rights,size:0,date:new Date()});
+ assert.equal(stat({other:'rx',group:'rs',user:'rwx'}).mode,0o755);
+ assert.equal(stat({user:'rwS',group:'rS',other:'rT'}).mode,0o644);
+ assert.equal(stat({user:'rws',group:'rx',other:'rt'}).mode,0o755);
+ assert.ok(Number.isNaN(stat(undefined).mode));
+ assert.ok(Number.isNaN(stat({user:'rwx',group:'?',other:'rx'}).mode));
+ adapter.chmod=async()=>{};
+ adapter.lstat=async()=>stat({user:'rwx',group:'rs',other:'rx'});
+ await adapter.establishDirectoryMode('/new-folder',0o755);
+ adapter.lstat=async()=>stat(undefined);
+ await assert.rejects(adapter.establishDirectoryMode('/new-folder',0o755),/requested 755, server reported unavailable/);
+ adapter.lstat=async()=>({...stat({user:'rwx',group:'rx',other:'rx'}),type:engine.FileType.SymbolicLink});
+ await assert.rejects(adapter.establishDirectoryMode('/new-folder',0o755),/entry type SymbolicLink/);
+ adapter.lstat=async()=>stat({user:'rwx',group:'rx',other:'rx'});
+ await assert.rejects(adapter.establishDirectoryMode('/new-folder',0o700),/requested 700, server reported 755/);
+});
