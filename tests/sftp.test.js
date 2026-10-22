@@ -1115,6 +1115,12 @@ test('FTP direct metadata distinguishes explicit absence, unsafe replies and typ
  replies.push(failure('No such file or directory'),failure('No such file or directory'),'Rename ready');await assert.rejects(remote.lstat('/dangling-link'),/confirms.*exists/);
  for(const kind of ['file','dir']){replies.push('type='+kind+';size=7;unix.mode=0755; /omitted-link','no own entry metadata','Rename ready');await assert.rejects(remote.lstat('/omitted-link'),/confirms.*exists/);}
  replies.push('type=file;size=7;unix.mode=0644; /contradictory',failure('No such file or directory'),failure('No such file or directory'));await assert.rejects(remote.lstat('/contradictory'),/contradictory/);
+ for(const metadata of [[failure('Unsupported',502),failure('File unavailable',450)],[failure('File unavailable',450),failure('File unavailable',450)]]){
+  replies.push(...metadata,failure('No such file or directory'));await assert.rejects(remote.lstat('/staging.devkit-new'),e=>e.code==='ENOENT');
+ }
+ replies.push(failure('Unsupported',502),failure('File unavailable',450),'Rename ready');await assert.rejects(remote.lstat('/existing'),/confirms.*exists/);
+ replies.push('type=file;size=7; /contradictory',failure('File unavailable',450),failure('No such file or directory'));await assert.rejects(remote.lstat('/contradictory'),/contradictory/);
+ replies.push(failure('No such file or directory',450),failure('No such file or directory',450),failure('No such file or directory',450));await assert.rejects(remote.lstat('/unavailable'),e=>e.code!=='ENOENT'&&/RNFR, code 450/.test(e.message));
  assert.equal(replies.length,0);assert.ok(calls.some(command=>command.startsWith('STAT ')));
 });
 

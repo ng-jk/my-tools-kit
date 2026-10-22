@@ -1,5 +1,11 @@
 # Release notes
 
+## 0.7.10 — 2026-10-22
+
+- Continue conservative FTP existence probes when MLST or STAT returns transient code 450, allowing new staging paths when RNFR explicitly confirms absence.
+- Never treat 450 as proof of absence. Existing unlisted paths, contradictory presence replies and an unavailable final RNFR probe still stop replacement.
+- Add shared-engine metadata regressions and FTP socket tests for successful new uploads and preservation of existing omitted files.
+
 ## 0.7.9 — 2026-10-22
 
 - Explicit regular-file uploads from VS Code or CLI bypass configured ignore rules, including default file exclusions. VS Code discloses the source and destination of excluded files before uploading; Cancel leaves the server unchanged. Save dirty editor content and back up remote originals as usual.

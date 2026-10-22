@@ -80,7 +80,8 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
         else if(['TYPE','OPTS','NOOP'].includes(cmd))reply('200 OK');
         else if(cmd==='CWD')reply('250 Changed');
         else if(cmd==='MLST'||cmd==='STAT'){
-          if(['unsupported','rnfr'].includes(probeMode)||(cmd==='MLST'&&probeMode==='stat'))reply('502 Unsupported');
+          if(probeMode==='metadata450')reply('450 File unavailable');
+          else if(['unsupported','rnfr'].includes(probeMode)||(cmd==='MLST'&&probeMode==='stat'))reply('502 Unsupported');
           else if(arg===probeDenied)reply('550 Permission denied');
           else if(arg===probeAmbiguous)reply('550 File unavailable');
           else if(!files.has(arg)&&!directories.has(arg))reply('550 '+arg+': No such file or directory');
@@ -123,6 +124,8 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
   fs.mkdirSync(path.join(root,'nested'));fs.writeFileSync(path.join(root,'nested','fresh.php'),'new nested content');await engine.operate(session,'upload','nested/fresh.php');assert.equal(files.get('/nested/fresh.php').toString(),'new nested content');
   probeMode='stat';fs.writeFileSync(path.join(root,'stat-new.txt'),'new via STAT');await engine.operate(session,'upload','stat-new.txt');assert.equal(files.get('/stat-new.txt').toString(),'new via STAT');probeMode='rnfr';fs.writeFileSync(path.join(root,'rnfr-new.txt'),'new via RNFR');await engine.operate(session,'upload','rnfr-new.txt');assert.equal(files.get('/rnfr-new.txt').toString(),'new via RNFR');probeMode='mlst';
   for(const [name,kind]of [['denied.txt','denied'],['ambiguous.txt','ambiguous'],['unsupported.txt','unsupported']]){fs.writeFileSync(path.join(root,name),'do not upload');if(kind==='denied')probeDenied='/'+name;if(kind==='ambiguous')probeAmbiguous='/'+name;if(kind==='unsupported')probeMode='unsupported';const before=payloadParents.length;await assert.rejects(engine.operate(session,'upload',name),/did not confirm|cannot establish destination type/);assert.equal(payloadParents.length,before);assert.equal(files.has('/'+name),false);probeDenied='';probeAmbiguous='';probeMode='mlst';}
+  probeMode='metadata450';fs.writeFileSync(path.join(root,'metadata450-new.txt'),'new despite transient metadata reply');await engine.operate(session,'upload','metadata450-new.txt');assert.equal(files.get('/metadata450-new.txt').toString(),'new despite transient metadata reply');
+  files.set('/metadata450-existing.txt',Buffer.from('preserve original'));omitted.add('/metadata450-existing.txt');fs.writeFileSync(path.join(root,'metadata450-existing.txt'),'must not overwrite');const before450=payloadParents.length;await assert.rejects(engine.operate(session,'upload','metadata450-existing.txt'),/confirms.*exists/);assert.equal(files.get('/metadata450-existing.txt').toString(),'preserve original');assert.equal(payloadParents.length,before450);omitted.clear();probeMode='mlst';
   files.set('/local.txt',Buffer.from('previous payload'));
   await engine.operate(session,'upload','local.txt');assert.equal(files.get('/local.txt').toString(),'ftp payload');
   const backup=engine.defaultBackupPath(session.service.workspace,session.service.baseDir,session.config,session.service.profile);

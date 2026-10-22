@@ -145,7 +145,12 @@ export default class FTPFileSystem extends RemoteFileSystem {
           if(command==='RNFR'){if(reportedPresent)throw new Error('FTP returned contradictory existence responses for '+path+'. Upload stopped without replacing the destination.');throw Object.assign(new Error('Remote path does not exist: '+path),{code:'ENOENT'});}
           diagnostics.push(command+' reported missing');continue;
         }
-        if(![500,501,502,504,550].includes(Number(error.code)))throw new Error('FTP could not inspect remote path '+path+' ('+command+', code '+(error.code||'unknown')+'). Check the connection and server permissions.');
+        // Some servers return transient 450 for metadata on a missing path.
+        // It is not proof of absence: continue to RNFR, whose explicit missing
+        // reply is still required. A 450 from RNFR must stop the transfer.
+        const metadataUnavailable = command !== 'RNFR' && Number(error.code) === 450;
+        if(command === 'RNFR' && Number(error.code) === 450)throw new Error('FTP could not inspect remote path '+path+' (RNFR, code 450). The server reports temporary unavailability; absence could not be confirmed. Upload stopped without replacing the destination. Check server availability and account access before retrying.');
+        if(!metadataUnavailable && ![500,501,502,504,550].includes(Number(error.code)))throw new Error('FTP could not inspect remote path '+path+' ('+command+', code '+(error.code||'unknown')+'). Check the connection and server permissions.');
         diagnostics.push(command+' code '+error.code);continue;
       }
       if(command==='RNFR')throw new Error('FTP confirms that '+path+' exists, but cannot identify its file type/permissions for backup. Check listing/read permissions. No file was renamed.');
