@@ -100,7 +100,7 @@ paths and JSON output here. Transfer, profile and sync logic is shared.`);
       } else if (action === 'ssh') {
         const argv = sshArguments(session.config);
         await runSsh(argv);
-      } else results.push({profile:session.profile,result:await operate(session,action,relative,flags)});
+      } else results.push({profile:session.profile,result:await operate(session,action,relative,{...flags,batch:!!flags['all-profiles']})});
     } finally { process.removeListener('SIGINT',cancel); session.service.dispose(); }
   }
   console.log(JSON.stringify({passed:process.exitCode!==130,results},null,2));

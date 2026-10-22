@@ -215,6 +215,11 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     assert.equal(fs.existsSync(path.join(dir,'remote','missing.txt')),false,'staged modification followed by deletion removes the remote file');
     repository.state.workingTreeChanges=[];
     errors.length=0;
+    fs.writeFileSync(path.join(root,'.env'),'first-profile-example');fs.writeFileSync(path.join(root,'nested','.env'),'other-profile-example');
+    await commands.get('devkit.sftp.upload.file.to.allProfiles')(URI.file(path.join(root,'.env')));
+    assert.equal(fs.existsSync(path.join(dir,'remote','.env')),false,'all-profile batches retain exclusions');
+    assert.equal(fs.existsSync(path.join(dir,'remote-other','.env')),false,'other profile source is also excluded');
+    fs.unlinkSync(path.join(root,'.env'));fs.unlinkSync(path.join(root,'nested','.env'));
     const acceptInformation=vscode.window.showInformationMessage;
     for(const variant of ['upload','upload.activeFile','upload.activeFolder','upload.file','upload.folder','forceUpload','upload.project']) {
       let confirmations=0;const outputBefore=outputShows,lineBefore=outputLines.length;
