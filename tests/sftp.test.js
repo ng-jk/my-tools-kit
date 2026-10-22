@@ -331,7 +331,7 @@ test('sync compares equal-length symlink targets even with identical timestamps'
 test('sync replacing a symlink with a file uses source permissions rather than link permissions',async()=>{
   let createdMode;
   const source={pathResolver:path.posix,lstat:async name=>{assert.ok(['/source','/local'].includes(name));return {type:engine.FileType.Directory};},list:async()=>[{name:'private',fspath:'/source/private',type:engine.FileType.File,mode:0o600,size:3,mtime:1}],get:async()=>require('node:stream').Readable.from('secret')};
-  const target={pathResolver:path.posix,lstat:async()=>({type:engine.FileType.Directory}),ensureDir:async()=>{},list:async()=>[{name:'private',fspath:'/destination/private',type:engine.FileType.SymbolicLink,mode:0o777,size:3,mtime:1}],lstat:async()=>({type:engine.FileType.SymbolicLink,mode:0o777}),open:async(_,flags,mode)=>{createdMode=mode;return 1;},put:async input=>{for await(const chunk of input){}},close:async()=>{},rename:async()=>{},unlink:async()=>{}};
+  const target={pathResolver:path.posix,lstat:async()=>({type:engine.FileType.Directory}),ensureDir:async()=>{},list:async()=>[{name:'private',fspath:'/destination/private',type:engine.FileType.SymbolicLink,mode:0o777,size:3,mtime:1}],lstat:async name=>({type:name==='/destination'?engine.FileType.Directory:engine.FileType.SymbolicLink,mode:0o777}),open:async(_,flags,mode)=>{createdMode=mode;return 1;},put:async input=>{for await(const chunk of input){}},close:async()=>{},rename:async()=>{},unlink:async()=>{}};
   const tasks=[];
   await engine.sync({srcFsPath:'/source',targetFsPath:'/destination',srcFs:source,targetFs:target,transferDirection:engine.TransferDirection.REMOTE_TO_LOCAL,transferOption:{}},task=>tasks.push(task));
   assert.equal(tasks.length,1);await tasks[0].run();assert.equal(createdMode,0o600);
@@ -1144,4 +1144,35 @@ test('FTP directory permissions parse special bits and reject unverifiable modes
  await assert.rejects(adapter.establishDirectoryMode('/new-folder',0o755),/entry type SymbolicLink/);
  adapter.lstat=async()=>stat({user:'rwx',group:'rx',other:'rx'});
  await assert.rejects(adapter.establishDirectoryMode('/new-folder',0o700),/requested 700, server reported 755/);
+});
+
+
+test('inferred 666 directory mode keeps owner search and avoids redundant chmod verification',async t=>{
+ const {local,remote,session}=fixture(t);fs.mkdirSync(path.join(local,'Voucher'));fs.writeFileSync(path.join(local,'Voucher','file.txt'),'payload');
+ const source=session.service.getLocalFileSystem(),target=await session.service.getRemoteFileSystem(session.config),stat=source.lstat,establish=target.establishDirectoryMode;
+ const complete=target.supportsCompleteDirectoryListing;target.supportsCompleteDirectoryListing=true;
+ const modes=[];source.lstat=async name=>{const value=await stat.call(source,name);return {...value,mode:value.type===engine.FileType.Directory?0o666:value.mode};};
+ target.establishDirectoryMode=async(name,mode)=>{modes.push([path.resolve(name),mode]);};
+ try{await engine.operate(session,'upload','Voucher/file.txt');assert.equal(fs.readFileSync(path.join(remote,'Voucher','file.txt'),'utf8'),'payload');assert.deepEqual(modes,[[path.join(remote,'Voucher'),0o766]]);}
+ finally{source.lstat=stat;target.establishDirectoryMode=establish;target.supportsCompleteDirectoryListing=complete;}
+});
+
+test('verified remote parent avoids redundant mkdir and lstat and still rejects links',async()=>{
+ const remote=new engine.SFTPFileSystem(path.posix,{client:{}});let stats=0;
+ remote.lstat=async()=>{stats++;return {type:engine.FileType.Directory,mode:0o755};};
+ remote.ensureDir=async()=>{throw new Error('redundant mkdir');};
+ const source={pathResolver:path.posix};
+ await engine.ensureTransferDirectory(source,remote,'/local','/remote');assert.equal(stats,1);
+ remote.lstat=async()=>({type:engine.FileType.SymbolicLink,mode:0o755});
+ await assert.rejects(engine.ensureTransferDirectory(source,remote,'/local','/remote'),/not a real directory/);
+});
+
+test('backup metadata inspections use bounded concurrency and fail before repository writes',async t=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-parallel-metadata-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ let active=0,peak=0,seen=0;const releases=[];
+ const remote={lstat:async()=>{active++;peak=Math.max(peak,active);seen++;await new Promise(resolve=>{releases.push(resolve);if(releases.length===4)releases.splice(0).forEach(done=>done());});active--;throw Object.assign(new Error('missing'),{code:2});}};
+ const targets=Array.from({length:8},(_,i)=>({relPath:'file'+i,remotePath:'/file'+i,remoteFs:remote}));
+ const repo=path.join(root,'backup');await new engine.MirrorService(repo).backupBatch(targets,{concurrency:4});assert.equal(peak,4);assert.equal(seen,8);assert.equal(fs.existsSync(repo),false);
+ remote.lstat=async()=>{throw Object.assign(new Error('Permission denied'),{code:3});};
+ await assert.rejects(new engine.MirrorService(repo).backupBatch(targets,{concurrency:4}),/unable to inspect backup source/);assert.equal(fs.existsSync(repo),false);
 });

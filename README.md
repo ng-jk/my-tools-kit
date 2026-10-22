@@ -342,3 +342,9 @@ The project release tests include the repository-selection host bridge and rende
 ### FTP folder creation and permission errors
 
 Uploading a file creates missing destination folders automatically. Shared hosting directories with setgid (`s`) or sticky (`t`) permission markers are supported. If directory verification fails, the error shows the requested mode, the server-reported mode (or `unavailable`) and entry type. Check the FTP account’s create-folder and `SITE CHMOD` permissions with your host. Permission verification remains required before uploading into newly created folders; existing directory permissions are preserved unless you configure `dirPerm`.
+
+### Transfer speed and directory search permission
+
+The toolkit reuses each verified remote parent check and avoids redundant chmod verification when no final permission change is needed. Backup metadata inspection and downloads use the configured `concurrency` (default 4 for SFTP); FTP remains serialized on its control connection. Originals are still backed up before replacement. These changes reduce protocol requests; actual speed depends on latency, file count and server throughput.
+
+When creating folders, inferred source permissions retain owner execute/search: `666` becomes `766`, without adding group/other access. Explicit `dirPerm` remains exact; use a searchable mode such as `755` or `700` rather than file-style `666`. Existing directories keep their permissions unless an explicit override is configured.

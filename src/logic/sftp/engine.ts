@@ -92,3 +92,6 @@ export {directoryIgnoresCase} from '../../data/sftp/local-path-identity';
 export {removeRemotePath,renameRemotePath} from './remote-operations';
 
 export {defaultBackupPath} from '../../data/sftp/backup-location';
+
+export {ensureTransferDirectory,DirectoryPermissionScope} from './directory-permissions';
+export {default as MirrorService} from './mirror';

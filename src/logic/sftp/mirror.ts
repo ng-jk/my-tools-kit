@@ -17,8 +17,14 @@ export default class MirrorService {
     if (!targets.length) return;
     // New destinations have no original: avoid creating/scanning a Git backup
     // repository or applying Windows ACLs for files that do not exist yet.
-    const originals:Array<{target:MirrorTarget;relative:string;stat:any}>=[];
-    for(const target of targets){
+    const inspected:Array<{target:MirrorTarget;relative:string;stat:any}|undefined>=new Array(targets.length);
+    const concurrency=Math.max(1,Math.min(option.concurrency||1,targets.length));
+    let next=0;
+    // Bound metadata requests as well as downloads. All inspections must settle
+    // successfully before preparing any backup or allowing any upload.
+    const inspections=await Promise.allSettled(Array.from({length:concurrency},async()=>{
+    while(next<targets.length){
+      const index=next++,target=targets[index];
       const relative=path.normalize(target.relPath);
       if(path.isAbsolute(relative)||relative==='..'||relative.startsWith('..'+path.sep)||relative.split(path.sep).some(part=>part.toLowerCase()==='.git'))throw new Error('Unsafe mirror path');
       let stat;
@@ -32,8 +38,12 @@ export default class MirrorService {
         }else throw new Error('Upload stopped: unable to inspect backup source '+target.relPath+'. '+error.message);
       }
       if(stat.type!==FileType.File&&stat.type!==FileType.SymbolicLink)throw new Error('Upload stopped: backup destination is not a regular file: '+target.relPath);
-      originals.push({target,relative,stat});
+      inspected[index]={target,relative,stat};
     }
+    }));
+    const inspectionFailure=inspections.find(result=>result.status==='rejected');
+    if(inspectionFailure&&inspectionFailure.status==='rejected')throw inspectionFailure.reason;
+    const originals=inspected.filter((item):item is {target:MirrorTarget;relative:string;stat:any}=>item!==undefined);
     if(!originals.length)return;
     await this.repository.initialize();
     for(const original of originals)await this.repository.prepareFile(original.relative);

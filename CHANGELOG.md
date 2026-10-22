@@ -1,5 +1,12 @@
 # Release notes
 
+## 0.7.8 — 2026-10-22
+
+- Keep owner execute/search in inferred directory modes: source mode 666 becomes 766, preventing finalization failures and inaccessible upload folders. Explicit dirPerm remains exact.
+- Reduce FTP/SFTP round trips by avoiding redundant creation checks for verified remote directories and redundant permission restoration when the final mode is already established.
+- Inspect backup sources with bounded configured concurrency; backups remain mandatory and all inspections must succeed before uploads.
+- Add headless regressions for 666 folders, remote request counts, symlink rejection, parallel metadata inspection and failure before backup writes.
+
 ## 0.7.7 — 2026-10-22
 
 - Fix FTP folder creation on shared hosting: parse setuid/setgid/sticky permission markers correctly instead of rejecting valid directory permissions.

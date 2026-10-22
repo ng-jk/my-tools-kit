@@ -1,4 +1,4 @@
-import {FileSystem, FileType} from '../../data/sftp/core/fs';
+import {FileSystem, FileType, RemoteFileSystem} from '../../data/sftp/core/fs';
 import {filesystemIdentity} from './core/staged-replacement';
 const locks = new WeakMap<object, Map<string, Promise<void>>>();
 export async function ensureTransferDirectory(source: FileSystem, target: FileSystem, from: string, to: string, override?: number, scope?: DirectoryPermissionScope, ancestor = false) {
@@ -19,7 +19,11 @@ async function ensure(source: FileSystem, target: FileSystem, from: string, to: 
   try { existing = await target.lstat(to); }
   catch (error) { if (error.code !== 'ENOENT' && error.code !== 2) throw error; }
   if (existing) {
-    await target.ensureDir(to);
+    if (existing.type !== FileType.Directory) throw new Error('Destination is not a real directory: ' + to);
+    // Remote lstat already verified this entry. Avoid MKDIR-fail-LSTAT on
+    // SFTP and a second LIST on FTP for every file sharing this parent.
+    // Local ensureDir still validates native path/ACL constraints.
+    if (!(target instanceof RemoteFileSystem)) await target.ensureDir(to);
     const requested = ancestor || override === undefined ? undefined : parseInt(String(override), 8);
     if (scope) await scope.establish(target, to, requested);
     else if (requested !== undefined) await target.establishDirectoryMode(to, requested);
@@ -29,8 +33,12 @@ async function ensure(source: FileSystem, target: FileSystem, from: string, to: 
   if (parent !== to) await ensureTransferDirectory(source, target, source.pathResolver.dirname(from), parent, override, scope, true);
   const stat = await source.lstat(from);
   if (stat.type !== FileType.Directory) throw new Error('Source parent is not a directory: ' + from);
-  const mode = override !== undefined ? parseInt(String(override), 8) : stat.mode;
-  if (typeof mode !== 'number') throw new Error('Source directory permissions are unavailable: ' + from);
+  let mode = override !== undefined ? parseInt(String(override), 8) : stat.mode;
+  if (!Number.isInteger(mode)) throw new Error('Source directory permissions are unavailable: ' + from);
+  // Windows/non-POSIX source metadata may report 666 for directories.
+  // Inferred modes must retain owner search without widening group/other access.
+  // Explicit dirPerm remains exact, including intentionally restrictive modes.
+  if (override === undefined) mode = (mode & 0o777) | 0o100;
   await target.ensureDir(to);
   try {
   if (scope) await scope.establish(target, to, mode);
@@ -68,7 +76,9 @@ export class DirectoryPermissionScope {
         const paths = leases.get(entry.fs)!;
         try {
           try { await entry.ready; } catch { return; }
-          await entry.fs.establishDirectoryMode(entry.path, entry.mode);
+          // No restore is needed when the verified population mode is already
+          // the final mode. Read-only modes still restore after all users finish.
+          if ((entry.mode | 0o300) !== entry.mode) await entry.fs.establishDirectoryMode(entry.path, entry.mode);
         } catch (error) { errors.push(error); }
         finally { paths.delete(entry.key); }
       });
