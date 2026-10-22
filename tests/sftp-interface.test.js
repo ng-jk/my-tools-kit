@@ -77,10 +77,13 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     vscode.window.showOpenDialog=safeDialog;vscode.window.activeTextEditor=safeEditor;
     fs.writeFileSync(path.join(root,'.env'),'synthetic-test-credential');
     await commands.get('devkit.sftp.upload.folder')(URI.file(root));assert.equal(fs.existsSync(path.join(dir,'remote','.env')),false,'batch folder upload keeps ignore filtering');
-    let excludedMessage;
-    vscode.window.showInformationMessage=async message=>{excludedMessage=message;};
+    let explicitConfirmations=0;
+    vscode.window.showInformationMessage=async(message,options)=>{explicitConfirmations++;assert.match(message,/explicitly selected excluded file/);assert.match(options.detail,/credential-file exclusions/);assert.ok(options.detail.includes('profile dev'));assert.ok(options.detail.includes(path.join(dir,'remote').replaceAll('\\','/')));return 'Cancel';};
     await commands.get('devkit.sftp.upload.file')(URI.file(path.join(root,'.env')));
-    assert.equal(excludedMessage,undefined);assert.equal(fs.readFileSync(path.join(dir,'remote','.env'),'utf8'),'synthetic-test-credential');
+    assert.equal(explicitConfirmations,1);assert.equal(fs.existsSync(path.join(dir,'remote','.env')),false,'cancel does not upload the excluded file');
+    vscode.window.showInformationMessage=async()=> 'Upload';
+    await commands.get('devkit.sftp.upload.file')(URI.file(path.join(root,'.env')));
+    assert.equal(fs.readFileSync(path.join(dir,'remote','.env'),'utf8'),'synthetic-test-credential');
     fs.writeFileSync(path.join(root,'.env'),'cancelled replacement');
     let forceConfirmations=0;
     vscode.window.showInformationMessage=async(message,options)=>{forceConfirmations++;assert.match(options.detail,/credential-file exclusions/);assert.ok(options.detail.includes(path.join(dir,'remote').replaceAll('\\','/')));return 'Cancel';};

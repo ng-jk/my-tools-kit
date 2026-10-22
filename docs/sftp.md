@@ -215,6 +215,6 @@ FTP upload compatibility: standard STOR replaces APPE/REST. The FTP account must
 
 ### Explicit uploads and ignore rules
 
-**Upload File**, **Upload Active File**, and **Upload** on a selected regular file upload it even if its file or parent folder matches an ignore rule. The same applies to `devkit sftp upload path/to/file` in the terminal. This includes default exclusions such as `.env`; selecting a file explicitly means you intend to upload it. Dirty editor content is saved first and existing server content is backed up before replacement.
+**Upload File**, **Upload Active File**, and **Upload** on a selected regular file upload it even if its file or parent folder matches an ignore rule. The same applies to `devkit sftp upload path/to/file` in the terminal. This includes default exclusions such as `.env`. In VS Code, an excluded file shows its source, profile, server and destination: choose **Upload** to proceed or **Cancel** to leave the server unchanged. In the terminal, naming the file explicitly requests that upload. Dirty editor content is saved first and existing server content is backed up before replacement.
 
 Folder/project uploads, synchronization, Git-change/commit batches and watcher/upload-on-save operations still apply ignore rules. Explicitly selecting a folder does not bypass exclusions inside it. Internal transfer staging/recovery artifacts remain excluded. **Force Upload** remains available for intentionally bypassing exclusions across a folder.
