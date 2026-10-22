@@ -1,5 +1,11 @@
 # Release notes
 
+## 0.7.9 — 2026-10-22
+
+- Explicit regular-file uploads from VS Code or CLI bypass configured ignore rules, including default file exclusions. Save dirty editor content and back up remote originals as usual.
+- Folder/project uploads, sync, Git change batches and watcher/save uploads continue to respect ignore rules. Internal staging/recovery files remain excluded.
+- Keep this policy in shared transfer logic; add headless regressions for ignored ancestors, explicit default exclusions, editor saves, verified original backups and batch filtering.
+
 ## 0.7.8 — 2026-10-22
 
 - Keep owner execute/search in inferred directory modes: source mode 666 becomes 766, preventing finalization failures and inaccessible upload folders. Explicit dirPerm remains exact.

@@ -15,6 +15,7 @@ import { getOpenTextDocuments } from '../../../../data/sftp/ports';
 import { checkedEntries } from '../../../../data/sftp/path-safety';
 import {ensureTransferDirectory, DirectoryPermissionScope} from '../../directory-permissions';
 import {transferPermissions} from '../../transfer-permissions';
+import {isTransferArtifact} from '../../core/staged-replacement';
 import {trackLocalChanges} from '../../../../data/sftp/local-events';
 
 interface InternalTransferOption extends FileHandleOption, TransferTaskTransferOption {}
@@ -462,8 +463,16 @@ export async function transfer(
   config: TransferHandleConfig<TransferOption>,
   collect: (t: TransferTask) => void
 ) {
+  // Only a directly requested regular-file upload bypasses configured ignores.
+  // Folder traversal, synchronization and automatic/batch callers retain them.
+  let explicitFile = false;
+  if (config.transferOption.explicitUpload && config.transferDirection === TransferDirection.LOCAL_TO_REMOTE) {
+    explicitFile = (await config.srcFs.lstat(config.srcFsPath)).type === FileType.File;
+    if (explicitFile) config = {...config, transferOption: {...config.transferOption, ignore: isTransferArtifact}};
+  }
   await saveDirtyDocuments(config);
   const stat = await config.srcFs.lstat(config.srcFsPath);
+  if (explicitFile && stat.type !== FileType.File) throw new Error('Explicit upload source must remain a regular file: ' + config.srcFsPath);
   const expected=config.transferOption.expectedSourceType;
   if (expected && stat.type !== (expected==='file' ? FileType.File : FileType.Directory)) {
     throw new Error(`Transfer source must remain a regular ${expected}: ${config.srcFsPath}`);

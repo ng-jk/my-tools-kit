@@ -1176,3 +1176,27 @@ test('backup metadata inspections use bounded concurrency and fail before reposi
  remote.lstat=async()=>{throw Object.assign(new Error('Permission denied'),{code:3});};
  await assert.rejects(new engine.MirrorService(repo).backupBatch(targets,{concurrency:4}),/unable to inspect backup source/);assert.equal(fs.existsSync(repo),false);
 });
+
+
+test('explicit ignored file upload saves dirty content and backs up the original; batches still skip it',async t=>{
+ const {local,remote,session}=fixture(t,{ignore:['private/**']});
+ fs.mkdirSync(path.join(local,'private'));fs.mkdirSync(path.join(remote,'private'));
+ const source=path.join(local,'private','selected.txt'),destination=path.join(remote,'private','selected.txt');
+ fs.writeFileSync(source,'old editor content');fs.writeFileSync(destination,'server original');
+ let saves=0;engine.configurePorts({documents:()=>[{fileName:source,isDirty:true,isClosed:false,save:async()=>{saves++;fs.writeFileSync(source,'saved explicit content');return true;}}]});
+ try{await engine.operate(session,'upload','private/selected.txt');assert.equal(saves,1);assert.equal(fs.readFileSync(destination,'utf8'),'saved explicit content');}
+ finally{engine.configurePorts({documents:()=>[]});}
+ const backup=engine.defaultBackupPath(session.service.workspace,session.service.baseDir,session.config,session.service.profile);
+ const git=require('isomorphic-git'),oid=await git.resolveRef({fs,dir:backup,ref:'HEAD'});assert.equal(Buffer.from((await git.readBlob({fs,dir:backup,oid,filepath:'private/selected.txt'})).blob).toString(),'server original');
+ fs.writeFileSync(source,'batch must skip');
+ for(const [action,name,flags]of [['upload','.',{}],['upload','private',{}],['upload','private/selected.txt',{batch:true}],['sync-up','.',{yes:true}]]){
+  await engine.operate(session,action,name,flags);assert.equal(fs.readFileSync(destination,'utf8'),'saved explicit content');
+ }
+});
+
+test('explicit upload bypasses default exclusions but not internal transfer artifacts',async t=>{
+ const {local,remote,session}=fixture(t,{ignore:undefined});
+ const adapter=await session.service.getRemoteFileSystem(session.config),complete=adapter.supportsCompleteDirectoryListing;adapter.supportsCompleteDirectoryListing=true;t.after(()=>{adapter.supportsCompleteDirectoryListing=complete;});
+ fs.writeFileSync(path.join(local,'.env'),'EXAMPLE_ONLY=fixture');await engine.operate(session,'upload','.env');assert.equal(fs.readFileSync(path.join(remote,'.env'),'utf8'),'EXAMPLE_ONLY=fixture');
+ const name='private.devkit-12345678-1234-1234-1234-123456789abc.backup';fs.writeFileSync(path.join(local,name),'internal');await engine.operate(session,'upload',name);assert.equal(fs.existsSync(path.join(remote,name)),false);
+});

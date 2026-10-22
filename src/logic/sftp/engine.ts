@@ -50,6 +50,7 @@ async function operate(session: any, action: string, relative = '.', flags: any 
   const options = { ...(action.startsWith('sync-') ? config.syncOption : {}),
     perserveTargetMode: !down && config.protocol === 'sftp' && !config.filePerm && !config.dirPerm,
     useTempFile: !down && config.useTempFile, openSsh: config.openSsh,
+    explicitUpload: action === 'upload' && !flags.batch,
     ignore: flags.force ? null : config.ignore, bothDiretions: action === 'sync-both', filePerm: config.filePerm, dirPerm: config.dirPerm };
   if (options.delete && !flags.yes) throw new Error('syncOption.delete requires --yes');
   return executeTransfer(service, config, local, remote, down, options, action.startsWith('sync-'));

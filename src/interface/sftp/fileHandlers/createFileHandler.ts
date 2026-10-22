@@ -105,7 +105,7 @@ export default function createFileHandler<T>(
       Object.assign(invokeOption, option);
     }
 
-    if (invokeOption.ignore && invokeOption.ignore(target.localFsPath, 'local')) {
+    if (!invokeOption.explicitUpload && invokeOption.ignore && invokeOption.ignore(target.localFsPath, 'local')) {
       return;
     }
 

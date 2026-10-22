@@ -69,7 +69,7 @@ paths and JSON output here. Transfer, profile and sync logic is shared.`);
         });
         if (plan.some(operation=>operation.kind==='delete') && !flags.yes) throw new Error('Git changes include remote deletions; inspect changes and pass --yes');
         const relative = file => path.relative(session.service.baseDir,file);
-        const run = (action,file,extra={}) => { if(cancelled) throw new Error('Transfer cancelled'); return operate(session,action,relative(file),{...flags,...extra}); };
+        const run = (action,file,extra={}) => { if(cancelled) throw new Error('Transfer cancelled'); return operate(session,action,relative(file),{...flags,batch:true,...extra}); };
         await executeGitTransfers(plan,{upload:file=>run('upload',file),delete:file=>run('delete',file),rename:(from,to)=>run('rename',from,{to:relative(to)})});
         results.push({profile:session.profile,operations:plan});
       } else if (action === 'watch') {
@@ -87,7 +87,7 @@ paths and JSON output here. Transfer, profile and sync logic is shared.`);
             queue = queue.then(async () => {
               if (stopped || cancelled || isOwnLocalChange(full)) return;
               if (localEntryExists(full)) {
-                if (watcherConfig.uploadOnSave || (matches && watcherConfig.autoUpload)) await operate(session,'upload',name,flags);
+                if (watcherConfig.uploadOnSave || (matches && watcherConfig.autoUpload)) await operate(session,'upload',name,{...flags,batch:true});
               } else if (matches && watcherConfig.autoDelete) await operate(session,'delete',name,flags);
             }).catch(error => { finish(error); });
           });
