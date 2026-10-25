@@ -38,6 +38,7 @@ export default class SFTPFileSystem extends RemoteFileSystem {
   toFileStat(stat: any): FileStats {
     return {
       type: FileSystem.getFileTypecharacter(stat),
+      uid: Number.isSafeInteger(stat.uid) && stat.uid>=0 ? stat.uid : undefined,
       mode: toSimpleFileMode(stat.mode), // tslint:disable-line:no-bitwise
       size: stat.size,
       mtime: this.toLocalTime(stat.mtime * 1000),

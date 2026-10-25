@@ -80,13 +80,13 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
         else if(['TYPE','OPTS','NOOP'].includes(cmd))reply('200 OK');
         else if(cmd==='CWD')reply('250 Changed');
         else if(cmd==='MLST'||cmd==='STAT'){
-          if(arg==='/')reply('250-Root\r\n type=dir;UNIX.mode=0755; /\r\n250 End');
+          if(arg==='/')reply('250-Root\r\n type=dir;UNIX.mode=0755;UNIX.uid=0; /\r\n250 End');
           else if(probeMode==='metadata450')reply('450 File unavailable');
           else if(['unsupported','rnfr'].includes(probeMode)||(cmd==='MLST'&&probeMode==='stat'))reply('502 Unsupported');
           else if(arg===probeDenied)reply('550 Permission denied');
           else if(arg===probeAmbiguous)reply('550 File unavailable');
           else if(!files.has(arg)&&!directories.has(arg))reply('550 '+arg+': No such file or directory');
-          else if(cmd==='MLST')reply('250-Listing\r\n type='+(directories.has(arg)?'dir':linkTargets.has(arg)?(mlstReferentTypes.get(arg)||'file'):'file')+';size='+(files.get(arg)?.length||0)+';unix.mode='+(modes.get(arg)||0o644).toString(8)+'; '+arg+'\r\n250 End');
+          else if(cmd==='MLST')reply('250-Listing\r\n type='+(directories.has(arg)?'dir':linkTargets.has(arg)?(mlstReferentTypes.get(arg)||'file'):'file')+';size='+(files.get(arg)?.length||0)+';unix.mode='+(modes.get(arg)||0o644).toString(8)+';UNIX.uid=0; '+arg+'\r\n250 End');
           else reply('213-Status\r\n '+(directories.has(arg)?'d':linkTargets.has(arg)?'l':'-')+rights(modes.get(arg)||0o644)+' 1 user group '+(files.get(arg)?.length||0)+' Jan 01 2026 '+arg+(linkTargets.has(arg)?' -> '+linkTargets.get(arg):'')+'\r\n213 End');
         }
         else if(cmd==='PASV'){

@@ -73,6 +73,7 @@ export default class FTPFileSystem extends RemoteFileSystem {
     const mtime = this.toLocalTime(stat.date.getTime());
     return {
       type: FTPFileSystem.getFileType(stat.type),
+      uid: /^\d+$/.test(String(stat.owner)) && Number.isSafeInteger(Number(stat.owner)) ? Number(stat.owner) : undefined,
       mode: toNumMode(stat.rights),
       size: stat.size,
       mtime,
@@ -128,31 +129,43 @@ export default class FTPFileSystem extends RemoteFileSystem {
     return fileStat;
   }
 
-  protected async parentIsolationStat(path:string):Promise<FileStats>{
-    const normalized=this.pathResolver.normalize(path);
-    if(normalized==='.'){
-      const cwd=await this.queue.add(()=>new Promise<string>((resolve,reject)=>this.ftp.pwd((error:any,value:string)=>error?reject(error):resolve(value))));
-      if(this.pathResolver.normalize(cwd)==='.')throw new Error('FTP cannot resolve current-directory permissions for safe uploads. Use an absolute non-shared remote path or SFTP.');
-      return this.parentIsolationStat(cwd);
-    }
-    if(normalized!=='/')return this.lstat(path);
-    // lstat('/') is a legacy synthetic root. It is not permission evidence.
-    const mode=await this.queue.add(async()=>{
+  private async isolationFacts(path:string,requireMode:boolean):Promise<{uid:number;mode?:number}>{
+    return this.queue.add(async()=>{
       const send=(command:string)=>new Promise<string>((resolve,reject)=>this.ftp._send(command,(error:any,reply:string)=>error?reject(error):resolve(reply||'')));
       const parse=(reply:string)=>{
         for(const line of reply.split(/\r?\n/)){
           const entry=/^\s*((?:[A-Za-z0-9._-]+=[^;\r\n]*;)+) (.+)$/.exec(line);
-          if(!entry||entry[2]!=='/')continue;
-          const facts=entry[1].split(';').filter(Boolean),types=facts.filter(f=>/^type=/i.test(f)),modes=facts.filter(f=>/^unix\.mode=/i.test(f));
-          if(types.length===1&&/^type=dir$/i.test(types[0])&&modes.length===1&&/^unix\.mode=[0-7]{3,4}$/i.test(modes[0]))return parseInt(modes[0].split('=')[1],8)&0o777;
+          if(!entry||entry[2]!==path)continue;
+          const facts=entry[1].split(';').filter(Boolean),types=facts.filter(f=>/^type=/i.test(f)),modes=facts.filter(f=>/^unix\.mode=/i.test(f)),uids=facts.filter(f=>/^unix\.uid=/i.test(f));
+          if(types.length!==1||!/^type=dir$/i.test(types[0])||uids.length!==1||!/^unix\.uid=\d+$/i.test(uids[0]))continue;
+          const uid=Number(uids[0].split('=')[1]);if(!Number.isSafeInteger(uid)||uid<0)continue;
+          const validMode=modes.length===1&&/^unix\.mode=[0-7]{3,4}$/i.test(modes[0]);
+          if(requireMode&&!validMode)continue;
+          return {uid,mode:validMode?parseInt(modes[0].split('=')[1],8)&0o777:undefined};
         }
       };
-      let result=parse(await send('MLST /'));
-      if(result===undefined){await send('OPTS MLST type;UNIX.mode;');result=parse(await send('MLST /'));}
-      if(result===undefined)throw new Error('Root mode unavailable');
+      let result=parse(await send('MLST '+path));
+      if(result===undefined){await send('OPTS MLST type;UNIX.mode;UNIX.uid;');result=parse(await send('MLST '+path));}
+      if(result===undefined)throw new Error('Required ownership/mode facts unavailable');
       return result;
-    }).catch(()=>{throw new Error('FTP root permissions cannot be verified for safe uploads. Enable MLST UNIX.mode metadata or use SFTP. No payload was uploaded.');});
-    return {type:FileType.Directory,mode,size:0,mtime:0,atime:0};
+    }).catch(()=>{throw new Error('FTP permissions/ownership cannot be verified for safe uploads: '+path+'. Enable MLST UNIX.mode and UNIX.uid metadata or use SFTP. No payload was uploaded.');});
+  }
+
+  protected async parentIsolationStat(path:string):Promise<FileStats>{
+    const normalized=this.pathResolver.normalize(path);
+    if(normalized==='.'){
+      const cwd=await this.queue.add(()=>new Promise<string>((resolve,reject)=>this.ftp.pwd((error:any,value:string)=>error?reject(error):resolve(value))));
+      if(this.pathResolver.normalize(cwd)==='.')throw new Error('FTP cannot resolve current-directory ownership for safe uploads.');
+      return this.parentIsolationStat(cwd);
+    }
+    if(normalized==='/'){
+      const facts=await this.isolationFacts('/',true);
+      return {type:FileType.Directory,uid:facts.uid,mode:facts.mode!,size:0,mtime:0,atime:0};
+    }
+    const stat=await this.lstat(path);
+    if(stat.type!==FileType.Directory||Number.isSafeInteger(stat.uid))return stat;
+    const facts=await this.isolationFacts(path,false);
+    return {...stat,uid:facts.uid};
   }
 
   async lstatForBackup(path:string):Promise<FileStats> {return this.lstat(path);}

@@ -23,7 +23,7 @@ export const createRemoteFile = createFileHandler<FileHandleOption & { skipDir?:
         if (option.skipDir) {
           return;
         }
-        promise = createServerDirectory(remoteFs,remoteFsPath,this.config.dirPerm);
+        promise = createServerDirectory(remoteFs,remoteFsPath,this.config.dirPerm,true);
         // promise = fileOperations.removeDir(remoteFsPath, remoteFs, {});
         break;
       case FileType.File:
@@ -54,7 +54,7 @@ export const createRemoteFolder = createFileHandler<FileHandleOption & { skipDir
     await assertRemoteAncestors(remoteFs,remoteFsPath,this.config.remotePath,false,true);
 
     let promise;
-    promise = createServerDirectory(remoteFs,remoteFsPath,this.config.dirPerm);
+    promise = createServerDirectory(remoteFs,remoteFsPath,this.config.dirPerm,true);
 
     /*
     const stat = await remoteFs.lstat(remoteFsPath);
@@ -63,7 +63,7 @@ export const createRemoteFolder = createFileHandler<FileHandleOption & { skipDir
         if (option.skipDir) {
           return;
         }
-        promise = createServerDirectory(remoteFs,remoteFsPath,this.config.dirPerm);
+        promise = createServerDirectory(remoteFs,remoteFsPath,this.config.dirPerm,true);
         // promise = fileOperations.removeDir(remoteFsPath, remoteFs, {});
         break;
       case FileType.File:

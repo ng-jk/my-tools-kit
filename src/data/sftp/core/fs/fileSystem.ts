@@ -26,6 +26,7 @@ export interface FileOption {
 }
 
 export interface FileStats {
+  uid?: number;
   type: FileType;
   mode: number;
   size: number;

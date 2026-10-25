@@ -476,6 +476,13 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     vscode.window.showInputBox=async options=>{if(retryInput++===0)return 'created-remotely.txt';assert.equal(options.value,'created-remotely.txt');return 'retried-name.txt';};
     await commands.get('devkit.sftp.create.file')(betaRoot);vscode.window.showErrorMessage=errorDisplay;
     assert.equal(fs.existsSync(path.join(dir,'remote-other','retried-name.txt')),true);
+    let folderRetries=0;
+    vscode.window.showErrorMessage=async message=>{assert.match(message,/Folder already exists/);return 'Retry';};
+    vscode.window.showInputBox=async options=>{if(folderRetries++===0)return 'created-folder';assert.equal(options.value,'created-folder');return 'folder-retried';};
+    await commands.get('devkit.sftp.create.folder')(betaRoot);assert.equal(fs.statSync(path.join(dir,'remote-other','created-folder')).isDirectory(),true);assert.equal(fs.statSync(path.join(dir,'remote-other','folder-retried')).isDirectory(),true);
+    const beforeFolderCancel=fs.readdirSync(path.join(dir,'remote-other')).sort();
+    vscode.window.showErrorMessage=async message=>{assert.match(message,/Folder already exists/);return 'Cancel';};vscode.window.showInputBox=async()=> 'created-folder';
+    await commands.get('devkit.sftp.create.folder')(betaRoot);assert.deepEqual(fs.readdirSync(path.join(dir,'remote-other')).sort(),beforeFolderCancel);vscode.window.showErrorMessage=errorDisplay;
     const creationFs=await betaRoot.explorerContext.fileService.getRemoteFileSystem(betaRoot.explorerContext.config),oldFchmod=creationFs.fchmod,oldFstat=creationFs.fstat;
     let recoveryInput=0;creationFs.fchmod=async()=>{};creationFs.fstat=async fd=>({...await oldFstat.call(creationFs,fd),mode:0o644});
     vscode.window.showErrorMessage=async(message,...actions)=>{assert.match(message,/entry may remain/);assert.match(message,/remove it only if safe before retrying/);assert.deepEqual(actions,['Choose another name','Close']);assert.ok((await provider.getChildren(betaRoot)).some(item=>path.basename(item.resource.fsPath)==='permission-failed.txt'));return 'Choose another name';};
