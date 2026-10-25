@@ -2,6 +2,8 @@
 
 ## 0.7.12 — 2026-10-26
 
+- Keep ancestor trust decisions in shared logic and retain protocol metadata in data adapters. Local downloads temporarily grant owner read/write/search for secure descriptor access, then restore final modes; verified under nonprivileged Linux.
+
 - Supersede 0.7.11: remove upload/sync directory pathname chmod as well as New Folder chmod. Remote directory modes are supplied during creation and verified without changing replaced entries.
 - Reject new remote read-only transfer modes and shared-writable/unverifiable ancestors; local read-only download restoration remains supported.
 - Keep local POSIX directory mode changes on no-follow descriptors. Verify remote ancestor ownership as well as non-shared permissions, root-to-leaf.

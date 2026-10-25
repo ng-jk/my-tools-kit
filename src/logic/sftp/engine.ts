@@ -99,3 +99,5 @@ export {ensureTransferDirectory,DirectoryPermissionScope} from './directory-perm
 export {default as MirrorService} from './mirror';
 
 export {serverCreationMode,createServerDirectory,createServerFile} from './server-permissions';
+
+export {assertIsolatedParents} from './parent-isolation';

@@ -1,3 +1,4 @@
+import {assertIsolatedParents} from './parent-isolation';
 import {filesystemIdentity} from './core/staged-replacement';
 import {transfer, sync} from './fileHandlers/transfer/transfer';
 import * as path from 'path';
@@ -42,7 +43,7 @@ export async function executeTransfer(service: any, config: any, local: string, 
     checkCancelled();
     if(!down)releaseUpload=await acquireUploadLock(config,remote,checkCancelled);
     const remoteFs = guard(await service.getRemoteFileSystem(config));
-    if(!down && typeof remoteFs.assertIsolatedParents==='function')await remoteFs.assertIsolatedParents(remote,true);
+    if(!down && typeof remoteFs.parentIsolationStat==='function')await assertIsolatedParents(remoteFs,remote,true);
     finishMetadata=(remoteFs as any).beginMetadataReadScope?.();
     checkCancelled();
     await assertRemoteAncestors(remoteFs, remote, config.remotePath, true, true);

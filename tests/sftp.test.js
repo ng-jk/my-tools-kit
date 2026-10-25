@@ -1297,7 +1297,7 @@ test('upload/sync directory replacement stops before chmod or cleanup',async()=>
 
 test('shared writable remote ancestors are rejected before private staging',async()=>{
  const remote=new engine.SFTPFileSystem(path.posix,{client:{}});remote.lstat=async()=>({type:engine.FileType.Directory,uid:0,mode:0o777});
- await assert.rejects(remote.assertIsolatedParents('/shared/file'),/shared-writable/);
+ await assert.rejects(engine.assertIsolatedParents(remote,'/shared/file'),/shared-writable/);
 });
 
 
@@ -1311,9 +1311,9 @@ test('nested remote creation verifies existing ancestor isolation even when imme
 test('remote isolation checks the namespace root instead of trusting synthetic permissions',async()=>{
  const replies=['type=dir;UNIX.mode=0777;UNIX.uid=0; /','type=dir;UNIX.mode=0755;UNIX.uid=0; /'];
  const ftp=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({_send:(_command,cb)=>cb(null,replies.shift())})}});
- await assert.rejects(ftp.assertIsolatedParents('/file'),/shared-writable/);await ftp.assertIsolatedParents('/file');
+ await assert.rejects(engine.assertIsolatedParents(ftp,'/file'),/shared-writable/);await engine.assertIsolatedParents(ftp,'/file');
  const absent=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({_send:(_command,cb)=>cb(Object.assign(new Error('Unsupported'),{code:502}))})}});
- await assert.rejects(absent.assertIsolatedParents('/file'),/permissions.ownership cannot be verified/);
+ await assert.rejects(engine.assertIsolatedParents(absent,'/file'),/permissions.ownership cannot be verified/);
 });
 
 
@@ -1327,25 +1327,49 @@ test('an explicit existing remote directory mode mismatch fails without chmod',a
 test('FTP root isolation requests missing facts and rejects ambiguous permission facts',async()=>{
  const calls=[],replies=['type=dir; /','OK','type=dir;UNIX.mode=0755;UNIX.uid=0; /'];
  const remote=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({_send:(command,cb)=>{calls.push(command);cb(null,replies.shift());}})}});
- await remote.assertIsolatedParents('/file');assert.deepEqual(calls,['MLST /','OPTS MLST type;UNIX.mode;UNIX.uid;','MLST /']);
+ await engine.assertIsolatedParents(remote,'/file');assert.deepEqual(calls,['MLST /','OPTS MLST type;UNIX.mode;UNIX.uid;','MLST /']);
  replies.push('type=dir;UNIX.mode=0755;unix.mode=0777;UNIX.uid=0; /','OK','type=dir;UNIX.mode=0755;unix.mode=0777;UNIX.uid=0; /');
- await assert.rejects(remote.assertIsolatedParents('/file'),/permissions.ownership cannot be verified/);
+ await assert.rejects(engine.assertIsolatedParents(remote,'/file'),/permissions.ownership cannot be verified/);
 });
 
 
 test('remote ancestry rejects a non-shared directory owned by another account',async()=>{
  const remote=new engine.SFTPFileSystem(path.posix,{client:{}});
  remote.lstat=async name=>({type:engine.FileType.Directory,uid:name==='/other'?1234:0,mode:0o755});
- await assert.rejects(remote.assertIsolatedParents('/other/file'),/untrusted owner/);
+ await assert.rejects(engine.assertIsolatedParents(remote,'/other/file'),/untrusted owner/);
 });
 
 
 test('remote ownership accepts the authenticated home and administrator but rejects inconsistent jail owners',async()=>{
  const remote=new engine.SFTPFileSystem(path.posix,{client:{}});
  remote.lstat=async name=>({type:engine.FileType.Directory,uid:name==='.'||name==='/home/account'?1000:0,mode:0o755});
- await remote.assertIsolatedParents('/home/account/file');
+ await engine.assertIsolatedParents(remote,'/home/account/file');
  remote.lstat=async name=>({type:engine.FileType.Directory,uid:name==='.'?1001:1000,mode:0o755});
- await assert.rejects(remote.assertIsolatedParents('/file'),/inconsistent ownership/);
+ await assert.rejects(engine.assertIsolatedParents(remote,'/file'),/inconsistent ownership/);
  remote.lstat=async()=>({type:engine.FileType.Directory,mode:0o755});
- await assert.rejects(remote.assertIsolatedParents('/file'),/ownership is unverifiable/);
+ await assert.rejects(engine.assertIsolatedParents(remote,'/file'),/ownership is unverifiable/);
+});
+
+
+test('parent isolation policy uses metadata ports independently of protocol adapters',async()=>{
+ const calls=[],metadata={pathResolver:path.posix,parentIsolationStat:async name=>{calls.push(name);return {type:engine.FileType.Directory,mode:0o755,uid:name==='/'?0:1000};}};
+ await engine.assertIsolatedParents(metadata,'/home/account/file');assert.deepEqual(calls,['/','.','/home','/home/account']);
+ metadata.parentIsolationStat=async name=>({type:engine.FileType.Directory,mode:name==='/shared'?0o777:0o755,uid:0});
+ await assert.rejects(engine.assertIsolatedParents(metadata,'/shared/file'),/shared-writable/);
+});
+
+test('POSIX nonprivileged local downloads populate unreadable directories and restore exact modes', {skip:process.platform==='win32'},async t=>{
+ assert.notEqual(process.getuid(),0,'Run this regression as a nonprivileged POSIX account');
+ const base=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-posix-population-'));
+ t.after(()=>{for(const entry of fs.readdirSync(base)){fs.chmodSync(path.join(base,entry),0o700);}fs.rmSync(base,{recursive:true,force:true});});
+ const target=new engine.LocalFileSystem(path,base);
+ for(const mode of [0o111,0o555,0o700,0o755])for(const failed of [false,true]){
+  const destination=path.join(base,mode.toString(8)+'-'+failed),scope=new engine.DirectoryPermissionScope();
+  const source={pathResolver:path,lstat:async()=>({type:engine.FileType.Directory,mode})};
+  await engine.ensureTransferDirectory(source,target,'/known',destination,undefined,scope);
+  assert.equal(fs.statSync(destination).mode&0o777,mode|0o700);
+  if(!failed)fs.writeFileSync(path.join(destination,'known.txt'),'downloaded');
+  await scope.finish();assert.equal(fs.statSync(destination).mode&0o777,mode);
+  if(!failed)assert.equal(fs.readFileSync(path.join(destination,'known.txt'),'utf8'),'downloaded');
+ }
 });

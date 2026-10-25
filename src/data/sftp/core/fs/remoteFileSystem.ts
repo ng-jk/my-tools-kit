@@ -48,35 +48,7 @@ export default abstract class RemoteFileSystem extends FileSystem {
     await this.verifyDirectoryMode(path,mode);
   }
 
-  async assertIsolatedParents(path:string,allowMissing=false):Promise<void>{
-    const paths:string[]=[];
-    let current=this.pathResolver.dirname(path);
-    while(true){paths.push(current);const parent=this.pathResolver.dirname(current);if(current==='/'||parent===current)break;current=parent;}
-    paths.reverse();
-    const root=await this.parentIsolationStat(paths[0]);
-    const safeMode=(stat:any,name:string)=>{
-      if(stat.type!==FileType.Directory||!Number.isInteger(stat.mode)||(stat.mode&0o022)!==0)throw new Error('Remote ancestor is shared-writable or unverifiable: '+name+'. Upload stopped before mutations; use a non-shared server directory.');
-      if(!Number.isSafeInteger(stat.uid)||stat.uid<0)throw new Error('Remote ancestor ownership is unverifiable: '+name+'. Upload stopped before mutations.');
-    };
-    safeMode(root,paths[0]);
-    const owners=new Set<number>([root.uid!,0]);
-    // The authenticated server's initial home is a trust anchor alongside its
-    // namespace root. Require consistent ownership for virtual non-root jails.
-    let home:any;
-    try{home=await this.parentIsolationStat('.');}catch{}
-    if(home?.type===FileType.Directory && Number.isSafeInteger(home.uid) && home.uid>=0){
-      if(root.uid!==0 && root.uid!==home.uid)throw new Error('Remote namespace root and authenticated home have inconsistent ownership. Upload stopped before mutations.');
-      owners.add(home.uid);
-    }
-    for(let i=1;i<paths.length;i++){
-      let stat;
-      try{stat=await this.parentIsolationStat(paths[i]);}catch(error){if(allowMissing&&(error.code==='ENOENT'||error.code===2))continue;throw error;}
-      safeMode(stat,paths[i]);
-      if(!owners.has(stat.uid!))throw new Error('Remote ancestor has an untrusted owner: '+paths[i]+'. Upload stopped before mutations; use a directory owned by the transfer account or server administrator.');
-    }
-  }
-
-  protected parentIsolationStat(path:string):Promise<any>{return this.lstat(path);}
+  parentIsolationStat(path:string):Promise<any>{return this.lstat(path);}
 
   setRemoteTimeOffsetInHours(offset: number) {
     this._remoteTimeOffsetInSeconds = offset * SECONDS_PER_HOUR;

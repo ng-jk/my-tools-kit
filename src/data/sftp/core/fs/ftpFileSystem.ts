@@ -151,7 +151,7 @@ export default class FTPFileSystem extends RemoteFileSystem {
     }).catch(()=>{throw new Error('FTP permissions/ownership cannot be verified for safe uploads: '+path+'. Enable MLST UNIX.mode and UNIX.uid metadata or use SFTP. No payload was uploaded.');});
   }
 
-  protected async parentIsolationStat(path:string):Promise<FileStats>{
+  async parentIsolationStat(path:string):Promise<FileStats>{
     const normalized=this.pathResolver.normalize(path);
     if(normalized==='.'){
       const cwd=await this.queue.add(()=>new Promise<string>((resolve,reject)=>this.ftp.pwd((error:any,value:string)=>error?reject(error):resolve(value))));

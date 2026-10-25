@@ -1,3 +1,4 @@
+import {assertIsolatedParents} from './parent-isolation';
 import {serverCreationMode} from './server-permissions';
 import {FileSystem, FileType, RemoteFileSystem} from '../../data/sftp/core/fs';
 import {filesystemIdentity} from './core/staged-replacement';
@@ -17,7 +18,7 @@ async function withDirectoryLock(target: FileSystem, to: string, operation: () =
 }
 async function ensure(source: FileSystem, target: FileSystem, from: string, to: string, override?: number, scope?: DirectoryPermissionScope, ancestor = false, newMode?: number) {
   const verificationOnly = newMode !== undefined || target instanceof RemoteFileSystem;
-  if(target instanceof RemoteFileSystem)await target.assertIsolatedParents(to,true);
+  if(target instanceof RemoteFileSystem)await assertIsolatedParents(target,to,true);
   let existing;
   try { existing = await target.lstat(to); }
   catch (error) { if (error.code !== 'ENOENT' && error.code !== 2) throw error; }
@@ -43,7 +44,7 @@ async function ensure(source: FileSystem, target: FileSystem, from: string, to: 
   // Explicit dirPerm remains exact, including intentionally restrictive modes.
   if (override === undefined) mode = (mode & 0o777) | 0o100;
   if(verificationOnly && (mode&0o300)!==0o300)throw new Error('New server directory mode must permit owner write/search during upload; use 755 or 700. No read-only finalization through remote pathnames is supported.');
-  await target.mkdir(to, verificationOnly ? mode : mode|0o300);
+  await target.mkdir(to, verificationOnly ? mode : mode|0o700);
   try {
     if (scope) await scope.establish(target, to, mode, verificationOnly);
     else await (verificationOnly ? target.verifyDirectoryMode(to,mode) : target.establishDirectoryMode(to, mode));
@@ -70,9 +71,9 @@ export class DirectoryPermissionScope {
       if (mode === undefined) return;
       entry = {fs: identity, path, key, mode, count: 0, ready: Promise.resolve()};
       paths.set(key, entry);
-      // Grant only the owner's temporary write/search bits. Other users never
+      // Grant only the owner's temporary read/write/search bits. Other users never
       // receive broader access than the requested final mode.
-      entry.ready = fs.establishDirectoryMode(path, mode | 0o300);
+      entry.ready = fs.establishDirectoryMode(path, mode | 0o700);
     } else if (mode !== undefined && entry.mode !== mode) {
       throw new Error('Conflicting directory permissions in concurrent transfers: ' + path);
     }
@@ -89,7 +90,7 @@ export class DirectoryPermissionScope {
           try { await entry.ready; } catch { return; }
           // No restore is needed when the verified population mode is already
           // the final mode. Read-only modes still restore after all users finish.
-          if ((entry.mode | 0o300) !== entry.mode) await entry.fs.establishDirectoryMode(entry.path, entry.mode);
+          if ((entry.mode | 0o700) !== entry.mode) await entry.fs.establishDirectoryMode(entry.path, entry.mode);
         } catch (error) { errors.push(error); }
         finally { paths.delete(entry.key); }
       });
