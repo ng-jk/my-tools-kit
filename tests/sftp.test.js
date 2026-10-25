@@ -1210,14 +1210,15 @@ test('explicit upload bypasses default exclusions but not internal transfer arti
 
 test('server creation defaults to 755 with per-context overrides; existing destinations are preserved',async t=>{
  for(const overrides of [{},{filePerm:640,dirPerm:750},{profiles:{private:{filePerm:600,dirPerm:700}},defaultProfile:"private"}]){
-  const {local,remote,session}=fixture(t,overrides);const target=await session.service.getRemoteFileSystem(session.config),open=target.open,establish=target.establishDirectoryMode,complete=target.supportsCompleteDirectoryListing;
+  const {local,remote,session}=fixture(t,overrides);const target=await session.service.getRemoteFileSystem(session.config),open=target.open,mkdir=target.mkdir,establish=target.establishDirectoryMode,complete=target.supportsCompleteDirectoryListing;
   target.supportsCompleteDirectoryListing=true;const files=[],dirs=[];
+  target.mkdir=async function(name,mode){if(mode!==undefined)dirs.push([path.resolve(name),mode]);return mkdir.call(this,name,mode);};
   target.open=async function(name,flags,mode){if(flags.includes('w'))files.push(mode);return open.call(this,name,flags,mode);};target.establishDirectoryMode=async(name,mode)=>{dirs.push([path.resolve(name),mode]);};
   try{
    fs.mkdirSync(path.join(local,'created'));fs.writeFileSync(path.join(local,'created','new.txt'),'new');await engine.operate(session,'upload','created/new.txt');assert.equal(files.at(-1),engine.serverCreationMode(session.config.filePerm,'filePerm'));assert.equal(dirs.find(([name])=>name===path.join(remote,'created'))[1],engine.serverCreationMode(session.config.dirPerm,'dirPerm'));
    await engine.operate(session,'mkdir','manual');assert.equal(dirs.at(-1)[1],engine.serverCreationMode(session.config.dirPerm,'dirPerm'));
    await engine.operate(session,'create','manual.txt');assert.equal(files.at(-1),engine.serverCreationMode(session.config.filePerm,'filePerm'));
-  }finally{target.open=open;target.establishDirectoryMode=establish;target.supportsCompleteDirectoryListing=complete;}
+  }finally{target.open=open;target.mkdir=mkdir;target.establishDirectoryMode=establish;target.supportsCompleteDirectoryListing=complete;}
  }
  for(const mode of [888,4755,'invalid'])assert.throws(()=>engine.serverCreationMode(mode,'dirPerm'),/Invalid dirPerm/);
  assert.equal(engine.serverCreationMode('0700','dirPerm'),0o700);
@@ -1249,8 +1250,24 @@ test('exclusive SFTP creation never falls back to pathname chmod after replaceme
 });
 
 
-test('server mkdir populates new readonly parents then restores modes without touching existing ancestors',async()=>{
- const dirs=new Set(['/base']),modes=[],target={pathResolver:path.posix,lstat:async name=>{if(dirs.has(name))return {type:engine.FileType.Directory};throw Object.assign(new Error('missing'),{code:2});},mkdir:async name=>{dirs.add(name);},establishDirectoryMode:async(name,mode)=>{modes.push([name,mode]);},rmdir:async()=>{}};
- await engine.createServerDirectory(target,'/base/new/child',555);
- assert.deepEqual(modes,[['/base/new',0o755],['/base/new/child',0o755],['/base/new/child',0o555],['/base/new',0o555]]);
+test('server mkdir rejects nested readonly parents before creating entries or changing existing ancestors',async()=>{
+ let writes=0;const target={pathResolver:path.posix,lstat:async name=>{if(name==='/base')return {type:engine.FileType.Directory};throw Object.assign(new Error('missing'),{code:2});},mkdir:async()=>{writes++;}};
+ await assert.rejects(engine.createServerDirectory(target,'/base/new/child',555),/No folders were created/);assert.equal(writes,0);
+});
+
+
+test('new SFTP directory permissions are supplied in MKDIR and never chmod a replacement',async()=>{
+ let replaced=false,pathChmods=0;const client={
+  lstat:(name,cb)=>name==='/shared'?cb(null,{isDirectory:()=>true,isFile:()=>false,isSymbolicLink:()=>false,mode:0o777,size:0,mtime:0,atime:0}):!replaced?cb(Object.assign(new Error('missing'),{code:2})):cb(null,{isDirectory:()=>false,isFile:()=>false,isSymbolicLink:()=>true,mode:0o777,size:0,mtime:0,atime:0}),
+  mkdir:(_name,attrs,cb)=>{assert.equal(attrs.mode,0o755);replaced=true;cb(null);},
+  chmod:(_name,_mode,cb)=>{pathChmods++;cb(null);}
+ };
+ const remote=new engine.SFTPFileSystem(path.posix,{client:{getFsClient:()=>client}});
+ await assert.rejects(engine.createServerDirectory(remote,'/shared/new'),error=>error.code==='CREATE_DIRECTORY_INCOMPLETE');assert.equal(pathChmods,0);
+});
+
+test('exclusive SFTP file verification never falls back to pathname STAT',async()=>{
+ let followedStats=0,closed=0;const client={lstat:(_name,cb)=>cb(Object.assign(new Error('missing'),{code:2})),open:(_name,_flags,_mode,cb)=>cb(null,Buffer.from('owned')),fchmod:(_fd,_mode,cb)=>cb(null),fstat:(_fd,cb)=>cb(Object.assign(new Error('FSTAT unavailable after pathname replacement'),{code:8})),stat:(_name,cb)=>{followedStats++;cb(null,{isDirectory:()=>false,isFile:()=>true,isSymbolicLink:()=>false,mode:0o755,size:0,mtime:0,atime:0});},close:(_fd,cb)=>{closed++;cb(null);}};
+ const remote=new engine.SFTPFileSystem(path.posix,{client:{getFsClient:()=>client}});
+ await assert.rejects(engine.createServerFile(remote,'/shared/new.txt'),error=>error.code==='CREATE_FILE_INCOMPLETE');assert.equal(followedStats,0);assert.equal(closed,1);
 });

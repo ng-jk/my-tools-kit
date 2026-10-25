@@ -31,7 +31,7 @@ export async function createRemoteEntry(folder: boolean, item?: any, items?: any
       await (folder ? createRemoteFolder(ctx) : createRemoteFile(ctx));
       return;
     } catch (error) {
-      if(error.code === 'CREATE_FILE_INCOMPLETE') {
+      if(error.code === 'CREATE_FILE_INCOMPLETE' || error.code === 'CREATE_DIRECTORY_INCOMPLETE') {
         await refreshRemoteExplorer(parent.target,true);
         const recovery=await window.showErrorMessage(error.message,'Choose another name','Close');
         if(recovery !== 'Choose another name')return;

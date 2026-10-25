@@ -33,7 +33,7 @@ test('SFTP wire: password authentication, list, upload, temp rename, download an
       sftp.on('CLOSE',guard((req,h)=>{const v=handles.get(h.toString('hex'));if(v.fd!==undefined)fs.closeSync(v.fd);handles.delete(h.toString('hex'));sftp.status(req,STATUS_CODE.OK);}));
       sftp.on('FSETSTAT',guard((req,h,a)=>{if(a.mode!==undefined){if(!allowChmod)return sftp.status(req,STATUS_CODE.PERMISSION_DENIED);modes.set(handles.get(h.toString('hex')).path,a.mode&0o777);}if(a.atime!==undefined)fs.futimesSync(handles.get(h.toString('hex')).fd,a.atime,a.mtime);sftp.status(req,STATUS_CODE.OK);}));
       sftp.on('SETSTAT',guard((req,p,a)=>{if(a.mode!==undefined){pathChmods++;if(!allowChmod)return sftp.status(req,STATUS_CODE.PERMISSION_DENIED);modes.set(p,a.mode&0o777);}if(a.atime!==undefined)fs.utimesSync(resolve(p),a.atime,a.mtime);sftp.status(req,STATUS_CODE.OK);}));
-      sftp.on('MKDIR',guard((req,p)=>{fs.mkdirSync(resolve(p));sftp.status(req,STATUS_CODE.OK);}));
+      sftp.on('MKDIR',guard((req,p,a)=>{modes.set(p,a.mode??0o755);fs.mkdirSync(resolve(p));sftp.status(req,STATUS_CODE.OK);}));
       sftp.on('REMOVE',guard((req,p)=>{fs.unlinkSync(resolve(p));sftp.status(req,STATUS_CODE.OK);}));
       sftp.on('RMDIR',guard((req,p)=>{fs.rmdirSync(resolve(p));sftp.status(req,STATUS_CODE.OK);}));
       sftp.on('RENAME',guard((req,a,b)=>{fs.renameSync(resolve(a),resolve(b));modes.set(b,modes.get(a));modes.delete(a);sftp.status(req,STATUS_CODE.OK);}));
@@ -63,6 +63,7 @@ test('SFTP wire: password authentication, list, upload, temp rename, download an
   await assert.rejects(engine.operate(session,'upload','wire.txt'),/required file permissions/);
   assert.equal(writeModes.length,written);assert.equal(fs.readFileSync(path.join(remote,'wire.txt'),'utf8'),'over SSH');
   honorOpen=true;allowChmod=true;
+  await engine.operate(session,'mkdir','created-directory');assert.equal(modes.get('/created-directory'),0o755);
   await engine.operate(session,'create','created-default.txt');assert.equal(modes.get('/created-default.txt'),0o755);
   honorOpen=false;await engine.operate(session,'create','created-masked.txt');assert.equal(modes.get('/created-masked.txt'),0o755,'creation restores 755 after server masks OPEN mode');
   const beforePathChmod=pathChmods;allowChmod=false;await assert.rejects(engine.operate(session,'create','created-unverified.txt'),error=>error.code==='CREATE_FILE_INCOMPLETE'&&/entry may remain/.test(error.message));

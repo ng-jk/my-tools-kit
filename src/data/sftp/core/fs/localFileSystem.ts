@@ -22,6 +22,12 @@ export default class LocalFileSystem extends FileSystem {
     await super.establishDirectoryMode(path, mode);
   }
 
+  async verifyDirectoryMode(path: string, mode: number): Promise<void> {
+    this.assertWritable(path);
+    if(process.platform === 'win32'){await protectWindowsDirectory(path);return;}
+    await super.verifyDirectoryMode(path,mode);
+  }
+
   private assertWritable(target: string, includeLeaf = true) {
     assertLocalPath(target);
     if (!this.root) return;
@@ -196,10 +202,10 @@ export default class LocalFileSystem extends FileSystem {
     });
   }
 
-  mkdir(dir: string): Promise<void> {
+  mkdir(dir: string, mode?: number): Promise<void> {
     this.assertWritable(dir);
     return new Promise<void>((resolve, reject) => {
-      fs.mkdir(dir, err => {
+      fs.mkdir(dir, {mode}, err => {
         if (err) {
           reject(err);
           return;

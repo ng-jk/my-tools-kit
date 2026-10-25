@@ -6,7 +6,8 @@
 - Apply the same policy to UI and CLI New File/New Folder commands. Preserve existing destination permissions unless an explicit override is configured; downloads and private backup/staging permissions keep their separate policies.
 - Validate octal configuration and verify newly created directory modes, including missing parent folders.
 - Explain retained entries after incomplete New File permission checks, refresh the remote explorer, and offer a fresh-name recovery instead of an ineffective same-name Retry.
-- Keep SFTP file chmod descriptor-only; unsupported FSETSTAT never falls back to changing a potentially replaced pathname.
+- Keep SFTP file chmod and stat descriptor-only; unsupported FSETSTAT/FSTAT never falls back to a potentially replaced pathname.
+- Apply New Folder modes during SFTP MKDIR, then verify without pathname chmod. FTP New Folder verifies the server-created mode and reports incomplete creation if it differs.
 
 ## 0.7.10 — 2026-10-22
 

@@ -256,7 +256,7 @@ export default class FTPFileSystem extends RemoteFileSystem {
     return Promise.reject(new Error('FTP does not support symbolic link creation'));
   }
 
-  async mkdir(dir: string): Promise<void> {
+  async mkdir(dir: string, _mode?: number): Promise<void> {
     return await this.atomicMakeDir(dir);
   }
 

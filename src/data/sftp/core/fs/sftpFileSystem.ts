@@ -104,26 +104,8 @@ export default class SFTPFileSystem extends RemoteFileSystem {
   }
 
   fstat(fd: SFTPFileDescriptor): Promise<FileStats> {
-    return new Promise((resolve, reject) => {
-      this.sftp.fstat(fd.handle, (err: any, stat: any) => {
-        if (err) {
-          // Try stat() for sftp servers that may not support fstat() for
-          // whatever reason
-          // see WriteStream.prototype.open in ssh2-streams.
-          this.sftp.stat(fd.path, (_err: any, _stat: any) => {
-            if (_err) {
-              reject(err);
-              return;
-            }
-
-            resolve(this.toFileStat(_stat));
-          });
-          return;
-        }
-
-        resolve(this.toFileStat(stat));
-      });
-    });
+    // Verification must inspect the opened object, never a replaced pathname.
+    return new Promise((resolve,reject)=>this.sftp.fstat(fd.handle,(err:any,stat:any)=>err?reject(err):resolve(this.toFileStat(stat))));
   }
 
   futimes(fd: SFTPFileDescriptor, atime: number, mtime: number): Promise<void> {
@@ -264,15 +246,11 @@ export default class SFTPFileSystem extends RemoteFileSystem {
     });
   }
 
-  mkdir(dir: string): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
-      this.sftp.mkdir(dir, (err: any) => {
-        if (err) {
-          reject(err);
-          return;
-        }
-        resolve();
-      });
+  mkdir(dir: string, mode?: number): Promise<void> {
+    return new Promise<void>((resolve,reject)=>{
+      const done=(err:any)=>err?reject(err):resolve();
+      if(mode === undefined)this.sftp.mkdir(dir,done);
+      else this.sftp.mkdir(dir,{mode},done);
     });
   }
 

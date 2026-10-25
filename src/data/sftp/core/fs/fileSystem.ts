@@ -80,11 +80,14 @@ export default abstract class FileSystem {
   abstract futimes(fd: FileHandle, atime: number, mtime: number): Promise<void>;
   abstract get(path: string, option?: FileOption): Promise<Readable>;
   abstract put(input: Readable, path: string, option?: FileOption): Promise<void>;
-  abstract mkdir(dir: string): Promise<void>;
+  abstract mkdir(dir: string, mode?: number): Promise<void>;
   abstract ensureDir(dir: string): Promise<void>;
   abstract chmod(path: string, mode: number): Promise<void>;
   async establishDirectoryMode(path: string, mode: number): Promise<void> {
     await this.chmod(path, mode);
+    await this.verifyDirectoryMode(path,mode);
+  }
+  async verifyDirectoryMode(path:string,mode:number):Promise<void> {
     const actual = await this.lstat(path);
     if (actual.type !== FileType.Directory || !Number.isInteger(actual.mode) || (actual.mode & 0o777) !== (mode & 0o777)) {
       const reported = Number.isInteger(actual.mode) ? (actual.mode & 0o777).toString(8) : 'unavailable';
