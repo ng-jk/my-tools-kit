@@ -5,7 +5,7 @@ import {beginLocalChange} from '../../../data/sftp/local-events';
 import {transferPermissions} from '../transfer-permissions';
 import {serverCreationMode} from '../server-permissions';
 import {uploadMode} from '../diagnostics';
-import { FileSystem, FileType } from '../../../data/sftp/core/fs/index';
+import { FileSystem, FileType, RemoteFileSystem } from '../../../data/sftp/core/fs/index';
 import { Task } from './scheduler';
 import { logger } from '../../../data/sftp/ports';
 
@@ -145,6 +145,7 @@ export default class TransferTask implements Task {
       if(this._transferDirection===TransferDirection.LOCAL_TO_REMOTE) mode=uploadMode(mode,filePerm);
       if (sourceError) throw sourceError;
       if (this._cancelled) throw new Error('Transfer cancelled');
+      if(targetFs instanceof RemoteFileSystem)await targetFs.assertIsolatedParents(target);
       fd = await targetFs.open(staged, 'wx', mode);
       await targetFs.prepareStagedFile?.(staged, target, mode, fd);
       if (sourceError) throw sourceError;

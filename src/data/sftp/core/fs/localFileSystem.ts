@@ -19,7 +19,16 @@ export default class LocalFileSystem extends FileSystem {
   async establishDirectoryMode(path: string, mode: number): Promise<void> {
     this.assertWritable(path);
     if (process.platform === 'win32') { await protectWindowsDirectory(path); return; }
-    await super.establishDirectoryMode(path, mode);
+    const flags=fs.constants.O_RDONLY|fs.constants.O_DIRECTORY|fs.constants.O_NOFOLLOW;
+    if(fs.constants.O_NOFOLLOW===undefined)throw new Error('Directory mode changes require no-follow descriptor support');
+    const handle=await fse.open(path,flags);
+    try {
+      const stat=await fse.fstat(handle);
+      if(!stat.isDirectory())throw new Error('Destination is not a real directory: '+path);
+      await fse.fchmod(handle,mode);
+      const actual=await fse.fstat(handle);
+      if((actual.mode&0o777)!==(mode&0o777))throw new Error('Cannot verify local directory permissions: '+path);
+    }finally{await fse.close(handle);}
   }
 
   async verifyDirectoryMode(path: string, mode: number): Promise<void> {

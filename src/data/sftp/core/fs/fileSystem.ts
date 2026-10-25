@@ -93,7 +93,7 @@ export default abstract class FileSystem {
       const reported = Number.isInteger(actual.mode) ? (actual.mode & 0o777).toString(8) : 'unavailable';
       throw new Error('Cannot establish required directory permissions: ' + path +
         ' (requested ' + (mode & 0o777).toString(8) + ', server reported ' + reported +
-        ', entry type ' + FileType[actual.type] + '). Check server chmod support and account permissions.');
+        ', entry type ' + FileType[actual.type] + '). Check server creation permissions/umask and account access.');
     }
   }
   abstract list(dir: string, option?: { showHiddenFiles?: boolean }): Promise<FileEntry[]>;

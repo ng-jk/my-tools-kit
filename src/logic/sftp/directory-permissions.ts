@@ -16,6 +16,8 @@ async function withDirectoryLock(target: FileSystem, to: string, operation: () =
   finally {release!(); if (paths.get(key) === current) paths.delete(key);}
 }
 async function ensure(source: FileSystem, target: FileSystem, from: string, to: string, override?: number, scope?: DirectoryPermissionScope, ancestor = false, newMode?: number) {
+  const verificationOnly = newMode !== undefined || target instanceof RemoteFileSystem;
+  if(target instanceof RemoteFileSystem)await target.assertIsolatedParents(to,true);
   let existing;
   try { existing = await target.lstat(to); }
   catch (error) { if (error.code !== 'ENOENT' && error.code !== 2) throw error; }
@@ -26,8 +28,8 @@ async function ensure(source: FileSystem, target: FileSystem, from: string, to: 
     // Local ensureDir still validates native path/ACL constraints.
     if (!(target instanceof RemoteFileSystem)) await target.ensureDir(to);
     const requested = ancestor || override === undefined ? undefined : serverCreationMode(override,'dirPerm');
-    if (scope) await scope.establish(target, to, requested);
-    else if (requested !== undefined) await target.establishDirectoryMode(to, requested);
+    if (scope) await scope.establish(target, to, requested, verificationOnly);
+    else if (requested !== undefined) await (verificationOnly ? target.verifyDirectoryMode(to,requested) : target.establishDirectoryMode(to, requested));
     return;
   }
   const parent = target.pathResolver.dirname(to);
@@ -40,18 +42,26 @@ async function ensure(source: FileSystem, target: FileSystem, from: string, to: 
   // Inferred modes must retain owner search without widening group/other access.
   // Explicit dirPerm remains exact, including intentionally restrictive modes.
   if (override === undefined) mode = (mode & 0o777) | 0o100;
-  await target.ensureDir(to);
+  if(verificationOnly && (mode&0o300)!==0o300)throw new Error('New server directory mode must permit owner write/search during upload; use 755 or 700. No read-only finalization through remote pathnames is supported.');
+  await target.mkdir(to, verificationOnly ? mode : mode|0o300);
   try {
-  if (scope) await scope.establish(target, to, mode);
-  else await target.establishDirectoryMode(to, mode);
-  } catch (error) { await target.rmdir(to, false).catch(() => {}); throw error; }
+    if (scope) await scope.establish(target, to, mode, verificationOnly);
+    else await (verificationOnly ? target.verifyDirectoryMode(to,mode) : target.establishDirectoryMode(to, mode));
+  } catch(error){
+    if(!verificationOnly)await target.rmdir(to,false).catch(()=>{});
+    throw new Error('Directory creation is incomplete at '+to+'. Inspect any retained entry and fix server creation permissions before retrying. '+error.message);
+  }
 }
 
 interface DirectoryLease {fs: FileSystem; path: string; key: string; mode: number; count: number; ready: Promise<void>;}
 const leases = new WeakMap<object, Map<string, DirectoryLease>>();
 export class DirectoryPermissionScope {
   private held = new Set<DirectoryLease>();
-  async establish(fs: FileSystem, path: string, mode?: number) {
+  async establish(fs: FileSystem, path: string, mode?: number, verificationOnly=false) {
+    if(verificationOnly || fs instanceof RemoteFileSystem){
+      if(mode!==undefined)await fs.verifyDirectoryMode(path,mode);
+      return;
+    }
     const identity = (fs as any)[filesystemIdentity] || fs;
     let paths = leases.get(identity); if (!paths) { paths = new Map(); leases.set(identity, paths); }
     const key = fs.pathIdentity(path);

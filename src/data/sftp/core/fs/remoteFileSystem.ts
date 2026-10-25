@@ -1,6 +1,6 @@
 // Adapted from ng-jk/vscode-sftp (MIT); see THIRD-PARTY-NOTICES.md.
 import { Readable } from 'stream';
-import FileSystem, { FileOption } from './fileSystem';
+import FileSystem, { FileOption,FileType } from './fileSystem';
 import { RemoteClient, ConnectOption, RemoteClientConfig } from '../remote-client/index';
 
 interface RFSOptionDefaults {
@@ -42,6 +42,28 @@ export default abstract class RemoteFileSystem extends FileSystem {
 
     this.setRemoteTimeOffsetInHours(remoteTimeOffsetInHours);
   }
+
+  async establishDirectoryMode(path:string,mode:number):Promise<void>{
+    // Remote paths cannot bind chmod to a non-following directory identity.
+    await this.verifyDirectoryMode(path,mode);
+  }
+
+  async assertIsolatedParents(path:string,allowMissing=false):Promise<void>{
+    let current=this.pathResolver.dirname(path);
+    while(true){
+      const parent=this.pathResolver.dirname(current);
+      let stat;
+      try{stat=await this.parentIsolationStat(current);}catch(error){
+        if(allowMissing && (error.code==='ENOENT'||error.code===2) && parent!==current){current=parent;continue;}
+        throw error;
+      }
+      if(stat.type!==FileType.Directory || !Number.isInteger(stat.mode) || (stat.mode&0o022)!==0)throw new Error('Remote ancestor is shared-writable or unverifiable: '+current+'. Upload stopped before mutations; use a non-shared server directory.');
+      if(current==='/' || parent===current)return;
+      current=parent;
+    }
+  }
+
+  protected parentIsolationStat(path:string):Promise<any>{return this.lstat(path);}
 
   setRemoteTimeOffsetInHours(offset: number) {
     this._remoteTimeOffsetInSeconds = offset * SECONDS_PER_HOUR;

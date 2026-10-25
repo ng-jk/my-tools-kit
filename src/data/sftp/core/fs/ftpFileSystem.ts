@@ -128,6 +128,33 @@ export default class FTPFileSystem extends RemoteFileSystem {
     return fileStat;
   }
 
+  protected async parentIsolationStat(path:string):Promise<FileStats>{
+    const normalized=this.pathResolver.normalize(path);
+    if(normalized==='.'){
+      const cwd=await this.queue.add(()=>new Promise<string>((resolve,reject)=>this.ftp.pwd((error:any,value:string)=>error?reject(error):resolve(value))));
+      if(this.pathResolver.normalize(cwd)==='.')throw new Error('FTP cannot resolve current-directory permissions for safe uploads. Use an absolute non-shared remote path or SFTP.');
+      return this.parentIsolationStat(cwd);
+    }
+    if(normalized!=='/')return this.lstat(path);
+    // lstat('/') is a legacy synthetic root. It is not permission evidence.
+    const mode=await this.queue.add(async()=>{
+      const send=(command:string)=>new Promise<string>((resolve,reject)=>this.ftp._send(command,(error:any,reply:string)=>error?reject(error):resolve(reply||'')));
+      const parse=(reply:string)=>{
+        for(const line of reply.split(/\r?\n/)){
+          const entry=/^\s*((?:[A-Za-z0-9._-]+=[^;\r\n]*;)+) (.+)$/.exec(line);
+          if(!entry||entry[2]!=='/')continue;
+          const facts=entry[1].split(';').filter(Boolean),types=facts.filter(f=>/^type=/i.test(f)),modes=facts.filter(f=>/^unix\.mode=/i.test(f));
+          if(types.length===1&&/^type=dir$/i.test(types[0])&&modes.length===1&&/^unix\.mode=[0-7]{3,4}$/i.test(modes[0]))return parseInt(modes[0].split('=')[1],8)&0o777;
+        }
+      };
+      let result=parse(await send('MLST /'));
+      if(result===undefined){await send('OPTS MLST type;UNIX.mode;');result=parse(await send('MLST /'));}
+      if(result===undefined)throw new Error('Root mode unavailable');
+      return result;
+    }).catch(()=>{throw new Error('FTP root permissions cannot be verified for safe uploads. Enable MLST UNIX.mode metadata or use SFTP. No payload was uploaded.');});
+    return {type:FileType.Directory,mode,size:0,mtime:0,atime:0};
+  }
+
   async lstatForBackup(path:string):Promise<FileStats> {return this.lstat(path);}
 
   private async probePath(path:string):Promise<FileStats> {

@@ -80,7 +80,8 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
         else if(['TYPE','OPTS','NOOP'].includes(cmd))reply('200 OK');
         else if(cmd==='CWD')reply('250 Changed');
         else if(cmd==='MLST'||cmd==='STAT'){
-          if(probeMode==='metadata450')reply('450 File unavailable');
+          if(arg==='/')reply('250-Root\r\n type=dir;UNIX.mode=0755; /\r\n250 End');
+          else if(probeMode==='metadata450')reply('450 File unavailable');
           else if(['unsupported','rnfr'].includes(probeMode)||(cmd==='MLST'&&probeMode==='stat'))reply('502 Unsupported');
           else if(arg===probeDenied)reply('550 Permission denied');
           else if(arg===probeAmbiguous)reply('550 File unavailable');

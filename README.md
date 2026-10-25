@@ -341,13 +341,13 @@ The project release tests include the repository-selection host bridge and rende
 
 ### FTP folder creation and permission errors
 
-Uploading a file creates missing destination folders automatically. Shared hosting directories with setgid (`s`) or sticky (`t`) permission markers are supported. If directory verification fails, the error shows the requested mode, the server-reported mode (or `unavailable`) and entry type. Check the FTP account’s create-folder and `SITE CHMOD` permissions with your host. Permission verification remains required before uploading into newly created folders; existing directory permissions are preserved unless you configure `dirPerm`.
+Uploading a file creates missing destination folders automatically. Shared hosting directories with setgid (`s`) or sticky (`t`) permission markers are supported. If directory verification fails, the error shows the requested mode, the server-reported mode (or `unavailable`) and entry type. Check the FTP account’s create-folder and `SITE CHMOD` permissions with your host. Permission verification remains required before uploading into newly created folders; existing directory permissions are preserved; an explicit `dirPerm` is verified and mismatches stop the transfer instead of changing the directory.
 
 ### Transfer speed and directory search permission
 
 The toolkit reuses each verified remote parent check and avoids redundant chmod verification when no final permission change is needed. Backup metadata inspection and downloads use the configured `concurrency` (default 4 for SFTP); FTP remains serialized on its control connection. Originals are still backed up before replacement. These changes reduce protocol requests; actual speed depends on latency, file count and server throughput.
 
-New server folders use `755` by default rather than inheriting source modes such as `666`. Explicit `dirPerm` remains exact; use a searchable mode such as `755` or `700` rather than file-style `666`. Existing directories keep their permissions unless an explicit override is configured.
+New server folders use `755` by default rather than inheriting source modes such as `666`. Explicit `dirPerm` remains exact; use a searchable mode such as `755` or `700` rather than file-style `666`. Existing server directories keep their permissions; explicitly configured dirPerm must match existing targets, or the transfer stops.
 
 ### Explicit uploads and ignore rules
 
@@ -361,10 +361,14 @@ A `.devkit-…` name in a transfer error is the temporary staging destination. S
 
 ### Default server creation permissions
 
-New server files and folders default to **755** for uploads and the New File/New Folder commands. Set `"filePerm": 644` and `"dirPerm": 755` in the selected context/profile to override them independently. Values are octal digits (also accepted as `"0644"`), without special bits. For private files use `600`, and private folders `700`. Existing regular-file permissions retain the current owner-write policy unless `filePerm` is set; existing directory modes remain unchanged unless `dirPerm` is set during upload. Downloads, local backups and private transfer staging retain their own permission safeguards.
+New server files and folders default to **755** for uploads and the New File/New Folder commands. Set `"filePerm": 644` and `"dirPerm": 755` in the selected context/profile to override them independently. Values are octal digits (also accepted as `"0644"`), without special bits. For private files use `600`, and private folders `700`. Existing regular-file permissions retain the current owner-write policy unless `filePerm` is set; existing server directory modes remain unchanged; explicit `dirPerm` mismatches stop transfers. Downloads, local backups and private transfer staging retain their own permission safeguards.
 
 If New File creates an entry but cannot verify its permissions, the operation reports incomplete creation and refreshes SFTP Remote Explorer. Inspect the retained entry and remove it only if safe before retrying the same name, or choose **Choose another name**. No automatic cleanup can remove a concurrent replacement. The CLI reports the retained path and the same recovery instructions.
 
 SFTP file modes are set through their open descriptor. If FSETSTAT is unsupported, an already-correct mode can pass verification; otherwise creation/upload stops rather than falling back to pathname chmod. Configure the server to support descriptor-based mode changes or honor the requested OPEN mode.
 
 New Folder sends the requested mode during SFTP MKDIR, then verifies it without pathname chmod. FTP New Folder must match the server’s creation policy; if the server creates a different mode, the command reports the retained folder instead of changing it through a pathname. Configure the server’s creation mask to match the desired dirPerm. Create missing parents with owner write/search access before creating a read-only child folder. SFTP FSTAT is required for file permission verification; pathname STAT is never used as a fallback.
+
+Security update: use 0.7.12 or newer and avoid 0.7.11. Remote directory permissions are verified rather than changed by pathname, including during upload/sync. Configure server creation permissions to match dirPerm where the protocol cannot supply the mode atomically. New transfer directories require owner write/search (such as 755 or 700); read-only remote finalization is not performed. Uploads reject shared-writable or unverifiable remote ancestor directories. Local POSIX download-directory restoration uses no-follow descriptors.
+
+Safe FTP uploads require verifiable `MLST UNIX.mode` metadata for the namespace root and non-shared writable ancestry. Synthetic root metadata is never treated as security evidence. If the server omits this metadata, uploads stop before payload transfer; enable those facts or use SFTP.

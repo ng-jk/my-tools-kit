@@ -496,13 +496,13 @@ test('new private directories establish permissions before payloads in both dire
     fs.mkdirSync(path.join(sourceDir,'private'));fs.writeFileSync(path.join(sourceDir,'private','data.txt'),'private by parent');
     const source=down?await session.service.getRemoteFileSystem(session.config):session.service.getLocalFileSystem();
     const target=down?session.service.getLocalFileSystem():await session.service.getRemoteFileSystem(session.config);
-    const sourceStat=source.lstat,targetStat=target.lstat,chmod=target.chmod,put=target.put,establish=target.establishDirectoryMode;const modes=new Map();let payloads=0;
+    const sourceStat=source.lstat,targetStat=target.lstat,chmod=target.chmod,put=target.put,establish=target.establishDirectoryMode,verify=target.verifyDirectoryMode;const modes=new Map();let payloads=0;
     source.lstat=async name=>{const stat=await sourceStat.call(source,name);return {...stat,mode:stat.type===engine.FileType.Directory?0o700:0o644};};
     target.lstat=async name=>({...await targetStat.call(target,name),...(modes.has(name)?{mode:modes.get(name)}:{})});
-    target.establishDirectoryMode=async(name,mode)=>{modes.set(name,mode);};
+    target.establishDirectoryMode=async(name,mode)=>{modes.set(name,mode);};target.verifyDirectoryMode=async(name,mode)=>{modes.set(name,mode);};
     target.put=async function(...args){assert.equal(modes.get(path.join(destination,'private')),0o700);payloads++;return put.apply(this,args);};
     try {await engine.operate(session,action);assert.equal(payloads,1);assert.equal(fs.readFileSync(path.join(destination,'private','data.txt'),'utf8'),'private by parent');}
-    finally {source.lstat=sourceStat;target.lstat=targetStat;target.chmod=chmod;target.put=put;target.establishDirectoryMode=establish;}
+    finally {source.lstat=sourceStat;target.lstat=targetStat;target.chmod=chmod;target.put=put;target.establishDirectoryMode=establish;target.verifyDirectoryMode=verify;}
   }
 });
 test('ignoreExisting recurses into matching directories to copy new files',async t=>{
@@ -520,10 +520,10 @@ test('ignoreExisting recurses into matching directories to copy new files',async
 test('unverified private directory permissions stop before transferring payloads',async t=>{
   const {local,remote,session}=fixture(t);fs.mkdirSync(path.join(local,'private'));fs.writeFileSync(path.join(local,'private','data.txt'),'secret');
   const source=session.service.getLocalFileSystem(),target=await session.service.getRemoteFileSystem(session.config);
-  const stat=source.lstat,chmod=target.chmod,put=target.put,establish=target.establishDirectoryMode;let writes=0;
-  source.lstat=async name=>({...await stat.call(source,name),mode:0o700});target.establishDirectoryMode=async()=>{throw new Error('Cannot establish required directory permissions');};target.put=async()=>{writes++;};
-  try {await assert.rejects(engine.operate(session,'upload'),/required directory permissions/);assert.equal(writes,0);assert.equal(fs.existsSync(path.join(remote,'private')),false);}
-  finally {source.lstat=stat;target.chmod=chmod;target.put=put;target.establishDirectoryMode=establish;}
+  const stat=source.lstat,chmod=target.chmod,put=target.put,establish=target.establishDirectoryMode,verify=target.verifyDirectoryMode;let writes=0;
+  source.lstat=async name=>({...await stat.call(source,name),mode:0o700});target.establishDirectoryMode=async()=>{throw new Error('Cannot establish required directory permissions');};target.verifyDirectoryMode=target.establishDirectoryMode;target.put=async()=>{writes++;};
+  try {await assert.rejects(engine.operate(session,'upload'),/required directory permissions/);assert.equal(writes,0);assert.equal(fs.existsSync(path.join(remote,'private')),true);}
+  finally {source.lstat=stat;target.chmod=chmod;target.put=put;target.establishDirectoryMode=establish;target.verifyDirectoryMode=verify;}
 });
 
 test('Windows downloads accept Unix directory modes with protected native ACLs',{skip:process.platform!=='win32'},async t=>{
@@ -556,10 +556,10 @@ test('Windows staging protects new files and preserves destination ACL before pa
 });
 test('explicit upload directory permissions apply to every missing parent',async t=>{
   const {local,remote,session}=fixture(t,{dirPerm:750});fs.mkdirSync(path.join(local,'one','two'),{recursive:true});fs.writeFileSync(path.join(local,'one','two','file.txt'),'nested');
-  const target=await session.service.getRemoteFileSystem(session.config),establish=target.establishDirectoryMode,chmod=target.chmod;const observed=new Map();
-  target.establishDirectoryMode=async(name,mode)=>observed.set(path.resolve(name),mode);target.chmod=async()=>{};
+  const target=await session.service.getRemoteFileSystem(session.config),establish=target.verifyDirectoryMode,chmod=target.chmod;const observed=new Map();
+  target.verifyDirectoryMode=async(name,mode)=>observed.set(path.resolve(name),mode);target.chmod=async()=>{};
   try {await engine.operate(session,'upload','one/two/file.txt');assert.equal(observed.get(path.join(remote,'one')),0o750);assert.equal(observed.get(path.join(remote,'one','two')),0o750);assert.equal(observed.has(path.resolve(remote)),false,'existing ancestor permissions stay untouched');}
-  finally {target.establishDirectoryMode=establish;target.chmod=chmod;}
+  finally {target.verifyDirectoryMode=establish;target.chmod=chmod;}
 });
 
 test('Git mirror object database is private, including an existing repository',async t=>{
@@ -738,16 +738,16 @@ test('nested SSH connect preserves tunnels, resolves intermediate keys and promp
 
 test('nonempty read-only directories remain owner-writable during transfers and finalize on success or failure',async t=>{
   for(const fail of [false,true]) {
-    const {local,remote,session}=fixture(t,{dirPerm:555});fs.mkdirSync(path.join(local,'readonly'));fs.writeFileSync(path.join(local,'readonly','file.txt'),'content');
-    const source=session.service.getLocalFileSystem(),target=await session.service.getRemoteFileSystem(session.config);
+    const {local,remote,session}=fixture(t);fs.mkdirSync(path.join(remote,'readonly'));fs.writeFileSync(path.join(remote,'readonly','file.txt'),'content');
+    const source=await session.service.getRemoteFileSystem(session.config),target=session.service.getLocalFileSystem();
     const stat=source.lstat,establish=target.establishDirectoryMode,put=target.put;const modes=new Map();
     source.lstat=async name=>{const value=await stat.call(source,name);return {...value,mode:value.type===engine.FileType.Directory?0o555:value.mode};};
     target.establishDirectoryMode=async(name,mode)=>{modes.set(name,mode);};
-    target.put=async function(...args){assert.equal(modes.get(path.join(remote,'readonly')),0o755);if(fail)throw new Error('simulated transfer failure');return put.apply(this,args);};
+    target.put=async function(...args){assert.equal(modes.get(path.join(local,'readonly')),0o755);if(fail)throw new Error('simulated transfer failure');return put.apply(this,args);};
     try {
-      if(fail)await assert.rejects(engine.operate(session,'upload'),/simulated transfer failure/);else await engine.operate(session,'upload');
-      assert.equal(modes.get(path.join(remote,'readonly')),0o555);
-      if(!fail)assert.equal(fs.readFileSync(path.join(remote,'readonly','file.txt'),'utf8'),'content');
+      if(fail)await assert.rejects(engine.operate(session,'download'),/simulated transfer failure/);else await engine.operate(session,'download');
+      assert.equal(modes.get(path.join(local,'readonly')),0o555);
+      if(!fail)assert.equal(fs.readFileSync(path.join(local,'readonly','file.txt'),'utf8'),'content');
     } finally {source.lstat=stat;target.establishDirectoryMode=establish;target.put=put;}
   }
 });
@@ -766,8 +766,8 @@ test('sync saves relevant dirty documents before comparison and aborts on unsucc
 });
 
 test('concurrent disjoint transfers retain directory population permissions until both finish',async t=>{
-  const {local,remote,session}=fixture(t,{dirPerm:555});fs.mkdirSync(path.join(local,'readonly'));fs.writeFileSync(path.join(local,'readonly','one.txt'),'one');fs.writeFileSync(path.join(local,'readonly','two.txt'),'two');
-  const source=session.service.getLocalFileSystem(),target=await session.service.getRemoteFileSystem(session.config);
+  const {local,remote,session}=fixture(t);fs.mkdirSync(path.join(remote,'readonly'));fs.writeFileSync(path.join(remote,'readonly','one.txt'),'one');fs.writeFileSync(path.join(remote,'readonly','two.txt'),'two');
+  const source=await session.service.getRemoteFileSystem(session.config),target=session.service.getLocalFileSystem();
   const stat=source.lstat,establish=target.establishDirectoryMode,put=target.put;const modes=new Map(),release=[],started=[];
   const waits=[0,1].map(index=>new Promise(resolve=>started[index]=resolve));let count=0;
   source.lstat=async name=>{const value=await stat.call(source,name);return {...value,mode:value.type===engine.FileType.Directory?0o555:value.mode};};
@@ -775,19 +775,19 @@ test('concurrent disjoint transfers retain directory population permissions unti
   target.put=async function(...args){const index=count++;await new Promise(resolve=>{release[index]=resolve;started[index]();});return put.apply(this,args);};
   let first,second;
   try {
-    first=engine.operate(session,'upload','readonly/one.txt');await waits[0];second=engine.operate(session,'upload','readonly/two.txt');await waits[1];
-    release[0]();await first;assert.equal(modes.get(path.join(remote,'readonly')),0o755);
-    release[1]();await second;assert.equal(modes.get(path.join(remote,'readonly')),0o555);
+    first=engine.operate(session,'download','readonly/one.txt');await waits[0];second=engine.operate(session,'download','readonly/two.txt');await waits[1];
+    release[0]();await first;assert.equal(modes.get(path.join(local,'readonly')),0o755);
+    release[1]();await second;assert.equal(modes.get(path.join(local,'readonly')),0o555);
   } finally {release.forEach(fn=>fn());await Promise.allSettled([first,second]);source.lstat=stat;target.establishDirectoryMode=establish;target.put=put;}
 });
 
 test('creating a remote root never chmods its existing outside ancestor',async t=>{
   const {local,remote,raw}=fixture(t);fs.writeFileSync(path.join(local,'file.txt'),'content');
   const root=path.join(remote,'new-project');const session=engine.createSession(local,{...raw,remotePath:root.replaceAll('\\','/'),dirPerm:700});t.after(()=>session.service.dispose());
-  const target=await session.service.getRemoteFileSystem(session.config),establish=target.establishDirectoryMode;const observed=new Map();
-  target.establishDirectoryMode=async(name,mode)=>observed.set(path.resolve(name),mode);
+  const target=await session.service.getRemoteFileSystem(session.config),establish=target.verifyDirectoryMode;const observed=new Map();
+  target.verifyDirectoryMode=async(name,mode)=>observed.set(path.resolve(name),mode);
   try {await engine.operate(session,'upload');assert.equal(observed.get(root),0o700);assert.equal(observed.has(remote),false);assert.equal(fs.readFileSync(path.join(root,'file.txt'),'utf8'),'content');}
-  finally {target.establishDirectoryMode=establish;}
+  finally {target.verifyDirectoryMode=establish;}
 });
 
 test('overlapping local and remote root prefixes preserve ignored remote files during destructive sync and deletion',async t=>{
@@ -1155,12 +1155,12 @@ test('FTP directory permissions parse special bits and reject unverifiable modes
 
 test('new server directories default to 755 instead of inferred 666 without redundant verification',async t=>{
  const {local,remote,session}=fixture(t);fs.mkdirSync(path.join(local,'Voucher'));fs.writeFileSync(path.join(local,'Voucher','file.txt'),'payload');
- const source=session.service.getLocalFileSystem(),target=await session.service.getRemoteFileSystem(session.config),stat=source.lstat,establish=target.establishDirectoryMode;
+ const source=session.service.getLocalFileSystem(),target=await session.service.getRemoteFileSystem(session.config),stat=source.lstat,establish=target.verifyDirectoryMode;
  const complete=target.supportsCompleteDirectoryListing;target.supportsCompleteDirectoryListing=true;
  const modes=[];source.lstat=async name=>{const value=await stat.call(source,name);return {...value,mode:value.type===engine.FileType.Directory?0o666:value.mode};};
- target.establishDirectoryMode=async(name,mode)=>{modes.push([path.resolve(name),mode]);};
+ target.verifyDirectoryMode=async(name,mode)=>{modes.push([path.resolve(name),mode]);};
  try{await engine.operate(session,'upload','Voucher/file.txt');assert.equal(fs.readFileSync(path.join(remote,'Voucher','file.txt'),'utf8'),'payload');assert.deepEqual(modes,[[path.join(remote,'Voucher'),0o755]]);}
- finally{source.lstat=stat;target.establishDirectoryMode=establish;target.supportsCompleteDirectoryListing=complete;}
+ finally{source.lstat=stat;target.verifyDirectoryMode=establish;target.supportsCompleteDirectoryListing=complete;}
 });
 
 test('verified remote parent avoids redundant mkdir and lstat and still rejects links',async()=>{
@@ -1168,8 +1168,8 @@ test('verified remote parent avoids redundant mkdir and lstat and still rejects 
  remote.lstat=async()=>{stats++;return {type:engine.FileType.Directory,mode:0o755};};
  remote.ensureDir=async()=>{throw new Error('redundant mkdir');};
  const source={pathResolver:path.posix};
- await engine.ensureTransferDirectory(source,remote,'/local','/remote');assert.equal(stats,1);
- remote.lstat=async()=>({type:engine.FileType.SymbolicLink,mode:0o755});
+ await engine.ensureTransferDirectory(source,remote,'/local','/remote');assert.equal(stats,2,'one target check plus namespace-root isolation evidence');
+ remote.lstat=async name=>({type:name==='/'?engine.FileType.Directory:engine.FileType.SymbolicLink,mode:0o755});
  await assert.rejects(engine.ensureTransferDirectory(source,remote,'/local','/remote'),/not a real directory/);
 });
 
@@ -1237,7 +1237,7 @@ test('existing remote file modes remain separate from new server defaults',async
 test('exclusive SFTP creation never falls back to pathname chmod after replacement',async()=>{
  let pathname='missing',victimMode=0o600,closed=0,pathChmods=0;
  const client={
-  lstat:(_name,cb)=>cb(Object.assign(new Error('missing'),{code:2})),
+  lstat:(name,cb)=>(name==='/'||name==='/shared')?cb(null,{isDirectory:()=>true,isFile:()=>false,isSymbolicLink:()=>false,mode:0o755,size:0,mtime:0,atime:0}):cb(Object.assign(new Error('missing'),{code:2})),
   open:(_name,_flags,_mode,cb)=>{pathname='owned file';cb(null,Buffer.from('owned handle'));},
   fchmod:(_handle,_mode,cb)=>{pathname='symlink to private victim';cb(Object.assign(new Error('unsupported'),{code:8}));},
   chmod:(_name,mode,cb)=>{pathChmods++;victimMode=mode;cb(null);},
@@ -1258,7 +1258,7 @@ test('server mkdir rejects nested readonly parents before creating entries or ch
 
 test('new SFTP directory permissions are supplied in MKDIR and never chmod a replacement',async()=>{
  let replaced=false,pathChmods=0;const client={
-  lstat:(name,cb)=>name==='/shared'?cb(null,{isDirectory:()=>true,isFile:()=>false,isSymbolicLink:()=>false,mode:0o777,size:0,mtime:0,atime:0}):!replaced?cb(Object.assign(new Error('missing'),{code:2})):cb(null,{isDirectory:()=>false,isFile:()=>false,isSymbolicLink:()=>true,mode:0o777,size:0,mtime:0,atime:0}),
+  lstat:(name,cb)=>(name==='/'||name==='/shared')?cb(null,{isDirectory:()=>true,isFile:()=>false,isSymbolicLink:()=>false,mode:0o755,size:0,mtime:0,atime:0}):!replaced?cb(Object.assign(new Error('missing'),{code:2})):cb(null,{isDirectory:()=>false,isFile:()=>false,isSymbolicLink:()=>true,mode:0o777,size:0,mtime:0,atime:0}),
   mkdir:(_name,attrs,cb)=>{assert.equal(attrs.mode,0o755);replaced=true;cb(null);},
   chmod:(_name,_mode,cb)=>{pathChmods++;cb(null);}
  };
@@ -1267,7 +1267,67 @@ test('new SFTP directory permissions are supplied in MKDIR and never chmod a rep
 });
 
 test('exclusive SFTP file verification never falls back to pathname STAT',async()=>{
- let followedStats=0,closed=0;const client={lstat:(_name,cb)=>cb(Object.assign(new Error('missing'),{code:2})),open:(_name,_flags,_mode,cb)=>cb(null,Buffer.from('owned')),fchmod:(_fd,_mode,cb)=>cb(null),fstat:(_fd,cb)=>cb(Object.assign(new Error('FSTAT unavailable after pathname replacement'),{code:8})),stat:(_name,cb)=>{followedStats++;cb(null,{isDirectory:()=>false,isFile:()=>true,isSymbolicLink:()=>false,mode:0o755,size:0,mtime:0,atime:0});},close:(_fd,cb)=>{closed++;cb(null);}};
+ let followedStats=0,closed=0;const client={lstat:(name,cb)=>(name==='/'||name==='/shared')?cb(null,{isDirectory:()=>true,isFile:()=>false,isSymbolicLink:()=>false,mode:0o755,size:0,mtime:0,atime:0}):cb(Object.assign(new Error('missing'),{code:2})),open:(_name,_flags,_mode,cb)=>cb(null,Buffer.from('owned')),fchmod:(_fd,_mode,cb)=>cb(null),fstat:(_fd,cb)=>cb(Object.assign(new Error('FSTAT unavailable after pathname replacement'),{code:8})),stat:(_name,cb)=>{followedStats++;cb(null,{isDirectory:()=>false,isFile:()=>true,isSymbolicLink:()=>false,mode:0o755,size:0,mtime:0,atime:0});},close:(_fd,cb)=>{closed++;cb(null);}};
  const remote=new engine.SFTPFileSystem(path.posix,{client:{getFsClient:()=>client}});
  await assert.rejects(engine.createServerFile(remote,'/shared/new.txt'),error=>error.code==='CREATE_FILE_INCOMPLETE');assert.equal(followedStats,0);assert.equal(closed,1);
+});
+
+
+test('upload and sync reject readonly new server modes before payloads or remote chmod',async t=>{
+ for(const action of ['upload','sync-up']){
+  const {local,remote,session}=fixture(t,{dirPerm:555});fs.mkdirSync(path.join(local,'readonly'));fs.writeFileSync(path.join(local,'readonly','file.txt'),'content');
+  await assert.rejects(engine.operate(session,action),/owner write.search/);assert.equal(fs.existsSync(path.join(remote,'readonly')),false);
+ }
+});
+
+test('DirectoryPermissionScope verifies remote directories without pathname chmod or restoration',async()=>{
+ const remote=new engine.SFTPFileSystem(path.posix,{client:{}});let mode=0o755,chmods=0;
+ remote.lstat=async()=>({type:engine.FileType.Directory,mode});remote.chmod=async()=>{chmods++;};
+ const scope=new engine.DirectoryPermissionScope();await scope.establish(remote,'/created',0o755);await scope.finish();assert.equal(chmods,0);
+ mode=0o700;await assert.rejects(scope.establish(remote,'/created',0o755),/required directory permissions/);assert.equal(chmods,0);
+});
+
+test('upload/sync directory replacement stops before chmod or cleanup',async()=>{
+ const remote=new engine.SFTPFileSystem(path.posix,{client:{}});let created=false,chmods=0,removed=0;
+ remote.lstat=async name=>(name==='/'||name==='/shared')?{type:engine.FileType.Directory,mode:0o755}:created?{type:engine.FileType.SymbolicLink,mode:0o777}:Promise.reject(Object.assign(new Error('missing'),{code:2}));
+ remote.mkdir=async(_name,mode)=>{assert.equal(mode,0o755);created=true;};remote.chmod=async()=>{chmods++;};remote.rmdir=async()=>{removed++;};
+ const source={pathResolver:path.posix,lstat:async()=>({type:engine.FileType.Directory,mode:0o755})},scope=new engine.DirectoryPermissionScope();
+ await assert.rejects(engine.ensureTransferDirectory(source,remote,'/source/new','/shared/new',undefined,scope,false,0o755),/creation is incomplete/);await scope.finish();assert.equal(chmods,0);assert.equal(removed,0);
+});
+
+test('shared writable remote ancestors are rejected before private staging',async()=>{
+ const remote=new engine.SFTPFileSystem(path.posix,{client:{}});remote.lstat=async()=>({type:engine.FileType.Directory,mode:0o777});
+ await assert.rejects(remote.assertIsolatedParents('/shared/file'),/shared-writable/);
+});
+
+
+test('nested remote creation verifies existing ancestor isolation even when immediate parents are missing',async()=>{
+ const remote=new engine.SFTPFileSystem(path.posix,{client:{}});let creates=0;
+ remote.lstat=async name=>{if(name==='/shared')return {type:engine.FileType.Directory,mode:0o777};throw Object.assign(new Error('missing'),{code:2});};remote.mkdir=async()=>{creates++;};
+ await assert.rejects(engine.createServerDirectory(remote,'/shared/missing/leaf'),/shared-writable/);assert.equal(creates,0);
+});
+
+
+test('remote isolation checks the namespace root instead of trusting synthetic permissions',async()=>{
+ const replies=['type=dir;UNIX.mode=0777; /','type=dir;UNIX.mode=0755; /'];
+ const ftp=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({_send:(_command,cb)=>cb(null,replies.shift())})}});
+ await assert.rejects(ftp.assertIsolatedParents('/file'),/shared-writable/);await ftp.assertIsolatedParents('/file');
+ const absent=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({_send:(_command,cb)=>cb(Object.assign(new Error('Unsupported'),{code:502}))})}});
+ await assert.rejects(absent.assertIsolatedParents('/file'),/root permissions cannot be verified/);
+});
+
+
+test('an explicit existing remote directory mode mismatch fails without chmod',async()=>{
+ const remote=new engine.SFTPFileSystem(path.posix,{client:{}});let chmods=0;
+ remote.lstat=async name=>({type:engine.FileType.Directory,mode:name==='/target'?0o700:0o755});remote.chmod=async()=>{chmods++;};
+ await assert.rejects(engine.ensureTransferDirectory({pathResolver:path.posix},remote,'/source','/target',755,new engine.DirectoryPermissionScope(),false,0o755),/required directory permissions/);assert.equal(chmods,0);
+});
+
+
+test('FTP root isolation requests missing facts and rejects ambiguous permission facts',async()=>{
+ const calls=[],replies=['type=dir; /','OK','type=dir;UNIX.mode=0755; /'];
+ const remote=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({_send:(command,cb)=>{calls.push(command);cb(null,replies.shift());}})}});
+ await remote.assertIsolatedParents('/file');assert.deepEqual(calls,['MLST /','OPTS MLST type;UNIX.mode;','MLST /']);
+ replies.push('type=dir;UNIX.mode=0755;unix.mode=0777; /','OK','type=dir;UNIX.mode=0755;unix.mode=0777; /');
+ await assert.rejects(remote.assertIsolatedParents('/file'),/root permissions cannot be verified/);
 });

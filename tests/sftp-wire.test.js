@@ -11,7 +11,7 @@ test('SFTP wire: password authentication, list, upload, temp rename, download an
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-ssh-'));
   const local=path.join(root,'local'),remote=path.join(root,'remote');fs.mkdirSync(local);fs.mkdirSync(remote);
   const hostKey=crypto.generateKeyPairSync('rsa',{modulusLength:2048}).privateKey.export({type:'pkcs1',format:'pem'});
-  let authentications=0,honorOpen=true,allowChmod=true;const modes=new Map(),writeModes=[];let pathChmods=0;
+  let authentications=0,honorOpen=true,allowChmod=true;const modes=new Map([['/',0o755]]),writeModes=[];let pathChmods=0;
   const clients=new Set();const {STATUS_CODE,OPEN_MODE}=utils.sftp;
   const server=new Server({hostKeys:[hostKey]},client=>{
     clients.add(client);client.on('close',()=>clients.delete(client));client.on('error',()=>{});
@@ -75,7 +75,7 @@ test('SFTP wire: password authentication, list, upload, temp rename, download an
 
   assert.equal((await engine.operate(session,'list')).some(item=>item.name==='wire.txt'),true);
   fs.writeFileSync(path.join(remote,'wire.txt'),'server change');await engine.operate(session,'download','wire.txt');assert.equal(fs.readFileSync(path.join(local,'wire.txt'),'utf8'),'server change');
-  fs.mkdirSync(path.join(remote,'nested'));fs.writeFileSync(path.join(remote,'nested','remote-only.txt'),'nested from server');
+  fs.mkdirSync(path.join(remote,'nested'));modes.set('/nested',0o755);fs.writeFileSync(path.join(remote,'nested','remote-only.txt'),'nested from server');
   fs.writeFileSync(path.join(remote,'remote-only.txt'),'from server');
   await engine.operate(session,'sync-both');
   assert.equal(fs.readFileSync(path.join(local,'remote-only.txt'),'utf8'),'from server');
