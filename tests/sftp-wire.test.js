@@ -65,7 +65,10 @@ test('SFTP wire: password authentication, list, upload, temp rename, download an
   honorOpen=true;allowChmod=true;
   await engine.operate(session,'create','created-default.txt');assert.equal(modes.get('/created-default.txt'),0o755);
   honorOpen=false;await engine.operate(session,'create','created-masked.txt');assert.equal(modes.get('/created-masked.txt'),0o755,'creation restores 755 after server masks OPEN mode');
-  allowChmod=false;await assert.rejects(engine.operate(session,'create','created-unverified.txt'),/required permissions could not be verified/);
+  allowChmod=false;await assert.rejects(engine.operate(session,'create','created-unverified.txt'),error=>error.code==='CREATE_FILE_INCOMPLETE'&&/entry may remain/.test(error.message));
+  assert.equal(fs.existsSync(path.join(remote,'created-unverified.txt')),true);
+  allowChmod=true;await assert.rejects(engine.operate(session,'create','created-unverified.txt'),/already exists/);
+  await engine.operate(session,'delete','created-unverified.txt',{yes:true});await engine.operate(session,'create','created-unverified.txt');assert.equal(modes.get('/created-unverified.txt'),0o755,'inspect/remove and retry restores exclusive creation after fixing server permissions');
   honorOpen=true;allowChmod=true;
 
   assert.equal((await engine.operate(session,'list')).some(item=>item.name==='wire.txt'),true);

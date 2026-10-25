@@ -476,6 +476,12 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     vscode.window.showInputBox=async options=>{if(retryInput++===0)return 'created-remotely.txt';assert.equal(options.value,'created-remotely.txt');return 'retried-name.txt';};
     await commands.get('devkit.sftp.create.file')(betaRoot);vscode.window.showErrorMessage=errorDisplay;
     assert.equal(fs.existsSync(path.join(dir,'remote-other','retried-name.txt')),true);
+    const creationFs=await betaRoot.explorerContext.fileService.getRemoteFileSystem(betaRoot.explorerContext.config),oldFchmod=creationFs.fchmod,oldFstat=creationFs.fstat;
+    let recoveryInput=0;creationFs.fchmod=async()=>{};creationFs.fstat=async fd=>({...await oldFstat.call(creationFs,fd),mode:0o644});
+    vscode.window.showErrorMessage=async(message,...actions)=>{assert.match(message,/entry may remain/);assert.match(message,/remove it only if safe before retrying/);assert.deepEqual(actions,['Choose another name','Close']);assert.ok((await provider.getChildren(betaRoot)).some(item=>path.basename(item.resource.fsPath)==='permission-failed.txt'));return 'Choose another name';};
+    vscode.window.showInputBox=async options=>{if(recoveryInput++===0)return 'permission-failed.txt';assert.equal(options.value,'');if(oldFchmod===undefined)delete creationFs.fchmod;else creationFs.fchmod=oldFchmod;creationFs.fstat=oldFstat;return 'permission-recovered.txt';};
+    try{await commands.get('devkit.sftp.create.file')(betaRoot);assert.equal(fs.readFileSync(path.join(dir,'remote-other','permission-failed.txt'),'utf8'),'');assert.equal(fs.existsSync(path.join(dir,'remote-other','permission-recovered.txt')),true);}
+    finally{if(oldFchmod===undefined)delete creationFs.fchmod;else creationFs.fchmod=oldFchmod;creationFs.fstat=oldFstat;vscode.window.showErrorMessage=errorDisplay;}
     fs.writeFileSync(path.join(dir,'remote-other','preview.txt'),'remote preview');
     const previewPicks=['beta','preview.txt'];
     vscode.window.showQuickPick=async choices=>{const label=previewPicks.shift();const item=choices.find(c=>c.label===label);assert.ok(item,'Missing '+label);return item;};

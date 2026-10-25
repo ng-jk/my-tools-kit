@@ -362,3 +362,5 @@ A `.devkit-…` name in a transfer error is the temporary staging destination. S
 ### Default server creation permissions
 
 New server files and folders default to **755** for uploads and the New File/New Folder commands. Set `"filePerm": 644` and `"dirPerm": 755` in the selected context/profile to override them independently. Values are octal digits (also accepted as `"0644"`), without special bits. For private files use `600`, and private folders `700`. Existing regular-file permissions retain the current owner-write policy unless `filePerm` is set; existing directory modes remain unchanged unless `dirPerm` is set during upload. Downloads, local backups and private transfer staging retain their own permission safeguards.
+
+If New File creates an entry but cannot verify its permissions, the operation reports incomplete creation and refreshes SFTP Remote Explorer. Inspect the retained entry and remove it only if safe before retrying the same name, or choose **Choose another name**. No automatic cleanup can remove a concurrent replacement. The CLI reports the retained path and the same recovery instructions.

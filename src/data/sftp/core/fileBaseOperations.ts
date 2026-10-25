@@ -44,6 +44,7 @@ export async function createFile(path: string, fs: FileSystem, option?: FileOpti
   if (!fs.supportsExclusiveCreate) throw new Error('This protocol cannot guarantee exclusive file creation; use SFTP Create File.');
 
   const targetFd = await fs.open(path, 'wx', option?.mode ?? 0o600);
+  const incomplete = (error: any) => Object.assign(new Error('New file creation did not finish. An entry may remain at '+path+'. Inspect it in SFTP Remote Explorer and remove it only if safe before retrying this name, or choose another name. '+error.message), {code:'CREATE_FILE_INCOMPLETE',remotePath:path});
   try {
     await fs.prepareStagedFile(path, '', option?.mode ?? 0o600, targetFd);
     // SFTP creation may be masked by the server's umask. Apply the requested
@@ -54,5 +55,6 @@ export async function createFile(path: string, fs: FileSystem, option?: FileOpti
       if(actual.type!==FileType.File || !Number.isInteger(actual.mode) || (actual.mode&0o777)!==option.mode)throw new Error('Created empty server file, but required permissions could not be verified: '+path);
     }
   }
-  finally { await fs.close(targetFd); }
+  catch(error) {throw incomplete(error);}
+  finally { await fs.close(targetFd).catch(error=>{throw incomplete(error);}); }
 }

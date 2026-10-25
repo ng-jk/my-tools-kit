@@ -1,3 +1,4 @@
+import {refreshRemoteExplorer} from '../fileHandlers/shared';
 import * as path from 'path';
 import {window} from 'vscode';
 import {assertEntryName} from '../../../data/sftp/path-safety';
@@ -30,6 +31,13 @@ export async function createRemoteEntry(folder: boolean, item?: any, items?: any
       await (folder ? createRemoteFolder(ctx) : createRemoteFile(ctx));
       return;
     } catch (error) {
+      if(error.code === 'CREATE_FILE_INCOMPLETE') {
+        await refreshRemoteExplorer(parent.target,true);
+        const recovery=await window.showErrorMessage(error.message,'Choose another name','Close');
+        if(recovery !== 'Choose another name')return;
+        value='';
+        continue;
+      }
       const retry = await window.showErrorMessage(`Could not create ${name}: ${error instanceof Error?error.message:String(error)}`, 'Retry', 'Cancel');
       if (retry !== 'Retry') return;
     }
