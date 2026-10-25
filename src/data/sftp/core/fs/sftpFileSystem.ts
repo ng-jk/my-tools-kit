@@ -145,25 +145,10 @@ export default class SFTPFileSystem extends RemoteFileSystem {
   }
 
   fchmod(fd: SFTPFileDescriptor, mode: number): Promise<void> {
+    // Never fall back to pathname chmod: the name may have been replaced by
+    // a symlink after OPEN, while this descriptor still identifies our file.
     return new Promise((resolve, reject) => {
-      this.sftp.fchmod(fd.handle, mode, (err: any) => {
-        if (err) {
-          // Try chmod() for sftp servers that may not support fchmod() for
-          // whatever reason
-          // see WriteStream.prototype.open in ssh2-streams.
-          this.sftp.chmod(fd.path, mode, (_err: any) => {
-            if (_err) {
-              reject(err);
-              return;
-            }
-
-            resolve();
-          });
-          return;
-        }
-
-        resolve();
-      });
+      this.sftp.fchmod(fd.handle, mode, (err: any) => err ? reject(err) : resolve());
     });
   }
 

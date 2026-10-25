@@ -11,7 +11,7 @@ test('SFTP wire: password authentication, list, upload, temp rename, download an
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-ssh-'));
   const local=path.join(root,'local'),remote=path.join(root,'remote');fs.mkdirSync(local);fs.mkdirSync(remote);
   const hostKey=crypto.generateKeyPairSync('rsa',{modulusLength:2048}).privateKey.export({type:'pkcs1',format:'pem'});
-  let authentications=0,honorOpen=true,allowChmod=true;const modes=new Map(),writeModes=[];
+  let authentications=0,honorOpen=true,allowChmod=true;const modes=new Map(),writeModes=[];let pathChmods=0;
   const clients=new Set();const {STATUS_CODE,OPEN_MODE}=utils.sftp;
   const server=new Server({hostKeys:[hostKey]},client=>{
     clients.add(client);client.on('close',()=>clients.delete(client));client.on('error',()=>{});
@@ -32,7 +32,7 @@ test('SFTP wire: password authentication, list, upload, temp rename, download an
       sftp.on('WRITE',guard((req,h,offset,data)=>{writeModes.push(modes.get(handles.get(h.toString('hex')).path));fs.writeSync(handles.get(h.toString('hex')).fd,data,0,data.length,offset);sftp.status(req,STATUS_CODE.OK);}));
       sftp.on('CLOSE',guard((req,h)=>{const v=handles.get(h.toString('hex'));if(v.fd!==undefined)fs.closeSync(v.fd);handles.delete(h.toString('hex'));sftp.status(req,STATUS_CODE.OK);}));
       sftp.on('FSETSTAT',guard((req,h,a)=>{if(a.mode!==undefined){if(!allowChmod)return sftp.status(req,STATUS_CODE.PERMISSION_DENIED);modes.set(handles.get(h.toString('hex')).path,a.mode&0o777);}if(a.atime!==undefined)fs.futimesSync(handles.get(h.toString('hex')).fd,a.atime,a.mtime);sftp.status(req,STATUS_CODE.OK);}));
-      sftp.on('SETSTAT',guard((req,p,a)=>{if(a.mode!==undefined){if(!allowChmod)return sftp.status(req,STATUS_CODE.PERMISSION_DENIED);modes.set(p,a.mode&0o777);}if(a.atime!==undefined)fs.utimesSync(resolve(p),a.atime,a.mtime);sftp.status(req,STATUS_CODE.OK);}));
+      sftp.on('SETSTAT',guard((req,p,a)=>{if(a.mode!==undefined){pathChmods++;if(!allowChmod)return sftp.status(req,STATUS_CODE.PERMISSION_DENIED);modes.set(p,a.mode&0o777);}if(a.atime!==undefined)fs.utimesSync(resolve(p),a.atime,a.mtime);sftp.status(req,STATUS_CODE.OK);}));
       sftp.on('MKDIR',guard((req,p)=>{fs.mkdirSync(resolve(p));sftp.status(req,STATUS_CODE.OK);}));
       sftp.on('REMOVE',guard((req,p)=>{fs.unlinkSync(resolve(p));sftp.status(req,STATUS_CODE.OK);}));
       sftp.on('RMDIR',guard((req,p)=>{fs.rmdirSync(resolve(p));sftp.status(req,STATUS_CODE.OK);}));
@@ -65,7 +65,8 @@ test('SFTP wire: password authentication, list, upload, temp rename, download an
   honorOpen=true;allowChmod=true;
   await engine.operate(session,'create','created-default.txt');assert.equal(modes.get('/created-default.txt'),0o755);
   honorOpen=false;await engine.operate(session,'create','created-masked.txt');assert.equal(modes.get('/created-masked.txt'),0o755,'creation restores 755 after server masks OPEN mode');
-  allowChmod=false;await assert.rejects(engine.operate(session,'create','created-unverified.txt'),error=>error.code==='CREATE_FILE_INCOMPLETE'&&/entry may remain/.test(error.message));
+  const beforePathChmod=pathChmods;allowChmod=false;await assert.rejects(engine.operate(session,'create','created-unverified.txt'),error=>error.code==='CREATE_FILE_INCOMPLETE'&&/entry may remain/.test(error.message));
+  assert.equal(pathChmods,beforePathChmod,'failed descriptor chmod never falls back to SETSTAT');
   assert.equal(fs.existsSync(path.join(remote,'created-unverified.txt')),true);
   allowChmod=true;await assert.rejects(engine.operate(session,'create','created-unverified.txt'),/already exists/);
   await engine.operate(session,'delete','created-unverified.txt',{yes:true});await engine.operate(session,'create','created-unverified.txt');assert.equal(modes.get('/created-unverified.txt'),0o755,'inspect/remove and retry restores exclusive creation after fixing server permissions');

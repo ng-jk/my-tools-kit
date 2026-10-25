@@ -1231,3 +1231,26 @@ test('existing remote file modes remain separate from new server defaults',async
   await new engine.TransferTask({fsPath:'/source',fileSystem:source},{fsPath:'/target',fileSystem:target},{fileType:engine.FileType.File,transferDirection:engine.TransferDirection.LOCAL_TO_REMOTE,transferOption:{fallbackMode:0o755}}).run();assert.equal(opened,mode);
  }
 });
+
+
+test('exclusive SFTP creation never falls back to pathname chmod after replacement',async()=>{
+ let pathname='missing',victimMode=0o600,closed=0,pathChmods=0;
+ const client={
+  lstat:(_name,cb)=>cb(Object.assign(new Error('missing'),{code:2})),
+  open:(_name,_flags,_mode,cb)=>{pathname='owned file';cb(null,Buffer.from('owned handle'));},
+  fchmod:(_handle,_mode,cb)=>{pathname='symlink to private victim';cb(Object.assign(new Error('unsupported'),{code:8}));},
+  chmod:(_name,mode,cb)=>{pathChmods++;victimMode=mode;cb(null);},
+  fstat:(_handle,cb)=>cb(null,{isDirectory:()=>false,isFile:()=>true,isSymbolicLink:()=>false,mode:0o600,size:0,mtime:0,atime:0}),
+  close:(_handle,cb)=>{closed++;cb(null);}
+ };
+ const remote=new engine.SFTPFileSystem(path.posix,{client:{getFsClient:()=>client}});
+ await assert.rejects(engine.createServerFile(remote,'/shared/new.txt'),error=>error.code==='CREATE_FILE_INCOMPLETE');
+ assert.equal(pathname,'symlink to private victim');assert.equal(pathChmods,0);assert.equal(victimMode,0o600);assert.equal(closed,1);
+});
+
+
+test('server mkdir populates new readonly parents then restores modes without touching existing ancestors',async()=>{
+ const dirs=new Set(['/base']),modes=[],target={pathResolver:path.posix,lstat:async name=>{if(dirs.has(name))return {type:engine.FileType.Directory};throw Object.assign(new Error('missing'),{code:2});},mkdir:async name=>{dirs.add(name);},establishDirectoryMode:async(name,mode)=>{modes.push([name,mode]);},rmdir:async()=>{}};
+ await engine.createServerDirectory(target,'/base/new/child',555);
+ assert.deepEqual(modes,[['/base/new',0o755],['/base/new/child',0o755],['/base/new/child',0o555],['/base/new',0o555]]);
+});
