@@ -1,5 +1,5 @@
 // Adapted from ng-jk/vscode-sftp (MIT); see THIRD-PARTY-NOTICES.md.
-import { FileSystem } from './fs/index';
+import { FileSystem, FileType } from './fs/index';
 
 import { Readable } from 'stream';
 import { logger } from '../ports';
@@ -44,6 +44,15 @@ export async function createFile(path: string, fs: FileSystem, option?: FileOpti
   if (!fs.supportsExclusiveCreate) throw new Error('This protocol cannot guarantee exclusive file creation; use SFTP Create File.');
 
   const targetFd = await fs.open(path, 'wx', option?.mode ?? 0o600);
-  try { await fs.prepareStagedFile(path, '', option?.mode ?? 0o600, targetFd); }
+  try {
+    await fs.prepareStagedFile(path, '', option?.mode ?? 0o600, targetFd);
+    // SFTP creation may be masked by the server's umask. Apply the requested
+    // mode through the exclusive descriptor, then verify without following links.
+    if(option?.mode !== undefined && typeof (fs as any).fchmod === 'function'){
+      await (fs as any).fchmod(targetFd,option.mode).catch(()=>{});
+      const actual=await fs.fstat(targetFd);
+      if(actual.type!==FileType.File || !Number.isInteger(actual.mode) || (actual.mode&0o777)!==option.mode)throw new Error('Created empty server file, but required permissions could not be verified: '+path);
+    }
+  }
   finally { await fs.close(targetFd); }
 }

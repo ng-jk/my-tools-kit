@@ -6,7 +6,7 @@ Each entry in `profiles` can set its own `protocol`, `port`, `context` (local fo
 
 SFTP troubleshooting: errors identify a missing configuration file, invalid JSON or fields, a file outside the active local context, DNS/port/network failure, or rejected authentication. For rejected authentication check the selected context's username, password or SSH key; servers often do not reveal which credential is wrong. Never include passwords in an error report. Diff reports whether the missing file is local or on the server.
 
-Uploads preserve destination permission bits by default and ensure owner-write access, including when the source or previous destination was read-only. Group/other access is unchanged, and special permission bits are not copied. Set `filePerm` explicitly (for example `640` or `644`) to override this policy; an explicit read-only mode such as `444` intentionally prevents editing. Server ownership, ACLs and directory access remain controlled by the server account.
+New server files and folders default to `755`. Uploads to existing regular files preserve destination bits and ensure owner-write access; their group/other access is unchanged and special bits are not copied. Set `filePerm` explicitly (for example `640` or `644`) to override this policy; an explicit read-only mode such as `444` intentionally prevents editing. Server ownership, ACLs and directory access remain controlled by the server account.
 
 Open the **Development Tools Kit** toolbox icon in VS Code’s Activity Bar, then choose a tool. This guide shows how to configure and use each function.
 
@@ -347,7 +347,7 @@ Uploading a file creates missing destination folders automatically. Shared hosti
 
 The toolkit reuses each verified remote parent check and avoids redundant chmod verification when no final permission change is needed. Backup metadata inspection and downloads use the configured `concurrency` (default 4 for SFTP); FTP remains serialized on its control connection. Originals are still backed up before replacement. These changes reduce protocol requests; actual speed depends on latency, file count and server throughput.
 
-When creating folders, inferred source permissions retain owner execute/search: `666` becomes `766`, without adding group/other access. Explicit `dirPerm` remains exact; use a searchable mode such as `755` or `700` rather than file-style `666`. Existing directories keep their permissions unless an explicit override is configured.
+New server folders use `755` by default rather than inheriting source modes such as `666`. Explicit `dirPerm` remains exact; use a searchable mode such as `755` or `700` rather than file-style `666`. Existing directories keep their permissions unless an explicit override is configured.
 
 ### Explicit uploads and ignore rules
 
@@ -358,3 +358,7 @@ Folder/project uploads, synchronization, Git-change/commit batches, all-profile 
 ### FTP metadata response 450
 
 A `.devkit-…` name in a transfer error is the temporary staging destination. Some FTP servers return `450` (temporarily unavailable) when inspecting a new name with MLST or STAT. The toolkit continues with its remaining existence check; it creates the new path only when RNFR explicitly confirms absence. A 450 response alone never authorizes replacement. If the final check is also unavailable, the upload stops and identifies the command/code; check server availability and account access before retrying.
+
+### Default server creation permissions
+
+New server files and folders default to **755** for uploads and the New File/New Folder commands. Set `"filePerm": 644` and `"dirPerm": 755` in the selected context/profile to override them independently. Values are octal digits (also accepted as `"0644"`), without special bits. For private files use `600`, and private folders `700`. Existing regular-file permissions retain the current owner-write policy unless `filePerm` is set; existing directory modes remain unchanged unless `dirPerm` is set during upload. Downloads, local backups and private transfer staging retain their own permission safeguards.

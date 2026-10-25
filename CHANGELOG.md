@@ -1,5 +1,11 @@
 # Release notes
 
+## 0.7.11 — 2026-10-26
+
+- Default newly uploaded server files and folders to 755, configurable independently with filePerm and dirPerm per context/profile.
+- Apply the same policy to UI and CLI New File/New Folder commands. Preserve existing destination permissions unless an explicit override is configured; downloads and private backup/staging permissions keep their separate policies.
+- Validate octal configuration and verify newly created directory modes, including missing parent folders.
+
 ## 0.7.10 — 2026-10-22
 
 - Continue conservative FTP existence probes when MLST or STAT returns transient code 450, allowing new staging paths when RNFR explicitly confirms absence.

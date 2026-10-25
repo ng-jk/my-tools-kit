@@ -1,8 +1,9 @@
+import {serverCreationMode} from './server-permissions';
 import {FileSystem, FileType, RemoteFileSystem} from '../../data/sftp/core/fs';
 import {filesystemIdentity} from './core/staged-replacement';
 const locks = new WeakMap<object, Map<string, Promise<void>>>();
-export async function ensureTransferDirectory(source: FileSystem, target: FileSystem, from: string, to: string, override?: number, scope?: DirectoryPermissionScope, ancestor = false) {
-  return withDirectoryLock(target, to, () => ensure(source, target, from, to, override, scope, ancestor));
+export async function ensureTransferDirectory(source: FileSystem, target: FileSystem, from: string, to: string, override?: number, scope?: DirectoryPermissionScope, ancestor = false, newMode?: number) {
+  return withDirectoryLock(target, to, () => ensure(source, target, from, to, override, scope, ancestor, newMode));
 }
 async function withDirectoryLock(target: FileSystem, to: string, operation: () => Promise<void>) {
   const identity = (target as any)[filesystemIdentity] || target;
@@ -14,7 +15,7 @@ async function withDirectoryLock(target: FileSystem, to: string, operation: () =
   try { await operation(); }
   finally {release!(); if (paths.get(key) === current) paths.delete(key);}
 }
-async function ensure(source: FileSystem, target: FileSystem, from: string, to: string, override?: number, scope?: DirectoryPermissionScope, ancestor = false) {
+async function ensure(source: FileSystem, target: FileSystem, from: string, to: string, override?: number, scope?: DirectoryPermissionScope, ancestor = false, newMode?: number) {
   let existing;
   try { existing = await target.lstat(to); }
   catch (error) { if (error.code !== 'ENOENT' && error.code !== 2) throw error; }
@@ -24,16 +25,16 @@ async function ensure(source: FileSystem, target: FileSystem, from: string, to: 
     // SFTP and a second LIST on FTP for every file sharing this parent.
     // Local ensureDir still validates native path/ACL constraints.
     if (!(target instanceof RemoteFileSystem)) await target.ensureDir(to);
-    const requested = ancestor || override === undefined ? undefined : parseInt(String(override), 8);
+    const requested = ancestor || override === undefined ? undefined : serverCreationMode(override,'dirPerm');
     if (scope) await scope.establish(target, to, requested);
     else if (requested !== undefined) await target.establishDirectoryMode(to, requested);
     return;
   }
   const parent = target.pathResolver.dirname(to);
-  if (parent !== to) await ensureTransferDirectory(source, target, source.pathResolver.dirname(from), parent, override, scope, true);
+  if (parent !== to) await ensureTransferDirectory(source, target, source.pathResolver.dirname(from), parent, override, scope, true, newMode);
   const stat = await source.lstat(from);
   if (stat.type !== FileType.Directory) throw new Error('Source parent is not a directory: ' + from);
-  let mode = override !== undefined ? parseInt(String(override), 8) : stat.mode;
+  let mode = override !== undefined ? serverCreationMode(override,'dirPerm') : (newMode ?? stat.mode);
   if (!Number.isInteger(mode)) throw new Error('Source directory permissions are unavailable: ' + from);
   // Windows/non-POSIX source metadata may report 666 for directories.
   // Inferred modes must retain owner search without widening group/other access.

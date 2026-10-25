@@ -3,6 +3,7 @@ import { Readable } from 'stream';
 import {stagingPath, replaceStaged} from './staged-replacement';
 import {beginLocalChange} from '../../../data/sftp/local-events';
 import {transferPermissions} from '../transfer-permissions';
+import {serverCreationMode} from '../server-permissions';
 import {uploadMode} from '../diagnostics';
 import { FileSystem, FileType } from '../../../data/sftp/core/fs/index';
 import { Task } from './scheduler';
@@ -127,6 +128,7 @@ export default class TransferTask implements Task {
     const {openSsh, fallbackMode, atime, mtime} = this._TransferOption;
     const {filePerm} = transferPermissions(this._TransferOption, this._transferDirection === TransferDirection.LOCAL_TO_REMOTE);
     let mode = this._TransferOption.mode;
+    const newMode = this._transferDirection === TransferDirection.LOCAL_TO_REMOTE ? serverCreationMode(filePerm,'filePerm') : fallbackMode;
     const staged = stagingPath(target);
     let fd: any;
     let sourceError: Error | undefined;
@@ -137,8 +139,8 @@ export default class TransferTask implements Task {
       this._handle.pause();
       this._handle.on('error', rememberError);
       if (mode === undefined) {
-        try { const stat = await targetFs.lstat(target); mode = stat.type === FileType.File ? stat.mode : fallbackMode; }
-        catch (error) { if (error.code !== 'ENOENT' && error.code !== 2) throw error; mode = fallbackMode; }
+        try { const stat = await targetFs.lstat(target); mode = stat.type === FileType.File ? stat.mode : newMode; }
+        catch (error) { if (error.code !== 'ENOENT' && error.code !== 2) throw error; mode = newMode; }
       }
       if(this._transferDirection===TransferDirection.LOCAL_TO_REMOTE) mode=uploadMode(mode,filePerm);
       if (sourceError) throw sourceError;

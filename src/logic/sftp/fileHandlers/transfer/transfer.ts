@@ -105,7 +105,7 @@ async function transferFolder(
   rejectDestinationCollisions(fileEntries,targetFs,targetFsPath);
 
   // Need this to make sure file can correct transfer
-  await ensureTransferDirectory(srcFs, targetFs, srcFsPath, targetFsPath, transferPermissions(transferOption, config.transferDirection === TransferDirection.LOCAL_TO_REMOTE).dirPerm, config.directoryScope);
+  await ensureTransferDirectory(srcFs, targetFs, srcFsPath, targetFsPath, transferPermissions(transferOption, config.transferDirection === TransferDirection.LOCAL_TO_REMOTE).dirPerm, config.directoryScope, false, config.transferDirection === TransferDirection.LOCAL_TO_REMOTE ? 0o755 : undefined);
 
   await settleAll(
     fileEntries.map(file =>
@@ -174,7 +174,7 @@ async function transferWithType(
     case FileType.SymbolicLink:
       if (config.ensureDirExist) {
         const { targetFs, targetFsPath } = config;
-        await ensureTransferDirectory(config.srcFs, targetFs, config.srcFs.pathResolver.dirname(config.srcFsPath), targetFs.pathResolver.dirname(targetFsPath), transferPermissions(config.transferOption, config.transferDirection === TransferDirection.LOCAL_TO_REMOTE).dirPerm, config.directoryScope);
+        await ensureTransferDirectory(config.srcFs, targetFs, config.srcFs.pathResolver.dirname(config.srcFsPath), targetFs.pathResolver.dirname(targetFsPath), transferPermissions(config.transferOption, config.transferDirection === TransferDirection.LOCAL_TO_REMOTE).dirPerm, config.directoryScope, false, config.transferDirection === TransferDirection.LOCAL_TO_REMOTE ? 0o755 : undefined);
       }
       await transferFile(config, fileType, collect);
       break;
@@ -451,7 +451,7 @@ async function _sync(
   if ((await srcFs.lstat(srcFsPath)).type !== FileType.Directory) throw new Error('Sync source must be a real directory, not a symlink: ' + srcFsPath);
   const sourceEntries=checkedEntries(srcFs,srcFsPath,await srcFs.list(srcFsPath));
   rejectDestinationCollisions(sourceEntries.filter(file=>!transferOption.ignore?.(file.fspath,transferDirection===TransferDirection.LOCAL_TO_REMOTE?'local':'remote')),targetFs,targetFsPath);
-  await ensureTransferDirectory(srcFs, targetFs, srcFsPath, targetFsPath, transferPermissions(transferOption, config.transferDirection === TransferDirection.LOCAL_TO_REMOTE).dirPerm, config.directoryScope);
+  await ensureTransferDirectory(srcFs, targetFs, srcFsPath, targetFsPath, transferPermissions(transferOption, config.transferDirection === TransferDirection.LOCAL_TO_REMOTE).dirPerm, config.directoryScope, false, config.transferDirection === TransferDirection.LOCAL_TO_REMOTE ? 0o755 : undefined);
   const targetEntries=checkedEntries(targetFs,targetFsPath,await targetFs.list(targetFsPath));
   if(transferOption.bothDiretions) rejectDestinationCollisions(targetEntries.filter(file=>!transferOption.ignore?.(file.fspath,transferDirection===TransferDirection.LOCAL_TO_REMOTE?'remote':'local')),srcFs,srcFsPath);
   await syncFiles(sourceEntries,targetEntries);

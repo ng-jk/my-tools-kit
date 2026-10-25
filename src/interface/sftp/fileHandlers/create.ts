@@ -1,3 +1,4 @@
+import {createServerDirectory,createServerFile} from '../../../logic/sftp/server-permissions';
 // Adapted from ng-jk/vscode-sftp (MIT); see THIRD-PARTY-NOTICES.md.
 import {assertRemoteAncestors} from '../../../logic/sftp/remote-operations';
 import { refreshRemoteExplorer } from './shared';
@@ -13,7 +14,7 @@ export const createRemoteFile = createFileHandler<FileHandleOption & { skipDir?:
     await assertRemoteAncestors(remoteFs,remoteFsPath,this.config.remotePath,false,true);
 
     let promise;
-    promise = fileOperations.createFile(remoteFsPath, remoteFs, {});
+    promise = createServerFile(remoteFs,remoteFsPath,this.config.filePerm);
 
     /*
     const stat = await remoteFs.lstat(remoteFsPath);
@@ -22,7 +23,7 @@ export const createRemoteFile = createFileHandler<FileHandleOption & { skipDir?:
         if (option.skipDir) {
           return;
         }
-        promise = fileOperations.createDir(remoteFsPath, remoteFs, {});
+        promise = createServerDirectory(remoteFs,remoteFsPath,this.config.dirPerm);
         // promise = fileOperations.removeDir(remoteFsPath, remoteFs, {});
         break;
       case FileType.File:
@@ -53,7 +54,7 @@ export const createRemoteFolder = createFileHandler<FileHandleOption & { skipDir
     await assertRemoteAncestors(remoteFs,remoteFsPath,this.config.remotePath,false,true);
 
     let promise;
-    promise = fileOperations.createDir(remoteFsPath, remoteFs, {});
+    promise = createServerDirectory(remoteFs,remoteFsPath,this.config.dirPerm);
 
     /*
     const stat = await remoteFs.lstat(remoteFsPath);
@@ -62,7 +63,7 @@ export const createRemoteFolder = createFileHandler<FileHandleOption & { skipDir
         if (option.skipDir) {
           return;
         }
-        promise = fileOperations.createDir(remoteFsPath, remoteFs, {});
+        promise = createServerDirectory(remoteFs,remoteFsPath,this.config.dirPerm);
         // promise = fileOperations.removeDir(remoteFsPath, remoteFs, {});
         break;
       case FileType.File:

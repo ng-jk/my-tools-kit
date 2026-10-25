@@ -47,7 +47,7 @@ test('SFTP wire: password authentication, list, upload, temp rename, download an
   const bad=engine.createSession(local,{host:'127.0.0.1',port:server.address().port,username:'fixture',password:'test-password',remotePath:'/',hostFingerprint:'SHA256:wrong',connectTimeout:1000});
   try {await assert.rejects(engine.operate(bad,'list'),/verification|host key/i);assert.equal(authentications,0);} finally {bad.service.dispose();}
   fs.writeFileSync(path.join(local,'wire.txt'),'over SSH');
-  await engine.operate(session,'upload','wire.txt');assert.equal(fs.readFileSync(path.join(remote,'wire.txt'),'utf8'),'over SSH');
+  await engine.operate(session,'upload','wire.txt');assert.equal(fs.readFileSync(path.join(remote,'wire.txt'),'utf8'),'over SSH');assert.equal(modes.get('/wire.txt'),0o755);
   const peer=engine.createSession(local,{host:'127.0.0.1',port:server.address().port,username:'fixture',password:'test-password',remotePath:'/',useTempFile:true,hostFingerprint:engine.fingerprint(utils.parseKey(hostKey).getPublicSSH())});
   const originalFs=await session.service.getRemoteFileSystem(session.config);
   const peerFs=await peer.service.getRemoteFileSystem(peer.config);
@@ -63,6 +63,11 @@ test('SFTP wire: password authentication, list, upload, temp rename, download an
   await assert.rejects(engine.operate(session,'upload','wire.txt'),/required file permissions/);
   assert.equal(writeModes.length,written);assert.equal(fs.readFileSync(path.join(remote,'wire.txt'),'utf8'),'over SSH');
   honorOpen=true;allowChmod=true;
+  await engine.operate(session,'create','created-default.txt');assert.equal(modes.get('/created-default.txt'),0o755);
+  honorOpen=false;await engine.operate(session,'create','created-masked.txt');assert.equal(modes.get('/created-masked.txt'),0o755,'creation restores 755 after server masks OPEN mode');
+  allowChmod=false;await assert.rejects(engine.operate(session,'create','created-unverified.txt'),/required permissions could not be verified/);
+  honorOpen=true;allowChmod=true;
+
   assert.equal((await engine.operate(session,'list')).some(item=>item.name==='wire.txt'),true);
   fs.writeFileSync(path.join(remote,'wire.txt'),'server change');await engine.operate(session,'download','wire.txt');assert.equal(fs.readFileSync(path.join(local,'wire.txt'),'utf8'),'server change');
   fs.mkdirSync(path.join(remote,'nested'));fs.writeFileSync(path.join(remote,'nested','remote-only.txt'),'nested from server');

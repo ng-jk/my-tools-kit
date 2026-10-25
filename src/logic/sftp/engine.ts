@@ -1,3 +1,4 @@
+import {createServerDirectory,createServerFile} from './server-permissions';
 import * as path from 'path';
 import { FileService, FileType, TransferDirection, fileOperations } from './core';
 import { transfer, sync } from './fileHandlers/transfer/transfer';
@@ -72,8 +73,8 @@ async function operate(session: any, action: string, relative = '.', flags: any 
     await requireDiffFile(localFs,local,'local');await requireDiffFile(remoteFs,remote,'remote');
     return { local: (await localFs.readFile(local)).toString('utf8'), remote: (await remoteFs.readFile(remote)).toString('utf8') };
   }
-  if (action === 'mkdir') { await assertRemoteAncestors(remoteFs,remote,config.remotePath,true,true); await remoteFs.ensureDir(remote); return { passed: true }; }
-  if (action === 'create') { await assertRemoteAncestors(remoteFs,remote,config.remotePath,false,true); await fileOperations.createFile(remote, remoteFs); return { passed: true }; }
+  if (action === 'mkdir') { await assertRemoteAncestors(remoteFs,remote,config.remotePath,true,true); await createServerDirectory(remoteFs,remote,config.dirPerm); return { passed: true }; }
+  if (action === 'create') { await assertRemoteAncestors(remoteFs,remote,config.remotePath,false,true); await createServerFile(remoteFs,remote,config.filePerm); return { passed: true }; }
   if (action === 'rename') {
     if (!flags.to || path.posix.resolve('/', remote) === path.posix.resolve('/', config.remotePath)) throw new Error('Rename requires a non-root path and --to');
     const destination = resolveTarget(session, flags.to).remote;
@@ -96,3 +97,5 @@ export {defaultBackupPath} from '../../data/sftp/backup-location';
 
 export {ensureTransferDirectory,DirectoryPermissionScope} from './directory-permissions';
 export {default as MirrorService} from './mirror';
+
+export {serverCreationMode,createServerDirectory,createServerFile} from './server-permissions';

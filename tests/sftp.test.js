@@ -305,7 +305,7 @@ test('default project uploads exclude credentials and repository metadata',async
   fs.writeFileSync(path.join(local,'.env'),'SECRET=private');fs.writeFileSync(path.join(local,'.env.local'),'SECRET=private');fs.writeFileSync(path.join(local,'public.txt'),'public');
   await engine.operate(session,'upload');assert.deepEqual(fs.readdirSync(remote),['public.txt']);
 });
-test('recursive transfers retain each child permission mode in both directions',async()=>{
+test('recursive uploads default new files to 755 and downloads retain each child mode',async()=>{
   for(const direction of [engine.TransferDirection.LOCAL_TO_REMOTE,engine.TransferDirection.REMOTE_TO_LOCAL]) {
     const created=[];
     const source={pathResolver:path.posix,lstat:async()=>({type:engine.FileType.Directory,mode:0o755}),list:async()=>[
@@ -314,7 +314,7 @@ test('recursive transfers retain each child permission mode in both directions',
     const target={pathResolver:path.posix,ensureDir:async()=>{},lstat:async name=>{if(name==='/destination')return {type:engine.FileType.Directory};throw Object.assign(new Error('missing'),{code:2});},open:async(name,flags,mode)=>{created.push(mode);return 1;},put:async input=>{for await(const chunk of input){}},close:async()=>{},rename:async()=>{},unlink:async()=>{}};
     const tasks=[];
     await engine.transfer({srcFsPath:'/source',targetFsPath:'/destination',srcFs:source,targetFs:target,transferDirection:direction,transferOption:{}},task=>tasks.push(task));
-    for(const task of tasks)await task.run();assert.deepEqual(created.sort(),[0o600,0o755]);
+    for(const task of tasks)await task.run();assert.deepEqual(created.sort(),direction===engine.TransferDirection.LOCAL_TO_REMOTE?[0o755,0o755]:[0o600,0o755]);
   }
 });
 test('sync compares equal-length symlink targets even with identical timestamps',async()=>{
@@ -490,7 +490,7 @@ test('SSH descriptor limiter releases failed opens and reserves concurrent slots
 
 test('new private directories establish permissions before payloads in both directions',async t=>{
   for(const action of ['upload','download','sync-up','sync-down']) {
-    const {local,remote,session}=fixture(t);
+    const {local,remote,session}=fixture(t,{dirPerm:700});
     const down=action==='download'||action==='sync-down';
     const sourceDir=down?remote:local,destination=down?local:remote;
     fs.mkdirSync(path.join(sourceDir,'private'));fs.writeFileSync(path.join(sourceDir,'private','data.txt'),'private by parent');
@@ -738,7 +738,7 @@ test('nested SSH connect preserves tunnels, resolves intermediate keys and promp
 
 test('nonempty read-only directories remain owner-writable during transfers and finalize on success or failure',async t=>{
   for(const fail of [false,true]) {
-    const {local,remote,session}=fixture(t);fs.mkdirSync(path.join(local,'readonly'));fs.writeFileSync(path.join(local,'readonly','file.txt'),'content');
+    const {local,remote,session}=fixture(t,{dirPerm:555});fs.mkdirSync(path.join(local,'readonly'));fs.writeFileSync(path.join(local,'readonly','file.txt'),'content');
     const source=session.service.getLocalFileSystem(),target=await session.service.getRemoteFileSystem(session.config);
     const stat=source.lstat,establish=target.establishDirectoryMode,put=target.put;const modes=new Map();
     source.lstat=async name=>{const value=await stat.call(source,name);return {...value,mode:value.type===engine.FileType.Directory?0o555:value.mode};};
@@ -766,7 +766,7 @@ test('sync saves relevant dirty documents before comparison and aborts on unsucc
 });
 
 test('concurrent disjoint transfers retain directory population permissions until both finish',async t=>{
-  const {local,remote,session}=fixture(t);fs.mkdirSync(path.join(local,'readonly'));fs.writeFileSync(path.join(local,'readonly','one.txt'),'one');fs.writeFileSync(path.join(local,'readonly','two.txt'),'two');
+  const {local,remote,session}=fixture(t,{dirPerm:555});fs.mkdirSync(path.join(local,'readonly'));fs.writeFileSync(path.join(local,'readonly','one.txt'),'one');fs.writeFileSync(path.join(local,'readonly','two.txt'),'two');
   const source=session.service.getLocalFileSystem(),target=await session.service.getRemoteFileSystem(session.config);
   const stat=source.lstat,establish=target.establishDirectoryMode,put=target.put;const modes=new Map(),release=[],started=[];
   const waits=[0,1].map(index=>new Promise(resolve=>started[index]=resolve));let count=0;
@@ -1153,13 +1153,13 @@ test('FTP directory permissions parse special bits and reject unverifiable modes
 });
 
 
-test('inferred 666 directory mode keeps owner search and avoids redundant chmod verification',async t=>{
+test('new server directories default to 755 instead of inferred 666 without redundant verification',async t=>{
  const {local,remote,session}=fixture(t);fs.mkdirSync(path.join(local,'Voucher'));fs.writeFileSync(path.join(local,'Voucher','file.txt'),'payload');
  const source=session.service.getLocalFileSystem(),target=await session.service.getRemoteFileSystem(session.config),stat=source.lstat,establish=target.establishDirectoryMode;
  const complete=target.supportsCompleteDirectoryListing;target.supportsCompleteDirectoryListing=true;
  const modes=[];source.lstat=async name=>{const value=await stat.call(source,name);return {...value,mode:value.type===engine.FileType.Directory?0o666:value.mode};};
  target.establishDirectoryMode=async(name,mode)=>{modes.push([path.resolve(name),mode]);};
- try{await engine.operate(session,'upload','Voucher/file.txt');assert.equal(fs.readFileSync(path.join(remote,'Voucher','file.txt'),'utf8'),'payload');assert.deepEqual(modes,[[path.join(remote,'Voucher'),0o766]]);}
+ try{await engine.operate(session,'upload','Voucher/file.txt');assert.equal(fs.readFileSync(path.join(remote,'Voucher','file.txt'),'utf8'),'payload');assert.deepEqual(modes,[[path.join(remote,'Voucher'),0o755]]);}
  finally{source.lstat=stat;target.establishDirectoryMode=establish;target.supportsCompleteDirectoryListing=complete;}
 });
 
@@ -1205,4 +1205,29 @@ test('explicit upload bypasses default exclusions but not internal transfer arti
  const adapter=await session.service.getRemoteFileSystem(session.config),complete=adapter.supportsCompleteDirectoryListing;adapter.supportsCompleteDirectoryListing=true;t.after(()=>{adapter.supportsCompleteDirectoryListing=complete;});
  fs.writeFileSync(path.join(local,'.env'),'EXAMPLE_ONLY=fixture');await engine.operate(session,'upload','.env');assert.equal(fs.readFileSync(path.join(remote,'.env'),'utf8'),'EXAMPLE_ONLY=fixture');
  const name='private.devkit-12345678-1234-1234-1234-123456789abc.backup';fs.writeFileSync(path.join(local,name),'internal');await engine.operate(session,'upload',name);assert.equal(fs.existsSync(path.join(remote,name)),false);
+});
+
+
+test('server creation defaults to 755 with per-context overrides; existing destinations are preserved',async t=>{
+ for(const overrides of [{},{filePerm:640,dirPerm:750},{profiles:{private:{filePerm:600,dirPerm:700}},defaultProfile:"private"}]){
+  const {local,remote,session}=fixture(t,overrides);const target=await session.service.getRemoteFileSystem(session.config),open=target.open,establish=target.establishDirectoryMode,complete=target.supportsCompleteDirectoryListing;
+  target.supportsCompleteDirectoryListing=true;const files=[],dirs=[];
+  target.open=async function(name,flags,mode){if(flags.includes('w'))files.push(mode);return open.call(this,name,flags,mode);};target.establishDirectoryMode=async(name,mode)=>{dirs.push([path.resolve(name),mode]);};
+  try{
+   fs.mkdirSync(path.join(local,'created'));fs.writeFileSync(path.join(local,'created','new.txt'),'new');await engine.operate(session,'upload','created/new.txt');assert.equal(files.at(-1),engine.serverCreationMode(session.config.filePerm,'filePerm'));assert.equal(dirs.find(([name])=>name===path.join(remote,'created'))[1],engine.serverCreationMode(session.config.dirPerm,'dirPerm'));
+   await engine.operate(session,'mkdir','manual');assert.equal(dirs.at(-1)[1],engine.serverCreationMode(session.config.dirPerm,'dirPerm'));
+   await engine.operate(session,'create','manual.txt');assert.equal(files.at(-1),engine.serverCreationMode(session.config.filePerm,'filePerm'));
+  }finally{target.open=open;target.establishDirectoryMode=establish;target.supportsCompleteDirectoryListing=complete;}
+ }
+ for(const mode of [888,4755,'invalid'])assert.throws(()=>engine.serverCreationMode(mode,'dirPerm'),/Invalid dirPerm/);
+ assert.equal(engine.serverCreationMode('0700','dirPerm'),0o700);
+});
+
+
+test('existing remote file modes remain separate from new server defaults',async()=>{
+ for(const mode of [0o600,0o640,0o755]){
+  let opened;const source={get:async()=>require('node:stream').Readable.from('updated')};
+  const target={lstat:async()=>({type:engine.FileType.File,mode}),open:async(_path,_flags,value)=>{opened=value;return 1;},put:async input=>{for await(const part of input){}},close:async()=>{},rename:async()=>{},unlink:async()=>{}};
+  await new engine.TransferTask({fsPath:'/source',fileSystem:source},{fsPath:'/target',fileSystem:target},{fileType:engine.FileType.File,transferDirection:engine.TransferDirection.LOCAL_TO_REMOTE,transferOption:{fallbackMode:0o755}}).run();assert.equal(opened,mode);
+ }
 });

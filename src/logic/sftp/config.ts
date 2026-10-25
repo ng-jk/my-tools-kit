@@ -33,6 +33,8 @@ const configScheme = {
   uploadOnSave: Joi.boolean(),
   useTempFile: Joi.boolean(),
   openSsh: Joi.boolean(),
+  filePerm: Joi.alternatives([Joi.number().integer(), Joi.string().regex(/^[0-7]{3,4}$/)]),
+  dirPerm: Joi.alternatives([Joi.number().integer(), Joi.string().regex(/^[0-7]{3,4}$/)]),
   downloadOnOpen: Joi.boolean().allow('confirm'),
 
   ignore: Joi.array()
