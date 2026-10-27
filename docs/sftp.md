@@ -234,3 +234,6 @@ Security update: use 0.7.12 or newer and avoid 0.7.11. Remote directory permissi
 Safe FTP uploads accept either numeric `MLST UNIX.mode/UNIX.uid` facts or Unix `LIST` metadata with permissions and a consistent numeric/named owner. When MLST facts are unsupported or absent, the root must have exactly one real self entry (`.` or `/`) in `LIST -al /` or `LIST /`; permissions are never inferred from children. Shared-writable directories, unknown owners, symlinks, ambiguous root entries and transient/denied metadata still stop uploads before payload transfer. If neither listing form provides the root identity, the error identifies that missing server capability. No config change is needed on compatible Unix LIST servers.
 
 Ancestor isolation checks ownership root-to-leaf, trusting the server namespace root, administrator UID and the authenticated server’s initial home owner. Use a trusted server/home setup and a nonprivileged transfer account; these metadata checks do not protect against a malicious server or administrator. New Folder reports existing-name collisions and supports Retry/Cancel; terminal mkdir remains idempotent.
+
+
+For upload speed behavior, upstream comparison and the local wire benchmark, see [transfer performance](sftp-performance.md). Per-file metadata snapshots are discarded before mutations; ancestry is checked again for the next file.

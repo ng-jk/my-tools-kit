@@ -8,6 +8,12 @@ interface FileSystemError extends Error {
 
 export const ERROR_MSG_STREAM_INTERRUPT = 'devkit.sftp.stream.interrupt';
 
+// Created only when the protocol explicitly confirms absence, not for generic
+// ENOENT errors from incomplete directory listings.
+export class VerifiedRemoteAbsence extends Error {
+  readonly code='ENOENT';
+  constructor(path:string){super('Remote path does not exist: '+path);}
+}
 export type FileHandle = unknown;
 
 export enum FileType {

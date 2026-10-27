@@ -5,7 +5,7 @@ const net=require('node:net');
 const fs=require('node:fs');
 const os=require('node:os');
 const path=require('node:path');
-const engine=require('../build/sftp/engine');
+const engine=require(process.env.DEVKIT_BENCHMARK_ENGINE||'../build/sftp/engine');
 const tls=require('node:tls');
 
 test('implicit FTPS keeps authentication and passive data in verified TLS',{timeout:20000},async t=>{
@@ -58,7 +58,7 @@ test('implicit FTPS keeps authentication and passive data in verified TLS',{time
   await assert.rejects(remote.list('/'),/certificate|hostname|altnames|IP/i);
   assert.equal(commands.filter(line=>line.startsWith('LIST')).length,lists,'invalid data certificate rejects before sending a transfer command');
 });
-test('FTP wire: passive upload, listing and download share the transfer engine',{timeout:60000},async t=>{
+test('FTP wire: passive upload, listing and download share the transfer engine',{timeout:process.env.DEVKIT_BENCHMARK_OUTPUT?180000:60000},async t=>{
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-ftp-'));
   fs.writeFileSync(path.join(root,'local.txt'),'ftp payload');
   let referentReads=0;const linkTargets=new Map([['/.hidden-link','/outside/private']]);
@@ -66,7 +66,7 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
   const rights=mode=>[6,3,0].map(shift=>[4,2,1].map((bit,index)=>((mode>>shift)&bit)?'rwx'[index]:'-').join('')).join('');
   const server=net.createServer(socket=>{
     sockets.add(socket);socket.on('close',()=>sockets.delete(socket));socket.on('error',()=>{});
-    const reply=message=>socket.write(message+'\r\n');let pending='',dataSocket,renameFrom;
+    const reply=message=>{if(process.env.DEVKIT_BENCHMARK_OUTPUT)setTimeout(()=>{if(!socket.destroyed)socket.write(message+'\r\n');},3);else socket.write(message+'\r\n');};let pending='',dataSocket,renameFrom;
     reply('220 Fixture ready');
     socket.on('data',chunk=>{
       pending+=chunk.toString();let end;
@@ -123,6 +123,17 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
   const session=engine.createSession(root,{protocol:'ftp',host:'127.0.0.1',port:server.address().port,username:'fixture',password:'fixture',remotePath:'/'});
   t.after(async()=>{session.service.dispose();for(const socket of sockets)socket.destroy();for(const data of servers)if(data.listening)data.close();await new Promise(resolve=>server.close(resolve));fs.rmSync(root,{recursive:true,force:true});});
   await engine.operate(session,'upload','local.txt');assert.equal(files.get('/local.txt').toString(),'ftp payload','explicit not-found permits creating a new FTP file');assert.equal(modes.get('/local.txt'),0o755,'new FTP file defaults to 755');
+  if(process.env.DEVKIT_BENCHMARK_OUTPUT){
+    const directory=path.join(root,'perf','a','b');fs.mkdirSync(directory,{recursive:true});for(let n=0;n<6;n++)fs.writeFileSync(path.join(directory,'file'+n+'.txt'),'benchmark '+n);
+    const metrics=[];
+    for(const phase of ['new','existing']){
+      const before=commands.length,start=performance.now();await engine.operate(session,'upload','perf');
+      const selected=commands.slice(before);metrics.push({phase,files:6,elapsedMs:Math.round(performance.now()-start),commands:selected.length,byCommand:selected.reduce((a,c)=>(a[c]=(a[c]||0)+1,a),{})});
+      for(let n=0;n<6;n++)assert.equal(files.get('/perf/a/b/file'+n+'.txt').toString(),'benchmark '+n);
+    }
+    fs.writeFileSync(process.env.DEVKIT_BENCHMARK_OUTPUT,JSON.stringify({latencyPerReplyMs:3,depth:3,metrics},null,2));
+    return;
+  }
   legacyIsolation=true;
   fs.writeFileSync(path.join(root,'legacy.txt'),'legacy LIST-only payload');await engine.operate(session,'upload','legacy.txt');assert.equal(files.get('/legacy.txt').toString(),'legacy LIST-only payload');
   fs.writeFileSync(path.join(root,'legacy.txt'),'updated LIST-only payload');await engine.operate(session,'upload','legacy.txt');assert.equal(files.get('/legacy.txt').toString(),'updated LIST-only payload','LIST-only server supports backup and replacement');

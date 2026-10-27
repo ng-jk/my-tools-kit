@@ -1395,3 +1395,24 @@ test('FTP root fallback rejects missing, ambiguous, unknown and transient metada
   if(kind==='transient')assert.equal(lists,0);
  }
 });
+
+
+test('FTP ancestry coalesces root aliases only within one verification and refreshes between files',async()=>{
+ let roots=0,mode='0755';const adapter=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({_send:(_command,cb)=>{roots++;cb(null,'type=dir;UNIX.mode='+mode+';UNIX.uid=0; /');},pwd:cb=>cb(null,'/')})}});
+ await engine.assertIsolatedParents(adapter,'/first');assert.equal(roots,1,'home alias reuses actual root evidence in this pass');
+ mode='0777';await assert.rejects(engine.assertIsolatedParents(adapter,'/second'),/shared-writable/);assert.equal(roots,2,'next file reads fresh permissions');
+});
+
+test('verified FTP absence is not probed twice during backup inspection',async t=>{
+ const base=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-absence-performance-'));t.after(()=>fs.rmSync(base,{recursive:true,force:true}));let probes=0;
+ const remote=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({list:(_path,cb)=>cb(null,[]),_send:(command,cb)=>{if(command==='NOOP')return cb(null,'OK');if(command.startsWith('RNFR ')){probes++;return cb(Object.assign(new Error('No such file or directory'),{code:550}));}cb(Object.assign(new Error('Unsupported'),{code:502}));}})}});
+ await new engine.MirrorService(path.join(base,'backup')).backupBatch([{relPath:'new.txt',remotePath:'/new.txt',remoteFs:remote}]);assert.equal(probes,1);assert.equal(fs.existsSync(path.join(base,'backup')),false);
+});
+
+test('successful transfers skip consumed staging cleanup and failures still remove retained staging',async t=>{
+ for(const fail of [false,true]){
+  const {local,session}=fixture(t);fs.writeFileSync(path.join(local,'cleanup.txt'),'payload');const remote=await session.service.getRemoteFileSystem(session.config),unlink=remote.unlink,put=remote.put,complete=remote.supportsCompleteDirectoryListing;remote.supportsCompleteDirectoryListing=true;let cleanups=0;
+  remote.unlink=async function(name){if(/cleanup\.txt\.devkit-/.test(name))cleanups++;return unlink.call(this,name);};if(fail)remote.put=async()=>{throw new Error('simulated payload failure');};
+  try{if(fail)await assert.rejects(engine.operate(session,'upload','cleanup.txt'),/simulated payload failure/);else await engine.operate(session,'upload','cleanup.txt');assert.equal(cleanups,fail?1:0);}finally{remote.unlink=unlink;remote.put=put;remote.supportsCompleteDirectoryListing=complete;}
+ }
+});

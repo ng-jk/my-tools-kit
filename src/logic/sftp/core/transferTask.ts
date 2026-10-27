@@ -132,6 +132,8 @@ export default class TransferTask implements Task {
     const newMode = this._transferDirection === TransferDirection.LOCAL_TO_REMOTE ? serverCreationMode(filePerm,'filePerm') : fallbackMode;
     const staged = stagingPath(target);
     let fd: any;
+    let stagedConsumed=false;
+    let finishMetadata:(()=>void)|undefined;
     let sourceError: Error | undefined;
     const rememberError = (error: Error) => { sourceError = error; };
     try {
@@ -139,6 +141,9 @@ export default class TransferTask implements Task {
       this._handle = await srcFs.get(this._srcFsPath);
       this._handle.pause();
       this._handle.on('error', rememberError);
+      // Reuse FTP listings only during this file's read-only preflight. End
+      // the snapshot before any staged-file permissions or payload mutations.
+      finishMetadata=(targetFs as any).beginMetadataReadScope?.();
       if (mode === undefined) {
         try { const stat = await targetFs.lstat(target); mode = stat.type === FileType.File ? stat.mode : newMode; }
         catch (error) { if (error.code !== 'ENOENT' && error.code !== 2) throw error; mode = newMode; }
@@ -148,6 +153,7 @@ export default class TransferTask implements Task {
       if (this._cancelled) throw new Error('Transfer cancelled');
       if(targetFs instanceof RemoteFileSystem)await assertIsolatedParents(targetFs,target);
       fd = await targetFs.open(staged, 'wx', mode);
+      finishMetadata?.();finishMetadata=undefined;
       await targetFs.prepareStagedFile?.(staged, target, mode, fd);
       if (sourceError) throw sourceError;
       this.checkCancelled();
@@ -161,11 +167,12 @@ export default class TransferTask implements Task {
         }
       }
       await targetFs.close(fd); fd = undefined;
-      await replaceStaged(targetFs, staged, target, openSsh, this.checkCancelled);
+      await replaceStaged(targetFs, staged, target, openSsh, this.checkCancelled);stagedConsumed=true;
     } finally {
+      finishMetadata?.();
       if (this._handle) { this._handle.destroy(); this._handle.removeListener('error', rememberError); }
       if (fd !== undefined) await targetFs.close(fd).catch(error => logger.warn(error.message));
-      await targetFs.unlink(staged).catch(() => {});
+      if(!stagedConsumed)await targetFs.unlink(staged).catch(() => {});
     }
   }
 }

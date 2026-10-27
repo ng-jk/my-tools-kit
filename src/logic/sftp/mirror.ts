@@ -1,3 +1,4 @@
+import {VerifiedRemoteAbsence} from '../../data/sftp/core/fs/fileSystem';
 // Adapted from ng-jk/vscode-sftp (MIT); see THIRD-PARTY-NOTICES.md.
 import * as path from 'path';
 import {MirrorRepository} from '../../data/sftp/mirror-repository';
@@ -30,6 +31,7 @@ export default class MirrorService {
       let stat;
       try{stat=await target.remoteFs.lstat(target.remotePath);}catch(error){
         if(error.code==='ENOENT'||error.code===2){
+          if(error instanceof VerifiedRemoteAbsence)continue;
           if(target.remoteFs.supportsCompleteDirectoryListing!==false)continue;
           // Never RETR a path of unknown type: it could be a symlink.
           if(typeof (target.remoteFs as any).lstatForBackup!=='function')throw new Error('FTP cannot establish destination type or absence. Use SFTP.');
@@ -46,7 +48,7 @@ export default class MirrorService {
     const originals=inspected.filter((item):item is {target:MirrorTarget;relative:string;stat:any}=>item!==undefined);
     if(!originals.length)return;
     await this.repository.initialize();
-    for(const original of originals)await this.repository.prepareFile(original.relative);
+    await this.repository.prepareFiles(originals.map(original=>original.relative));
     const queue=originals.slice(),touched=new Set<string>(),links=new Map<string,string>();
     const count=Math.max(1,Math.min(option.concurrency||1,queue.length));
     const outcomes=await Promise.allSettled(Array.from({length:count},async()=>{

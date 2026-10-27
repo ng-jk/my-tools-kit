@@ -23,11 +23,17 @@ export class MirrorRepository {
     }
     if (!await fse.pathExists(path.join(this.root,'.git'))) await git.init({fs,dir:this.root,defaultBranch:'main'});
   }
-  async prepareFile(filepath:string) {
+  async prepareFiles(filepaths:string[]) {
+    // Index enumeration is disk work, not a remote safety check. Read it once
+    // for this serialized backup batch; each path is still validated separately.
+    const tracked=await git.listFiles({fs,dir:this.root});
+    for(const filepath of filepaths)await this.prepareFile(filepath,tracked);
+  }
+  async prepareFile(filepath:string,tracked?:string[]) {
     const root=path.resolve(this.root),absolute=path.resolve(root,filepath),relative=path.relative(root,absolute);
     if(!relative||path.isAbsolute(relative)||relative==='..'||relative.startsWith('..'+path.sep)||relative.split(path.sep).some(part=>part.toLowerCase()==='.git'))throw new Error('Unsafe backup working path');
     const normalized=relative.split(path.sep).join('/');
-    for(const file of await git.listFiles({fs,dir:this.root})){
+    for(const file of tracked||await git.listFiles({fs,dir:this.root})){
       if(file.startsWith(normalized+'/')||normalized.startsWith(file+'/'))await git.remove({fs,dir:this.root,filepath:file});
     }
     let current=root;

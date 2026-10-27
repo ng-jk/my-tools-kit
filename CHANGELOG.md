@@ -1,5 +1,12 @@
 # Release notes
 
+## 0.7.14 — 2026-10-27
+
+- Reduce FTP round trips by coalescing read-only per-file listings and root aliases within one ancestry verification; discard metadata before mutation and revalidate for every file.
+- Avoid duplicate absence probes after explicit FTP not-found evidence, and skip cleanup commands only after staging paths were successfully consumed. Failure cleanup remains active.
+- Enumerate the backup Git index once per serialized batch instead of once per original; keep automatic verified backups.
+- Compare the adapted upstream transfer flow and add reproducible local wire benchmarks plus metadata freshness and cleanup regressions.
+
 ## 0.7.13 — 2026-10-27
 
 - Fix FTP uploads blocked by missing MLST UNIX.mode/UNIX.uid facts. Verify the namespace root through its Unix LIST self entry and preserve numeric or named owner identity across ancestry checks.

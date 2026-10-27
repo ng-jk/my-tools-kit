@@ -3,7 +3,7 @@ import PQueue from 'p-queue';
 import { Readable } from 'stream';
 import {randomUUID} from 'crypto';
 import { logger } from '../../ports';
-import { FileEntry, FileType, FileStats, FileOption } from './fileSystem';
+import { FileEntry, FileType, FileStats, FileOption, VerifiedRemoteAbsence } from './fileSystem';
 import RemoteFileSystem from './remoteFileSystem';
 import { FTPClient } from '../remote-client/index';
 import { assertEntryName, checkedEntries } from '../../path-safety';
@@ -39,7 +39,6 @@ export default class FTPFileSystem extends RemoteFileSystem {
   supportsCompleteDirectoryListing = false;
   private _supportMFMT: boolean = true;
   private metadataReaders=0;
-  private isolationUsesListingOwner=false;
   private metadata=new Map<string,Promise<any[]>>();
   // Scoped to planning/backup only; every mutation invalidates the snapshot.
   beginMetadataReadScope() {
@@ -154,17 +153,27 @@ export default class FTPFileSystem extends RemoteFileSystem {
     }).catch(error=>{throw Object.assign(new Error('FTP permissions/ownership cannot be verified for safe uploads: '+path+'. '+error.message),{code:error.code});});
   }
 
-  async parentIsolationStat(path:string):Promise<FileStats>{
+  createParentMetadataReader(){
+    const pending=new Map<string,Promise<FileStats>>(),context={usesListingOwner:false};
+    const read=(path:string):Promise<FileStats>=>{
+      const key=this.pathResolver.normalize(path);let result=pending.get(key);
+      if(!result){result=this.readParentIsolationStat(path,read,context);pending.set(key,result);}
+      return result;
+    };
+    return read;
+  }
+  parentIsolationStat(path:string):Promise<FileStats>{return this.createParentMetadataReader()(path);}
+  private async readParentIsolationStat(path:string,read:(path:string)=>Promise<FileStats>,context:{usesListingOwner:boolean}):Promise<FileStats>{
     const normalized=this.pathResolver.normalize(path);
     if(normalized==='.'){
       const cwd=await this.queue.add(()=>new Promise<string>((resolve,reject)=>this.ftp.pwd((error:any,value:string)=>error?reject(error):resolve(value))));
       if(this.pathResolver.normalize(cwd)==='.')throw new Error('FTP cannot resolve current-directory ownership for safe uploads.');
-      return this.parentIsolationStat(cwd);
+      return read(cwd);
     }
     if(normalized==='/'){
       try {
         const facts=await this.isolationFacts('/',true);
-        this.isolationUsesListingOwner=false;
+        context.usesListingOwner=false;
         return {type:FileType.Directory,uid:facts.uid,mode:facts.mode!,size:0,mtime:0,atime:0};
       } catch(error) {
         if(!['FTP_ISOLATION_UNAVAILABLE',500,501,502,504].includes(error.code))throw error;
@@ -176,13 +185,13 @@ export default class FTPFileSystem extends RemoteFileSystem {
           if(!Array.isArray(entries))throw new Error('FTP root listing is unparseable; upload stopped.');
           const own=entries.filter(entry=>entry && (entry.name==='.'||entry.name==='/'));
           if(own.length>1)throw new Error('FTP root listing contains ambiguous self entries; upload stopped.');
-          if(own.length===1){this.isolationUsesListingOwner=true;return this.toFileStat(own[0]);}
+          if(own.length===1){context.usesListingOwner=true;return this.toFileStat(own[0]);}
         }
         throw new Error('FTP permissions/ownership cannot be verified for safe uploads: /. The server supplies neither MLST UNIX.mode/UNIX.uid nor a Unix LIST self entry (.) for /. Ask the server administrator to enable one of these listing forms. No payload was uploaded.');
       }
     }
     const stat=await this.lstat(path);
-    if(stat.type!==FileType.Directory||Number.isSafeInteger(stat.uid)||(this.isolationUsesListingOwner&&stat.owner))return stat;
+    if(stat.type!==FileType.Directory||Number.isSafeInteger(stat.uid)||(context.usesListingOwner&&stat.owner))return stat;
     const facts=await this.isolationFacts(path,false);
     return {...stat,uid:facts.uid};
   }
@@ -201,7 +210,7 @@ export default class FTPFileSystem extends RemoteFileSystem {
         if(missingPathReply(error,path)){
           // Confirm missing metadata through the rename-side existence check:
           // an omitted/dangling link must not be treated as a new destination.
-          if(command==='RNFR'){if(reportedPresent)throw new Error('FTP returned contradictory existence responses for '+path+'. Upload stopped without replacing the destination.');throw Object.assign(new Error('Remote path does not exist: '+path),{code:'ENOENT'});}
+          if(command==='RNFR'){if(reportedPresent)throw new Error('FTP returned contradictory existence responses for '+path+'. Upload stopped without replacing the destination.');throw new VerifiedRemoteAbsence(path);}
           diagnostics.push(command+' reported missing');continue;
         }
         // Some servers return transient 450 for metadata on a missing path.
@@ -282,7 +291,7 @@ export default class FTPFileSystem extends RemoteFileSystem {
     input.on('error',remember);
     const directory=this.pathResolver.join(this.pathResolver.dirname(path),'upload.devkit-'+randomUUID()+'.upload');
     const payload=this.pathResolver.join(directory,'payload');
-    let created=false;
+    let created=false,payloadMoved=false;
     try {
       checkSource();
       const handle=option?.fd as FtpFileHandle|undefined;
@@ -296,12 +305,12 @@ export default class FTPFileSystem extends RemoteFileSystem {
       checkSource();
       await this.chmod(payload,prepared.mode!);await this.verifyMode(payload,prepared.mode!);
       checkSource();
-      await this.renameAtomic(payload,path);
+      await this.renameAtomic(payload,path);payloadMoved=true;
     } catch(error) {throw inputError||error;}
     finally {
       input.removeListener('error',remember);
       if(created){
-        try{await this.unlink(payload);}catch(error){if(error.code!=='ENOENT'&&error.code!==2&&error.code!==550)logger.warn('FTP temporary payload cleanup failed: '+payload);}
+        try{if(!payloadMoved)await this.unlink(payload);}catch(error){if(error.code!=='ENOENT'&&error.code!==2&&error.code!==550)logger.warn('FTP temporary payload cleanup failed: '+payload);}
         try{await this.rmdir(directory,false);}catch(error){logger.warn('FTP temporary directory retained after cleanup failure: '+directory);}
       }
     }

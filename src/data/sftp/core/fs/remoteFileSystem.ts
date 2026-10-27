@@ -49,6 +49,7 @@ export default abstract class RemoteFileSystem extends FileSystem {
   }
 
   parentIsolationStat(path:string):Promise<any>{return this.lstat(path);}
+  createParentMetadataReader(){return (path:string)=>this.parentIsolationStat(path);}
 
   setRemoteTimeOffsetInHours(offset: number) {
     this._remoteTimeOffsetInSeconds = offset * SECONDS_PER_HOUR;
