@@ -1,5 +1,11 @@
 # Release notes
 
+## 0.7.13 — 2026-10-27
+
+- Fix FTP uploads blocked by missing MLST UNIX.mode/UNIX.uid facts. Verify the namespace root through its Unix LIST self entry and preserve numeric or named owner identity across ancestry checks.
+- Retain shared-writable, untrusted-owner, ambiguous-listing and transient-error protection; never invent root permissions.
+- Add headless metadata regressions and a real FTP wire scenario covering new uploads, backups/replacement and nested folder creation without MLST support.
+
 ## 0.7.12 — 2026-10-26
 
 - Keep ancestor trust decisions in shared logic and retain protocol metadata in data adapters. Local downloads temporarily grant owner read/write/search for secure descriptor access, then restore final modes; verified under nonprivileged Linux.

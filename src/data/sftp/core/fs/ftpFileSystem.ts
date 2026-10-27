@@ -39,6 +39,7 @@ export default class FTPFileSystem extends RemoteFileSystem {
   supportsCompleteDirectoryListing = false;
   private _supportMFMT: boolean = true;
   private metadataReaders=0;
+  private isolationUsesListingOwner=false;
   private metadata=new Map<string,Promise<any[]>>();
   // Scoped to planning/backup only; every mutation invalidates the snapshot.
   beginMetadataReadScope() {
@@ -74,6 +75,7 @@ export default class FTPFileSystem extends RemoteFileSystem {
     return {
       type: FTPFileSystem.getFileType(stat.type),
       uid: /^\d+$/.test(String(stat.owner)) && Number.isSafeInteger(Number(stat.owner)) ? Number(stat.owner) : undefined,
+      owner: typeof stat.owner==='string' && /^[A-Za-z0-9_.@-]+$/.test(stat.owner) ? stat.owner : undefined,
       mode: toNumMode(stat.rights),
       size: stat.size,
       mtime,
@@ -137,6 +139,7 @@ export default class FTPFileSystem extends RemoteFileSystem {
           const entry=/^\s*((?:[A-Za-z0-9._-]+=[^;\r\n]*;)+) (.+)$/.exec(line);
           if(!entry||entry[2]!==path)continue;
           const facts=entry[1].split(';').filter(Boolean),types=facts.filter(f=>/^type=/i.test(f)),modes=facts.filter(f=>/^unix\.mode=/i.test(f)),uids=facts.filter(f=>/^unix\.uid=/i.test(f));
+          if(types.length>1||modes.length>1||uids.length>1)throw Object.assign(new Error('Ambiguous FTP ownership facts'),{code:'FTP_ISOLATION_AMBIGUOUS'});
           if(types.length!==1||!/^type=dir$/i.test(types[0])||uids.length!==1||!/^unix\.uid=\d+$/i.test(uids[0]))continue;
           const uid=Number(uids[0].split('=')[1]);if(!Number.isSafeInteger(uid)||uid<0)continue;
           const validMode=modes.length===1&&/^unix\.mode=[0-7]{3,4}$/i.test(modes[0]);
@@ -146,9 +149,9 @@ export default class FTPFileSystem extends RemoteFileSystem {
       };
       let result=parse(await send('MLST '+path));
       if(result===undefined){await send('OPTS MLST type;UNIX.mode;UNIX.uid;');result=parse(await send('MLST '+path));}
-      if(result===undefined)throw new Error('Required ownership/mode facts unavailable');
+      if(result===undefined)throw Object.assign(new Error('Required ownership/mode facts unavailable'),{code:'FTP_ISOLATION_UNAVAILABLE'});
       return result;
-    }).catch(()=>{throw new Error('FTP permissions/ownership cannot be verified for safe uploads: '+path+'. Enable MLST UNIX.mode and UNIX.uid metadata or use SFTP. No payload was uploaded.');});
+    }).catch(error=>{throw Object.assign(new Error('FTP permissions/ownership cannot be verified for safe uploads: '+path+'. '+error.message),{code:error.code});});
   }
 
   async parentIsolationStat(path:string):Promise<FileStats>{
@@ -159,11 +162,27 @@ export default class FTPFileSystem extends RemoteFileSystem {
       return this.parentIsolationStat(cwd);
     }
     if(normalized==='/'){
-      const facts=await this.isolationFacts('/',true);
-      return {type:FileType.Directory,uid:facts.uid,mode:facts.mode!,size:0,mtime:0,atime:0};
+      try {
+        const facts=await this.isolationFacts('/',true);
+        this.isolationUsesListingOwner=false;
+        return {type:FileType.Directory,uid:facts.uid,mode:facts.mode!,size:0,mtime:0,atime:0};
+      } catch(error) {
+        if(!['FTP_ISOLATION_UNAVAILABLE',500,501,502,504].includes(error.code))throw error;
+        // Read only the root's own entry. Never infer its mode/owner from children
+        // or '..', and never substitute the synthetic root used by read APIs.
+        for(const command of ['-al /','/']) {
+          let entries:any[];
+          try {entries=await this.atomicList(command);}catch(listError){if([500,501,502,504,550].includes(Number(listError.code)))continue;throw listError;}
+          if(!Array.isArray(entries))throw new Error('FTP root listing is unparseable; upload stopped.');
+          const own=entries.filter(entry=>entry && (entry.name==='.'||entry.name==='/'));
+          if(own.length>1)throw new Error('FTP root listing contains ambiguous self entries; upload stopped.');
+          if(own.length===1){this.isolationUsesListingOwner=true;return this.toFileStat(own[0]);}
+        }
+        throw new Error('FTP permissions/ownership cannot be verified for safe uploads: /. The server supplies neither MLST UNIX.mode/UNIX.uid nor a Unix LIST self entry (.) for /. Ask the server administrator to enable one of these listing forms. No payload was uploaded.');
+      }
     }
     const stat=await this.lstat(path);
-    if(stat.type!==FileType.Directory||Number.isSafeInteger(stat.uid))return stat;
+    if(stat.type!==FileType.Directory||Number.isSafeInteger(stat.uid)||(this.isolationUsesListingOwner&&stat.owner))return stat;
     const facts=await this.isolationFacts(path,false);
     return {...stat,uid:facts.uid};
   }

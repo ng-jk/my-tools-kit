@@ -1312,7 +1312,7 @@ test('remote isolation checks the namespace root instead of trusting synthetic p
  const replies=['type=dir;UNIX.mode=0777;UNIX.uid=0; /','type=dir;UNIX.mode=0755;UNIX.uid=0; /'];
  const ftp=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({_send:(_command,cb)=>cb(null,replies.shift())})}});
  await assert.rejects(engine.assertIsolatedParents(ftp,'/file'),/shared-writable/);await engine.assertIsolatedParents(ftp,'/file');
- const absent=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({_send:(_command,cb)=>cb(Object.assign(new Error('Unsupported'),{code:502}))})}});
+ const absent=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({list:(_path,cb)=>cb(null,[]),_send:(_command,cb)=>cb(Object.assign(new Error('Unsupported'),{code:502}))})}});
  await assert.rejects(engine.assertIsolatedParents(absent,'/file'),/permissions.ownership cannot be verified/);
 });
 
@@ -1371,5 +1371,27 @@ test('POSIX nonprivileged local downloads populate unreadable directories and re
   if(!failed)fs.writeFileSync(path.join(destination,'known.txt'),'downloaded');
   await scope.finish();assert.equal(fs.statSync(destination).mode&0o777,mode);
   if(!failed)assert.equal(fs.readFileSync(path.join(destination,'known.txt'),'utf8'),'downloaded');
+ }
+});
+
+
+test('FTP LIST self entries support named and numeric owners when MLST facts are unavailable',async()=>{
+ for(const owner of ['account-name','1000']){
+  const commands=[],entry={name:'.',type:'d',owner,rights:{user:'rwx',group:'r-x',other:'r-x'},date:new Date(),size:0};
+  const remote=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({_send:(cmd,cb)=>{commands.push(cmd);cb(Object.assign(new Error('Unsupported'),{code:502}));},list:(_path,cb)=>cb(null,[entry]),pwd:cb=>cb(null,'/')})}});
+  remote.lstat=async name=>({type:engine.FileType.Directory,mode:0o755,owner:name==='/other'?'stranger':owner});
+  await engine.assertIsolatedParents(remote,'/owned/file');
+  await assert.rejects(engine.assertIsolatedParents(remote,'/other/file'),/untrusted owner/);
+  entry.rights.other='rwx';await assert.rejects(engine.assertIsolatedParents(remote,'/file'),/shared-writable/);
+  entry.type='l';await assert.rejects(engine.assertIsolatedParents(remote,'/file'),/shared-writable|unverifiable/);
+ }
+});
+
+test('FTP root fallback rejects missing, ambiguous, unknown and transient metadata without fabricating permissions',async()=>{
+ for(const kind of ['missing','duplicate','unknown','transient']){
+  let lists=0;const entry={name:'.',type:'d',owner:kind==='unknown'?'': 'account',rights:{user:'rwx',group:'r-x',other:'r-x'},date:new Date(),size:0};
+  const remote=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({_send:(_cmd,cb)=>cb(Object.assign(new Error('Unavailable'),{code:kind==='transient'?450:502})),list:(_path,cb)=>{lists++;cb(null,kind==='missing'?[{...entry,name:'child'}]:kind==='duplicate'?[entry,entry]:[entry]);},pwd:cb=>cb(null,'/')})}});
+  await assert.rejects(engine.assertIsolatedParents(remote,'/file'),/permissions.ownership|ambiguous|ownership is unverifiable/);
+  if(kind==='transient')assert.equal(lists,0);
  }
 });
