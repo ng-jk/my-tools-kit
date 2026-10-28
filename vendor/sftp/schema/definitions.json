@@ -338,6 +338,13 @@
       "knownHostsPath": {
         "type": "string",
         "description": "OpenSSH known_hosts path; defaults to ~/.ssh/known_hosts."
+      },
+      "ftpConnections": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 8,
+        "default": 3,
+        "description": "Total FTP connections for batch uploads. One file per connection; use 1 for servers with session limits. Backups finish before upload."
       }
     }
   },

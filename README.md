@@ -345,7 +345,7 @@ Uploading a file creates missing destination folders automatically. Shared hosti
 
 ### Transfer speed and directory search permission
 
-The toolkit reuses each verified remote parent check and avoids redundant chmod verification when no final permission change is needed. Backup metadata inspection and downloads use the configured `concurrency` (default 4 for SFTP); FTP remains serialized on its control connection. Originals are still backed up before replacement. These changes reduce protocol requests; actual speed depends on latency, file count and server throughput.
+The toolkit reuses each verified remote parent check and avoids redundant chmod verification when no final permission change is needed. Backup metadata inspection and downloads use the configured `concurrency` (default 4 for SFTP); Each FTP connection remains serial; batch uploads can use the independent ftpConnections pool described below. Originals are still backed up before replacement. These changes reduce protocol requests; actual speed depends on latency, file count and server throughput.
 
 New server folders use `755` by default rather than inheriting source modes such as `666`. Explicit `dirPerm` remains exact; use a searchable mode such as `755` or `700` rather than file-style `666`. Existing server directories keep their permissions; explicitly configured dirPerm must match existing targets, or the transfer stops.
 
@@ -377,3 +377,10 @@ Ancestor isolation checks ownership root-to-leaf, trusting the server namespace 
 
 
 FTP/SFTP performance: 0.7.14 removes duplicate metadata probes, redundant staging cleanup and repeated backup-index enumeration. Automatic backups and permission checks remain enabled. Existing-file uploads still download the original before replacement. [Upstream comparison, measured test scope and performance limits](https://github.com/ng-jk/my-tools-kit/blob/developement/docs/sftp-performance.md).
+
+
+### Parallel uploads
+
+Folder/batch FTP uploads use up to three independent connections by default. Set `"ftpConnections": 3` in the selected context/profile; supported values are 1–8. Set it to 1 if the server limits simultaneous logins. Each connection uploads one file at a time. All originals are backed up before the batch starts uploading; conflicting destination operations remain serialized. Added connections close when the batch finishes or fails, including cancellation. A single file is still one upload and is limited by its connection speed.
+
+SFTP uses its existing `"concurrency": 4` setting over one SSH connection. VS Code commands and the terminal use the same settings: `devkit sftp upload path/to/folder`. No extra process is required. Separate individual commands do not become a single pooled batch.

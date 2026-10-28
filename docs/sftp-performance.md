@@ -20,4 +20,9 @@ Run alternating before/after samples and compare medians; local Git/ACL/disk act
 
 ## Limits
 
-FTP still serializes control commands on one connection, as upstream does. Existing originals must be downloaded and verified in the backup before replacement. Private staging and permissions require protocol round trips. SFTP can use the configured transfer concurrency; FTP does not pretend that parallel commands on one control connection provide safe concurrent data transfers. Large-file bandwidth, server load, network latency and local backup storage still affect elapsed time. No production server credentials were used for these measurements.
+FTP serializes control commands within each connection. From 0.7.15, batch uploads can use up to ftpConnections independent connections (default 3). Existing originals must be downloaded and verified in the backup before replacement. Private staging and permissions require protocol round trips. SFTP can use the configured transfer concurrency; FTP does not pretend that parallel commands on one control connection provide safe concurrent data transfers. Large-file bandwidth, server load, network latency and local backup storage still affect elapsed time. No production server credentials were used for these measurements.
+
+
+## Parallel connection benchmark
+
+For a serial/parallel comparison with the same 0.7.15 engine, set DEVKIT_BENCHMARK_CONNECTIONS to 1 or 3 alongside DEVKIT_BENCHMARK_OUTPUT, then run the wire benchmark above. Added connection authentication is included in elapsed time. Originals are still downloaded and verified before workers upload. The HTML release report records three alternating samples for each setting; this is a local small-file latency workload, not a production throughput guarantee.

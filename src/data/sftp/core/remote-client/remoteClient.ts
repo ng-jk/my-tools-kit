@@ -50,7 +50,9 @@ export default abstract class RemoteClient {
   protected abstract _initClient(): any;
 
   async connect(connectOption: ConnectOption, config: Config) {
-    return this._doConnect(await this.resolveAuthentication(connectOption, config), config);
+    const resolved=await this.resolveAuthentication(connectOption, config);
+    this._option=resolved;
+    return this._doConnect(resolved, config);
   }
 
   protected async resolveAuthentication(connectOption: ConnectOption, config: Config): Promise<ConnectOption> {

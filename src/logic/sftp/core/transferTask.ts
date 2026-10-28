@@ -44,6 +44,10 @@ export default class TransferTask implements Task {
   private readonly _TransferOption: TransferOption;
   private _handle: Readable;
   private _cancelled: boolean;
+  private _connectionPool?:{original:FileSystem;acquire:()=>Promise<{fs:FileSystem;release:()=>void}>};
+  private _delegated?:TransferTask;
+  useConnectionPool(original:FileSystem,acquire:()=>Promise<{fs:FileSystem;release:()=>void}>){this._connectionPool={original,acquire};}
+
   // private _fileStatus: FileStatus;
 
   constructor(
@@ -85,6 +89,16 @@ export default class TransferTask implements Task {
   }
 
   async run() {
+    this.checkCancelled();
+    if(this._connectionPool){
+      const {original,acquire}=this._connectionPool,lease=await acquire();
+      const task=new TransferTask({fsPath:this._srcFsPath,fileSystem:this._srcFs===original?lease.fs:this._srcFs},
+        {fsPath:this._targetFsPath,fileSystem:this._targetFs===original?lease.fs:this._targetFs},
+        {fileType:this.fileType,transferDirection:this._transferDirection,transferOption:this._TransferOption});
+      this._delegated=task;if(this._cancelled)task.cancel();
+      try{await task.run();}finally{this._delegated=undefined;lease.release();}
+      return;
+    }
     const finish = this._transferDirection === TransferDirection.REMOTE_TO_LOCAL ? beginLocalChange(this._targetFsPath) : () => {};
     try { await this.runTransfer(); } finally { finish(); }
   }
@@ -117,6 +131,7 @@ export default class TransferTask implements Task {
 
   cancel() {
     this._cancelled = true;
+    this._delegated?.cancel();
     if (this._handle && !this._handle.destroyed) FileSystem.abortReadableStream(this._handle);
   }
 

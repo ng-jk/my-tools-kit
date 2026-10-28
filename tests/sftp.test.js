@@ -1416,3 +1416,16 @@ test('successful transfers skip consumed staging cleanup and failures still remo
   try{if(fail)await assert.rejects(engine.operate(session,'upload','cleanup.txt'),/simulated payload failure/);else await engine.operate(session,'upload','cleanup.txt');assert.equal(cleanups,fail?1:0);}finally{remote.unlink=unlink;remote.put=put;remote.supportsCompleteDirectoryListing=complete;}
  }
 });
+
+
+test('FTP connection limits validate and are independently inherited per profile',()=>{
+ const session=engine.createSession(os.tmpdir(),{protocol:'ftp',host:'fixture',username:'fixture',remotePath:'/',ftpConnections:2,profiles:{serial:{ftpConnections:1},parallel:{ftpConnections:4}}});
+ try{assert.equal(session.config.ftpConnections,2);assert.equal(session.service.getConfig('serial').ftpConnections,1);assert.equal(session.service.getConfig('parallel').ftpConnections,4);assert.equal(session.config.concurrency,1);}finally{session.service.dispose();}
+ for(const value of [0,9,1.5])assert.throws(()=>engine.createSession(os.tmpdir(),{protocol:'ftp',host:'fixture',username:'fixture',remotePath:'/',ftpConnections:value}),/ftpConnections/);
+});
+
+test('connection setup closes partial peers and closed pools reject waiters',async()=>{
+ let closed=0,index=0;const peer={end:()=>closed++},primary={createTransferConnection:async()=>{if(++index===2)throw new Error('session rejected');return peer;}};
+ await assert.rejects(engine.createTransferConnections(primary,3,new AbortController().signal,()=>{}),/session rejected/);assert.equal(closed,1);
+ const pool=await engine.createTransferConnections(primary,1,new AbortController().signal,()=>{}),lease=await pool.acquire(),waiting=pool.acquire();pool.close();await assert.rejects(waiting,/closed/);lease.release();await assert.rejects(pool.acquire(),/closed/);
+});

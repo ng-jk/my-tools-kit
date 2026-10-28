@@ -54,6 +54,7 @@ const configScheme = {
     autoDelete: Joi.boolean(),
   },
   concurrency: Joi.number().integer(),
+  ftpConnections: Joi.number().integer().min(1).max(8),
 
   syncOption: {
     delete: Joi.boolean(),
@@ -87,6 +88,7 @@ const defaultConfig = {
   //   autoDelete: false,
   // },
   concurrency: 4,
+  ftpConnections: 3,
   // limitOpenFilesOnRemote: false
 
   mirror: {

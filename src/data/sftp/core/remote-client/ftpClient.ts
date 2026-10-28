@@ -83,6 +83,7 @@ export default class FTPClient extends RemoteClient {
             resolve();
           }
         })
+        .once('close',()=>{clearTimeout(timer);if(!this.connected)reject(new Error('FTP connection closed before authentication'));})
         .on('error', (err: any) => {
           clearTimeout(timer);
           reject(err);
@@ -97,6 +98,21 @@ export default class FTPClient extends RemoteClient {
           user: username,
         });
     });
+  }
+
+  async fork(signal?:AbortSignal):Promise<FTPClient> {
+    const peer=new FTPClient({...this._option});
+    let rejectCancellation:(error:Error)=>void;
+    const cancelled=new Promise<never>((_resolve,reject)=>{rejectCancellation=reject;});
+    const abort=()=>{peer.end();rejectCancellation!(new Error('Transfer cancelled'));};
+    if(signal?.aborted)throw new Error('Transfer cancelled');
+    signal?.addEventListener('abort',abort,{once:true});
+    try {
+      await Promise.race([peer.connect({...this._option},{askForPasswd:async()=>{throw new Error('FTP worker authentication is unavailable');}}),cancelled]);
+      if(signal?.aborted)throw new Error('Transfer cancelled');
+      return peer;
+    } catch(error){peer.end();throw error;}
+    finally{signal?.removeEventListener('abort',abort);}
   }
 
   end() {

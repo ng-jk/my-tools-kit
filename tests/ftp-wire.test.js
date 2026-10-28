@@ -46,12 +46,16 @@ test('implicit FTPS keeps authentication and passive data in verified TLS',{time
   }));
   await new Promise(resolve=>proxy.listen(0,'127.0.0.1',resolve));
   t.after(async()=>{for(const session of sessions)session.service.dispose();for(const socket of sockets)socket.destroy();for(const server of servers)if(server.listening)await new Promise(resolve=>server.close(resolve));fs.rmSync(root,{recursive:true,force:true});});
-  const make=secureOptions=>{const session=engine.createSession(root,{protocol:'ftp',secure:'implicit',secureOptions,host:'127.0.0.1',port:proxy.address().port,username:'TEST_ONLY_FTPS_USER',password:'TEST_ONLY_FTPS_PASSWORD',remotePath:'/',connectTimeout:3000});sessions.push(session);return session;};
+  const make=(secureOptions,password='TEST_ONLY_FTPS_PASSWORD')=>{const session=engine.createSession(root,{protocol:'ftp',secure:'implicit',secureOptions,host:'127.0.0.1',port:proxy.address().port,username:'TEST_ONLY_FTPS_USER',password,remotePath:'/',connectTimeout:3000});sessions.push(session);return session;};
   const good=make({ca:[cert,wrong]});
   const remote=await good.service.getRemoteFileSystem(good.config);
   const entries=await remote.list('/');assert.ok(entries.some(item=>item.name==='secure.txt'));
   assert.ok(commands.includes('PBSZ 0'));assert.ok(commands.includes('PROT P'));assert.ok(commands.includes('PASS TEST_ONLY_FTPS_PASSWORD'));assert.ok(tlsDataConnections>0);
   const raw=Buffer.concat(wire);assert.equal(raw.includes(Buffer.from('TEST_ONLY_FTPS_USER')),false);assert.equal(raw.includes(Buffer.from('TEST_ONLY_FTPS_PASSWORD')),false);
+  let prompts=0;engine.configurePorts({password:async()=>{prompts++;return 'TEST_ONLY_FTPS_PASSWORD';}});
+  const prompted=make({ca:[cert,wrong]},null);let peer;
+  try{const primary=await prompted.service.getRemoteFileSystem(prompted.config);peer=await primary.createTransferConnection();assert.ok((await peer.list('/')).some(item=>item.name==='secure.txt'));assert.equal(prompts,1,'worker reuses resolved authentication without prompting again');}
+  finally{peer?.end();engine.configurePorts({password:async()=>{throw new Error('Supply authentication in config');}});}
   const before=commands.length;const untrusted=make({});
   await assert.rejects(untrusted.service.getRemoteFileSystem(untrusted.config),/certificate|self.signed|verify/i);assert.equal(commands.length,before,'invalid control certificate sends no credentials');
   wrongData=true;const lists=commands.filter(line=>line.startsWith('LIST')).length;
@@ -62,9 +66,10 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-ftp-'));
   fs.writeFileSync(path.join(root,'local.txt'),'ftp payload');
   let referentReads=0;const linkTargets=new Map([['/.hidden-link','/outside/private']]);
-  const files=new Map([['/nul',Buffer.from('valid remote sibling')],['/.hidden.txt',Buffer.from('hidden original')],['/.hidden-link',Buffer.from('link placeholder')]]),modes=new Map(),directories=new Set(),payloadParents=[],commands=[],sockets=new Set(),servers=new Set();let legacyIsolation=false;let permissionsSupported=true,permissionsHonored=true,filePermissionsHonored=true,failStore=false,probeMode='mlst',probeDenied='',probeAmbiguous='',rejectHidden=false;const omitted=new Set(),mlstReferentTypes=new Map();
+  const files=new Map([['/nul',Buffer.from('valid remote sibling')],['/.hidden.txt',Buffer.from('hidden original')],['/.hidden-link',Buffer.from('link placeholder')]]),modes=new Map(),directories=new Set(),payloadParents=[],commands=[],sockets=new Set(),servers=new Set();let holdPeerLogin=false;let controlCount=0,activeControls=0,extraLimit=Infinity,storeDelay=0,activeStores=0,peakStores=0;let legacyIsolation=false;let permissionsSupported=true,permissionsHonored=true,filePermissionsHonored=true,failStore=false,probeMode='mlst',probeDenied='',probeAmbiguous='',rejectHidden=false;const omitted=new Set(),mlstReferentTypes=new Map();
   const rights=mode=>[6,3,0].map(shift=>[4,2,1].map((bit,index)=>((mode>>shift)&bit)?'rwx'[index]:'-').join('')).join('');
   const server=net.createServer(socket=>{
+    controlCount++;activeControls++;socket.on('close',()=>activeControls--);if(controlCount>extraLimit){socket.end('421 Too many sessions\r\n');return;}
     sockets.add(socket);socket.on('close',()=>sockets.delete(socket));socket.on('error',()=>{});
     const reply=message=>{if(process.env.DEVKIT_BENCHMARK_OUTPUT)setTimeout(()=>{if(!socket.destroyed)socket.write(message+'\r\n');},3);else socket.write(message+'\r\n');};let pending='',dataSocket,renameFrom;
     reply('220 Fixture ready');
@@ -73,7 +78,7 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
       while((end=pending.indexOf('\r\n'))!==-1){
         const line=pending.slice(0,end);pending=pending.slice(end+2);const space=line.indexOf(' ');const cmd=space<0?line:line.slice(0,space),arg=space<0?'':line.slice(space+1);commands.push(cmd);
         if(cmd==='USER')reply('331 Password required');
-        else if(cmd==='PASS')reply(arg==='fixture'?'230 Logged in':'530 Rejected');
+        else if(cmd==='PASS'){if(!holdPeerLogin)reply(arg==='fixture'?'230 Logged in':'530 Rejected');}
         else if(cmd==='FEAT')reply('211 End');
         else if(cmd==='SYST')reply('215 UNIX Type: L8');
         else if(cmd==='PWD')reply('257 "/"');
@@ -96,7 +101,7 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
         }else if(cmd==='APPE'||cmd==='REST'){
           reply('550 Append/Restart not permitted, try again');dataSocket?.destroy();
         }else if(cmd==='STOR'){
-          reply('150 Receiving');const chunks=[];dataSocket.on('data',b=>chunks.push(b));dataSocket.on('end',()=>{const body=Buffer.concat(chunks);payloadParents.push(modes.get(path.posix.dirname(arg)));files.set(arg,body);modes.set(arg,0o644);dataSocket.end();reply(failStore?'451 Simulated transfer failure':'226 Done');});dataSocket.resume();
+          reply('150 Receiving');activeStores++;peakStores=Math.max(peakStores,activeStores);const transferSocket=dataSocket,chunks=[];transferSocket.on('data',b=>chunks.push(b));transferSocket.on('end',()=>{setTimeout(()=>{const body=Buffer.concat(chunks);payloadParents.push(modes.get(path.posix.dirname(arg)));files.set(arg,body);modes.set(arg,0o644);activeStores--;transferSocket.end();reply(failStore?'451 Simulated transfer failure':'226 Done');},storeDelay);});transferSocket.resume();
         }else if(cmd==='RETR'){
           if(linkTargets.has(arg)){referentReads++;reply('550 Symlink must not be dereferenced');dataSocket.destroy();}else if(!files.has(arg)){reply('550 Missing');dataSocket.destroy();}else{reply('150 Sending');dataSocket.end(files.get(arg),()=>reply('226 Done'));}
         }else if(cmd==='LIST'){
@@ -120,7 +125,7 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
     });
   });
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
-  const session=engine.createSession(root,{protocol:'ftp',host:'127.0.0.1',port:server.address().port,username:'fixture',password:'fixture',remotePath:'/'});
+  const session=engine.createSession(root,{protocol:'ftp',host:'127.0.0.1',port:server.address().port,username:'fixture',password:'fixture',remotePath:'/',...(process.env.DEVKIT_BENCHMARK_OUTPUT?{ftpConnections:Number(process.env.DEVKIT_BENCHMARK_CONNECTIONS||3)}:{})});
   t.after(async()=>{session.service.dispose();for(const socket of sockets)socket.destroy();for(const data of servers)if(data.listening)data.close();await new Promise(resolve=>server.close(resolve));fs.rmSync(root,{recursive:true,force:true});});
   await engine.operate(session,'upload','local.txt');assert.equal(files.get('/local.txt').toString(),'ftp payload','explicit not-found permits creating a new FTP file');assert.equal(modes.get('/local.txt'),0o755,'new FTP file defaults to 755');
   if(process.env.DEVKIT_BENCHMARK_OUTPUT){
@@ -134,6 +139,22 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
     fs.writeFileSync(process.env.DEVKIT_BENCHMARK_OUTPUT,JSON.stringify({latencyPerReplyMs:3,depth:3,metrics},null,2));
     return;
   }
+  fs.mkdirSync(path.join(root,'parallel'));for(let n=0;n<4;n++)fs.writeFileSync(path.join(root,'parallel','file'+n+'.txt'),'parallel '+n);
+  storeDelay=100;peakStores=0;const connectionsBefore=controlCount;
+  await engine.operate(session,'upload','parallel');assert.ok(peakStores>1&&peakStores<=3,'batch uploads overlap on bounded independent connections');assert.equal(controlCount-connectionsBefore,2);
+  for(let n=0;n<4;n++)assert.equal(files.get('/parallel/file'+n+'.txt').toString(),'parallel '+n);
+  session.config.ftpConnections=1;peakStores=0;const serialConnections=controlCount,serialCommands=commands.length;
+  await engine.operate(session,'upload','parallel');assert.equal(peakStores,1);assert.equal(controlCount,serialConnections);
+  const overwrite=commands.slice(serialCommands);assert.ok(overwrite.lastIndexOf('RETR')<overwrite.indexOf('STOR'),'all original backups finish before the first overwrite');
+  session.config.ftpConnections=3;extraLimit=controlCount+1;const stores=commands.filter(c=>c==='STOR').length;
+  await assert.rejects(engine.operate(session,'upload','parallel'),/parallel connection setup failed.*ftpConnections to 1/);assert.equal(commands.filter(c=>c==='STOR').length,stores,'connection failure sends no payload');extraLimit=Infinity;
+  await new Promise(resolve=>setTimeout(resolve,30));assert.equal(activeControls,1,'successful partial peers are closed on setup failure');
+  holdPeerLogin=true;const setupBefore=controlCount,setup=engine.operate(session,'upload','parallel');while(controlCount===setupBefore)await new Promise(resolve=>setTimeout(resolve,5));const cancelStart=performance.now();engine.cancelActiveTransfers();await assert.rejects(setup,/cancel/i);assert.ok(performance.now()-cancelStart<1000,'cancel does not wait for the connection timeout');holdPeerLogin=false;
+  await new Promise(resolve=>setTimeout(resolve,30));assert.equal(activeControls,1,'pending worker logins close on cancellation');
+  for(let n=0;n<4;n++)fs.writeFileSync(path.join(root,'parallel','file'+n+'.txt'),'cancelled new '+n);
+  const cancelled=engine.operate(session,'upload','parallel');while(activeStores===0)await new Promise(resolve=>setTimeout(resolve,5));engine.cancelActiveTransfers();await assert.rejects(cancelled,/cancel|abort/i);
+  for(let n=0;n<4;n++)assert.equal(files.get('/parallel/file'+n+'.txt').toString(),'parallel '+n,'cancelled upload preserves backed-up destination');
+  storeDelay=0;await new Promise(resolve=>setTimeout(resolve,30));assert.equal(activeControls,1,'worker connections close after cancellation');
   legacyIsolation=true;
   fs.writeFileSync(path.join(root,'legacy.txt'),'legacy LIST-only payload');await engine.operate(session,'upload','legacy.txt');assert.equal(files.get('/legacy.txt').toString(),'legacy LIST-only payload');
   fs.writeFileSync(path.join(root,'legacy.txt'),'updated LIST-only payload');await engine.operate(session,'upload','legacy.txt');assert.equal(files.get('/legacy.txt').toString(),'updated LIST-only payload','LIST-only server supports backup and replacement');
@@ -176,12 +197,12 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
   assert.equal(files.get('/local.txt').toString(),'ftp payload','post-STOR mode mismatch preserves original');filePermissionsHonored=true;
   failStore=true;await assert.rejects(engine.operate(session,'upload','local.txt'),/Simulated transfer failure/);failStore=false;
   assert.equal(files.get('/local.txt').toString(),'ftp payload','failed STOR preserves original');
-  assert.equal(commands.includes('APPE'),false);assert.equal(commands.includes('REST'),false);assert.ok(payloadParents.length>0&&payloadParents.every(mode=>mode===0o700));assert.deepEqual([...directories],['/legacy-folder','/nested'],'private directories are removed after success and failure');
+  assert.equal(commands.includes('APPE'),false);assert.equal(commands.includes('REST'),false);assert.ok(payloadParents.length>0&&payloadParents.every(mode=>mode===0o700));assert.deepEqual([...directories],['/parallel','/legacy-folder','/nested'],'private directories are removed after success and failure');
   const list=await engine.operate(session,'list');assert.ok(list.some(item=>item.name==='local.txt'));
   const remoteFs=await session.service.getRemoteFileSystem(session.config);
   const longTarget='/'+ 'a'.repeat(204)+'.devkit-00000000-0000-4000-8000-000000000000';
   await remoteFs.put(require('node:stream').Readable.from(['long filename payload']),longTarget,{mode:0o600});
-  assert.equal(files.get(longTarget).toString(),'long filename payload');assert.equal(modes.get(longTarget),0o600);assert.deepEqual([...directories],['/legacy-folder','/nested']);
+  assert.equal(files.get(longTarget).toString(),'long filename payload');assert.equal(modes.get(longTarget),0o600);assert.deepEqual([...directories],['/parallel','/legacy-folder','/nested']);
   for(const relative of ['.','./']) assert.equal((await remoteFs.lstat(relative)).type,engine.FileType.Directory);
   await assert.rejects(remoteFs.rename('/local.txt\r\nDELE /local.txt\r\nNOOP','/renamed.txt'),/prohibited control/);
   assert.equal(files.get('/local.txt').toString(),'ftp payload');

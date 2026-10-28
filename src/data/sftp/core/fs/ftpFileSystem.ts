@@ -51,6 +51,11 @@ export default class FTPFileSystem extends RemoteFileSystem {
     try{return await task();}finally{this.metadata.clear();}
   }
 
+  async createTransferConnection(signal?:AbortSignal):Promise<FTPFileSystem> {
+    const client=await (this.getClient() as FTPClient).fork(signal);
+    return new FTPFileSystem(this.pathResolver,{client,remoteTimeOffsetInHours:this.toRemoteTimeInSecnonds(0)/3600});
+  }
+
   static getFileType(type: string) {
     if (type === 'd') {
       return FileType.Directory;

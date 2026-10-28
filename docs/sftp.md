@@ -237,3 +237,10 @@ Ancestor isolation checks ownership root-to-leaf, trusting the server namespace 
 
 
 For upload speed behavior, upstream comparison and the local wire benchmark, see [transfer performance](sftp-performance.md). Per-file metadata snapshots are discarded before mutations; ancestry is checked again for the next file.
+
+
+## Asynchronous batch uploads
+
+FTP folder/batch uploads use `ftpConnections` (default 3, integer 1–8) independent connections. This is a per-batch cap, not an account-wide server connection limit. Other commands or profiles may also hold connections. Each added connection uses the same resolved authentication, host, port, TLS configuration and time offset, and is closed afterward. A failed worker login stops before upload; configure ftpConnections 1 for session-limited servers. All required backups finish on the planning connection before workers start. Each worker performs fresh ancestry/permission checks, private staging and verified replacement. Cancellation aborts pending logins, stops queued transfers, cleans up running staging where possible and closes added connections. Different files can finish in different order; same destination/overlapping commands remain protected by upload locks.
+
+SFTP keeps concurrency over its existing SSH connection. Multiprocessing does not improve this I/O workload; bounded asynchronous transfers avoid extra processes and credential distribution. Single-file uploads and separate individual commands are not automatically grouped into a pooled batch.

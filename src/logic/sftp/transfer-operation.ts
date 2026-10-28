@@ -1,3 +1,6 @@
+import {logger} from '../../data/sftp/ports';
+import {createTransferConnections} from './transfer-connections';
+import {connectionFailure} from './diagnostics';
 import {assertIsolatedParents} from './parent-isolation';
 import {filesystemIdentity} from './core/staged-replacement';
 import {transfer, sync} from './fileHandlers/transfer/transfer';
@@ -26,15 +29,17 @@ export function cancelActiveTransfers() { cancelPendingOperations(); for (const 
 
 export async function executeTransfer(service: any, config: any, local: string, remote: string, down: boolean, options: any, synchronize = false) {
   const checkCancelled = service.cancellationCheck();
-  const cancel = () => service.cancelTransferTasks();
+  const setupCancellation=new AbortController();
+  const cancel = () => {setupCancellation.abort();service.cancelTransferTasks();};
   active.add(cancel);
   const directoryScope = new DirectoryPermissionScope();
   let scheduler: any;
+  let connectionPool:Awaited<ReturnType<typeof createTransferConnections>>|undefined;
   let releaseUpload:(()=>void)|undefined;
   let finishMetadata: (()=>void)|undefined;
   let planning = true;
-  const guard = (fs: any) => new Proxy(fs, {get(target, key) {
-    if (key === filesystemIdentity) return target;
+  const guard = (fs: any,identity=fs) => new Proxy(fs, {get(target, key) {
+    if (key === filesystemIdentity) return identity;
     const value = Reflect.get(target, key);
     if (typeof value !== 'function') return value;
     return (...args: any[]) => { if (planning) checkCancelled(); return value.apply(target, args); };
@@ -51,7 +56,7 @@ export async function executeTransfer(service: any, config: any, local: string, 
     const localFs = guard(service.getLocalFileSystem());
     await assertLocalAncestors(localFs, local, service.baseDir);
     checkCancelled();
-    scheduler = service.createTransferScheduler(config.concurrency);
+
     const tasks: any[] = [];
     const pendingDeletions: Array<() => Promise<void>> = [];
     const deleted = await (synchronize ? sync : transfer)({
@@ -66,6 +71,17 @@ export async function executeTransfer(service: any, config: any, local: string, 
     checkCancelled();
     finishMetadata?.();finishMetadata=undefined;
     planning = false;
+    const connections=!down&&config.protocol==='ftp'?Math.min(config.ftpConnections??3,tasks.length):1;
+    if(connections>1 && typeof (remoteFs as any).createTransferConnection==='function'){
+      logger.info('Preparing '+connections+' FTP upload connections.');
+      try{connectionPool=await createTransferConnections(remoteFs,connections,setupCancellation.signal,checkCancelled);}
+      catch(error){checkCancelled();const diagnosed=connectionFailure(error,config);const detail=diagnosed!==error?diagnosed.message:'The server rejected an additional session; check session limits and network access.';throw new Error('FTP parallel connection setup failed. Set ftpConnections to 1 if the server limits sessions. '+detail);}
+      const pool=connectionPool;
+      for(const task of tasks)task.useConnectionPool(remoteFs,async()=>{
+        const lease=await pool.acquire();return {...lease,fs:guard(lease.fs,(remoteFs as any)[filesystemIdentity])};
+      });
+    }
+    scheduler = service.createTransferScheduler(connectionPool?.size||config.concurrency);
     tasks.forEach(task => scheduler.add(task));
     await scheduler.run();
     checkCancelled();
@@ -75,7 +91,7 @@ export async function executeTransfer(service: any, config: any, local: string, 
     return {passed: true, transferred: tasks.length, deleted: deleted || []};
   } finally {
     finishMetadata?.();
-    scheduler?.stop(); active.delete(cancel);
+    scheduler?.stop();connectionPool?.close(); active.delete(cancel);
     try{await directoryScope.finish();}finally{releaseUpload?.();}
   }
 }
