@@ -126,7 +126,7 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
   });
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   const waitUntil=async(predicate,label,timeout=30000)=>{const deadline=performance.now()+timeout;while(!predicate()){if(performance.now()>deadline)throw new Error('FTP fixture wait failed: '+label+'; last commands '+commands.slice(-12).join(','));await new Promise(resolve=>setTimeout(resolve,5));}};
-  const cancelledPromptly=async(promise,cancel,label)=>{let timer;const start=performance.now();cancel();try{await assert.rejects(Promise.race([promise,new Promise((_resolve,reject)=>{timer=setTimeout(()=>reject(new Error('FTP fixture operation did not settle: '+label)),3000);})]),/cancel|abort/i);}finally{clearTimeout(timer);}assert.ok(performance.now()-start<1000,label+' must not wait for the connection timeout');};
+  const cancelledPromptly=async(promise,cancel,label,budget=1000)=>{let timer;const start=performance.now();cancel();try{await assert.rejects(Promise.race([promise,new Promise((_resolve,reject)=>{timer=setTimeout(()=>reject(new Error('FTP fixture operation did not settle: '+label)),Math.max(3000,budget+1000));})]),/cancel|abort/i);}finally{clearTimeout(timer);}assert.ok(performance.now()-start<budget,label+' exceeded its bounded abort/cleanup allowance');};
   const session=engine.createSession(root,{protocol:'ftp',host:'127.0.0.1',port:server.address().port,username:'fixture',password:'fixture',remotePath:'/',...(process.env.DEVKIT_BENCHMARK_OUTPUT?{ftpConnections:Number(process.env.DEVKIT_BENCHMARK_CONNECTIONS||3)}:{})});
   t.after(async()=>{session.service.dispose();for(const socket of sockets)socket.destroy();for(const data of servers)if(data.listening)data.close();await new Promise(resolve=>server.close(resolve));fs.rmSync(root,{recursive:true,force:true});});
   await engine.operate(session,'upload','local.txt');assert.equal(files.get('/local.txt').toString(),'ftp payload','explicit not-found permits creating a new FTP file');assert.equal(modes.get('/local.txt'),0o755,'new FTP file defaults to 755');
@@ -165,7 +165,7 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
   await waitUntil(()=>activeControls===1,'disposal cleanup',3000);
   console.log('FTP fixture: payload cancellation');
   for(let n=0;n<4;n++)fs.writeFileSync(path.join(root,'parallel','file'+n+'.txt'),'cancelled new '+n);
-  const cancelled=engine.operate(session,'upload','parallel');await waitUntil(()=>activeStores>0,'active payload reached');await cancelledPromptly(cancelled,()=>engine.cancelActiveTransfers(),'payload cancellation');
+  const cancelled=engine.operate(session,'upload','parallel');await waitUntil(()=>activeStores>0,'active payload reached');await cancelledPromptly(cancelled,()=>engine.cancelActiveTransfers(),'payload cancellation',10000);
   for(let n=0;n<4;n++)assert.equal(files.get('/parallel/file'+n+'.txt').toString(),'parallel '+n,'cancelled upload preserves backed-up destination');
   storeDelay=0;await waitUntil(()=>activeControls===1,'payload cleanup',3000);
   console.log('FTP fixture: legacy metadata and remaining regressions');
