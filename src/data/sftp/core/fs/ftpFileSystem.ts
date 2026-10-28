@@ -1,6 +1,6 @@
 // Adapted from ng-jk/vscode-sftp (MIT); see THIRD-PARTY-NOTICES.md.
 import PQueue from 'p-queue';
-import { Readable } from 'stream';
+import { Readable, PassThrough } from 'stream';
 import {randomUUID} from 'crypto';
 import { logger } from '../../ports';
 import { FileEntry, FileType, FileStats, FileOption, VerifiedRemoteAbsence } from './fileSystem';
@@ -491,16 +491,17 @@ export default class FTPFileSystem extends RemoteFileSystem {
   private async atomicPut(input:Readable,path:string,checkSource:()=>void):Promise<void> {
     const task=()=>new Promise<void>((resolve,reject)=>{
       try{checkSource();}catch(error){reject(error);return;}
+      // A dedicated bounded relay identifies this upload's data stream even if
+      // another command is ahead of its STOR on the shared primary connection.
+      const relay=new PassThrough({highWaterMark:64*1024});
       const abort=()=>{
-        // ftp queues ABOR behind STOR. End this operation's data stream first
-        // so STOR can finish even when its cancelled source never emits EOF.
-        // Partial bytes remain inside the verified private staging directory.
-        const socket=this.ftp._pasvSocket;
-        if(socket&&!socket.destroyed){input.unpipe(socket);socket.end();}
+        input.unpipe(relay);relay.end();
         this.ftp.abort((error:any)=>{if(error)logger.warn('FTP abort failed');});
       };
+      let finished=false;
+      const finish=(error?:Error)=>{if(finished)return;finished=true;input.unpipe(relay);input.removeListener('error',abort);relay.destroy();if(error)reject(error);else resolve();};
       input.on('error',abort);
-      this.ftp.put(input,path,(error:any)=>{input.removeListener('error',abort);if(error)reject(error);else resolve();});
+      try{input.pipe(relay);this.ftp.put(relay,path,finish);}catch(error){finish(error);}
     });
     return this.queue.add(()=>this.mutation(task));
   }
