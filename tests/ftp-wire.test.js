@@ -66,7 +66,7 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-ftp-'));
   fs.writeFileSync(path.join(root,'local.txt'),'ftp payload');
   let referentReads=0;const linkTargets=new Map([['/.hidden-link','/outside/private']]);
-  const files=new Map([['/nul',Buffer.from('valid remote sibling')],['/.hidden.txt',Buffer.from('hidden original')],['/.hidden-link',Buffer.from('link placeholder')]]),modes=new Map(),directories=new Set(),payloadParents=[],commands=[],sockets=new Set(),servers=new Set();let holdPeerLogin=false;let controlCount=0,activeControls=0,extraLimit=Infinity,storeDelay=0,activeStores=0,peakStores=0;let legacyIsolation=false;let permissionsSupported=true,permissionsHonored=true,filePermissionsHonored=true,failStore=false,probeMode='mlst',probeDenied='',probeAmbiguous='',rejectHidden=false;const omitted=new Set(),mlstReferentTypes=new Map();
+  const files=new Map([['/nul',Buffer.from('valid remote sibling')],['/.hidden.txt',Buffer.from('hidden original')],['/.hidden-link',Buffer.from('link placeholder')]]),modes=new Map(),directories=new Set(),payloadParents=[],commands=[],sockets=new Set(),servers=new Set();let heldLogins=0,holdPeerLogin=false;let controlCount=0,activeControls=0,extraLimit=Infinity,storeDelay=0,activeStores=0,peakStores=0;let legacyIsolation=false;let permissionsSupported=true,permissionsHonored=true,filePermissionsHonored=true,failStore=false,probeMode='mlst',probeDenied='',probeAmbiguous='',rejectHidden=false;const omitted=new Set(),mlstReferentTypes=new Map();
   const rights=mode=>[6,3,0].map(shift=>[4,2,1].map((bit,index)=>((mode>>shift)&bit)?'rwx'[index]:'-').join('')).join('');
   const server=net.createServer(socket=>{
     controlCount++;activeControls++;socket.on('close',()=>activeControls--);if(controlCount>extraLimit){socket.end('421 Too many sessions\r\n');return;}
@@ -78,7 +78,7 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
       while((end=pending.indexOf('\r\n'))!==-1){
         const line=pending.slice(0,end);pending=pending.slice(end+2);const space=line.indexOf(' ');const cmd=space<0?line:line.slice(0,space),arg=space<0?'':line.slice(space+1);commands.push(cmd);
         if(cmd==='USER')reply('331 Password required');
-        else if(cmd==='PASS'){if(!holdPeerLogin)reply(arg==='fixture'?'230 Logged in':'530 Rejected');}
+        else if(cmd==='PASS'){if(holdPeerLogin)heldLogins++;else reply(arg==='fixture'?'230 Logged in':'530 Rejected');}
         else if(cmd==='FEAT')reply('211 End');
         else if(cmd==='SYST')reply('215 UNIX Type: L8');
         else if(cmd==='PWD')reply('257 "/"');
@@ -125,6 +125,8 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
     });
   });
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  const waitUntil=async(predicate,label,timeout=30000)=>{const deadline=performance.now()+timeout;while(!predicate()){if(performance.now()>deadline)throw new Error('FTP fixture wait failed: '+label+'; last commands '+commands.slice(-12).join(','));await new Promise(resolve=>setTimeout(resolve,5));}};
+  const cancelledPromptly=async(promise,cancel,label)=>{let timer;const start=performance.now();cancel();try{await assert.rejects(Promise.race([promise,new Promise((_resolve,reject)=>{timer=setTimeout(()=>reject(new Error('FTP fixture operation did not settle: '+label)),3000);})]),/cancel|abort/i);}finally{clearTimeout(timer);}assert.ok(performance.now()-start<1000,label+' must not wait for the connection timeout');};
   const session=engine.createSession(root,{protocol:'ftp',host:'127.0.0.1',port:server.address().port,username:'fixture',password:'fixture',remotePath:'/',...(process.env.DEVKIT_BENCHMARK_OUTPUT?{ftpConnections:Number(process.env.DEVKIT_BENCHMARK_CONNECTIONS||3)}:{})});
   t.after(async()=>{session.service.dispose();for(const socket of sockets)socket.destroy();for(const data of servers)if(data.listening)data.close();await new Promise(resolve=>server.close(resolve));fs.rmSync(root,{recursive:true,force:true});});
   await engine.operate(session,'upload','local.txt');assert.equal(files.get('/local.txt').toString(),'ftp payload','explicit not-found permits creating a new FTP file');assert.equal(modes.get('/local.txt'),0o755,'new FTP file defaults to 755');
@@ -139,27 +141,34 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
     fs.writeFileSync(process.env.DEVKIT_BENCHMARK_OUTPUT,JSON.stringify({latencyPerReplyMs:3,depth:3,metrics},null,2));
     return;
   }
+  console.log('FTP fixture: parallel upload');
   fs.mkdirSync(path.join(root,'parallel'));for(let n=0;n<4;n++)fs.writeFileSync(path.join(root,'parallel','file'+n+'.txt'),'parallel '+n);
   storeDelay=100;peakStores=0;const connectionsBefore=controlCount;
   await engine.operate(session,'upload','parallel');assert.ok(peakStores>1&&peakStores<=3,'batch uploads overlap on bounded independent connections');assert.equal(controlCount-connectionsBefore,2);
   for(let n=0;n<4;n++)assert.equal(files.get('/parallel/file'+n+'.txt').toString(),'parallel '+n);
+  console.log('FTP fixture: serial overwrite');
   session.config.ftpConnections=1;peakStores=0;const serialConnections=controlCount,serialCommands=commands.length;
   await engine.operate(session,'upload','parallel');assert.equal(peakStores,1);assert.equal(controlCount,serialConnections);
   const overwrite=commands.slice(serialCommands);assert.ok(overwrite.lastIndexOf('RETR')<overwrite.indexOf('STOR'),'all original backups finish before the first overwrite');
+  console.log('FTP fixture: partial setup failure');
   session.config.ftpConnections=3;extraLimit=controlCount+1;const stores=commands.filter(c=>c==='STOR').length;
   await assert.rejects(engine.operate(session,'upload','parallel'),/parallel connection setup failed.*ftpConnections to 1/);assert.equal(commands.filter(c=>c==='STOR').length,stores,'connection failure sends no payload');extraLimit=Infinity;
-  await new Promise(resolve=>setTimeout(resolve,30));assert.equal(activeControls,1,'successful partial peers are closed on setup failure');
+  await waitUntil(()=>activeControls===1,'partial setup cleanup',3000);
+  console.log('FTP fixture: global and service login cancellation');
   for(const cancelSetup of [()=>engine.cancelActiveTransfers(),()=>session.service.cancelTransferTasks()]){
-    holdPeerLogin=true;const setupBefore=controlCount,setup=engine.operate(session,'upload','parallel');while(controlCount===setupBefore)await new Promise(resolve=>setTimeout(resolve,5));const cancelStart=performance.now();cancelSetup();await assert.rejects(setup,/cancel/i);assert.ok(performance.now()-cancelStart<1000,'global and service cancellation abort pending worker login promptly');holdPeerLogin=false;
-    await new Promise(resolve=>setTimeout(resolve,30));assert.equal(activeControls,1,'pending worker logins close on cancellation');
+    holdPeerLogin=true;const setupBefore=heldLogins,setup=engine.operate(session,'upload','parallel');await waitUntil(()=>heldLogins>setupBefore,'worker authentication reached');await cancelledPromptly(setup,cancelSetup,'global/service login cancellation');holdPeerLogin=false;
+    await waitUntil(()=>activeControls===1,'pending login cleanup',3000);
   }
+  console.log('FTP fixture: service disposal');
   const disposedSession=engine.createSession(root,{protocol:'ftp',host:'127.0.0.1',port:server.address().port,username:'fixture',password:'fixture',remotePath:'/',connectTimeout:30000});await disposedSession.service.getRemoteFileSystem(disposedSession.config);
-  holdPeerLogin=true;const disposalBefore=controlCount,disposal=engine.operate(disposedSession,'upload','parallel');while(controlCount===disposalBefore)await new Promise(resolve=>setTimeout(resolve,5));const disposalStart=performance.now();disposedSession.service.dispose();await assert.rejects(disposal,/cancel/i);assert.ok(performance.now()-disposalStart<1000,'service disposal aborts independent worker logins instead of waiting 30 seconds');holdPeerLogin=false;
-  await new Promise(resolve=>setTimeout(resolve,30));assert.equal(activeControls,1,'disposal closes worker and disposed primary sessions');
+  holdPeerLogin=true;const disposalBefore=heldLogins,disposal=engine.operate(disposedSession,'upload','parallel');await waitUntil(()=>heldLogins>disposalBefore,'disposal worker authentication reached');await cancelledPromptly(disposal,()=>disposedSession.service.dispose(),'service disposal login cancellation');holdPeerLogin=false;
+  await waitUntil(()=>activeControls===1,'disposal cleanup',3000);
+  console.log('FTP fixture: payload cancellation');
   for(let n=0;n<4;n++)fs.writeFileSync(path.join(root,'parallel','file'+n+'.txt'),'cancelled new '+n);
-  const cancelled=engine.operate(session,'upload','parallel');while(activeStores===0)await new Promise(resolve=>setTimeout(resolve,5));engine.cancelActiveTransfers();await assert.rejects(cancelled,/cancel|abort/i);
+  const cancelled=engine.operate(session,'upload','parallel');await waitUntil(()=>activeStores>0,'active payload reached');await cancelledPromptly(cancelled,()=>engine.cancelActiveTransfers(),'payload cancellation');
   for(let n=0;n<4;n++)assert.equal(files.get('/parallel/file'+n+'.txt').toString(),'parallel '+n,'cancelled upload preserves backed-up destination');
-  storeDelay=0;await new Promise(resolve=>setTimeout(resolve,30));assert.equal(activeControls,1,'worker connections close after cancellation');
+  storeDelay=0;await waitUntil(()=>activeControls===1,'payload cleanup',3000);
+  console.log('FTP fixture: legacy metadata and remaining regressions');
   legacyIsolation=true;
   fs.writeFileSync(path.join(root,'legacy.txt'),'legacy LIST-only payload');await engine.operate(session,'upload','legacy.txt');assert.equal(files.get('/legacy.txt').toString(),'legacy LIST-only payload');
   fs.writeFileSync(path.join(root,'legacy.txt'),'updated LIST-only payload');await engine.operate(session,'upload','legacy.txt');assert.equal(files.get('/legacy.txt').toString(),'updated LIST-only payload','LIST-only server supports backup and replacement');
