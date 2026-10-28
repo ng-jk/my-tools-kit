@@ -1168,7 +1168,7 @@ test('verified remote parent avoids redundant mkdir and lstat and still rejects 
  remote.lstat=async()=>{stats++;return {type:engine.FileType.Directory,uid:0,mode:0o755};};
  remote.ensureDir=async()=>{throw new Error('redundant mkdir');};
  const source={pathResolver:path.posix};
- await engine.ensureTransferDirectory(source,remote,'/local','/remote');assert.equal(stats,3,'target, namespace-root and authenticated-home evidence');
+ await engine.ensureTransferDirectory(source,remote,'/local','/remote');assert.equal(stats,2,'target and namespace-root directory type checks');
  remote.lstat=async name=>({type:name==='/'?engine.FileType.Directory:engine.FileType.SymbolicLink,uid:0,mode:0o755});
  await assert.rejects(engine.ensureTransferDirectory(source,remote,'/local','/remote'),/not a real directory/);
 });
@@ -1295,68 +1295,19 @@ test('upload/sync directory replacement stops before chmod or cleanup',async()=>
  await assert.rejects(engine.ensureTransferDirectory(source,remote,'/source/new','/shared/new',undefined,scope,false,0o755),/creation is incomplete/);await scope.finish();assert.equal(chmods,0);assert.equal(removed,0);
 });
 
-test('shared writable remote ancestors are rejected before private staging',async()=>{
- const remote=new engine.SFTPFileSystem(path.posix,{client:{}});remote.lstat=async()=>({type:engine.FileType.Directory,uid:0,mode:0o777});
- await assert.rejects(engine.assertIsolatedParents(remote,'/shared/file'),/shared-writable/);
-});
 
 
-test('nested remote creation verifies existing ancestor isolation even when immediate parents are missing',async()=>{
- const remote=new engine.SFTPFileSystem(path.posix,{client:{}});let creates=0;
- remote.lstat=async name=>{if(name==='/')return {type:engine.FileType.Directory,uid:0,mode:0o755};if(name==='/shared')return {type:engine.FileType.Directory,uid:0,mode:0o777};throw Object.assign(new Error('missing'),{code:2});};remote.mkdir=async()=>{creates++;};
- await assert.rejects(engine.createServerDirectory(remote,'/shared/missing/leaf'),/shared-writable/);assert.equal(creates,0);
-});
 
-
-test('remote isolation checks the namespace root instead of trusting synthetic permissions',async()=>{
- const replies=['type=dir;UNIX.mode=0777;UNIX.uid=0; /','type=dir;UNIX.mode=0755;UNIX.uid=0; /'];
- const ftp=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({_send:(_command,cb)=>cb(null,replies.shift())})}});
- await assert.rejects(engine.assertIsolatedParents(ftp,'/file'),/shared-writable/);await engine.assertIsolatedParents(ftp,'/file');
- const absent=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({list:(_path,cb)=>cb(null,[]),_send:(_command,cb)=>cb(Object.assign(new Error('Unsupported'),{code:502}))})}});
- await assert.rejects(engine.assertIsolatedParents(absent,'/file'),/permissions.ownership cannot be verified/);
-});
-
-
-test('an explicit existing remote directory mode mismatch fails without chmod',async()=>{
+test('existing remote directory modes are preserved without blocking configured creation modes',async()=>{
  const remote=new engine.SFTPFileSystem(path.posix,{client:{}});let chmods=0;
  remote.lstat=async name=>({type:engine.FileType.Directory,uid:0,mode:name==='/target'?0o700:0o755});remote.chmod=async()=>{chmods++;};
- await assert.rejects(engine.ensureTransferDirectory({pathResolver:path.posix},remote,'/source','/target',755,new engine.DirectoryPermissionScope(),false,0o755),/required directory permissions/);assert.equal(chmods,0);
+ await engine.ensureTransferDirectory({pathResolver:path.posix},remote,'/source','/target',755,new engine.DirectoryPermissionScope(),false,0o755);assert.equal(chmods,0);
 });
 
 
-test('FTP root isolation requests missing facts and rejects ambiguous permission facts',async()=>{
- const calls=[],replies=['type=dir; /','OK','type=dir;UNIX.mode=0755;UNIX.uid=0; /'];
- const remote=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({_send:(command,cb)=>{calls.push(command);cb(null,replies.shift());}})}});
- await engine.assertIsolatedParents(remote,'/file');assert.deepEqual(calls,['MLST /','OPTS MLST type;UNIX.mode;UNIX.uid;','MLST /']);
- replies.push('type=dir;UNIX.mode=0755;unix.mode=0777;UNIX.uid=0; /','OK','type=dir;UNIX.mode=0755;unix.mode=0777;UNIX.uid=0; /');
- await assert.rejects(engine.assertIsolatedParents(remote,'/file'),/permissions.ownership cannot be verified/);
-});
 
 
-test('remote ancestry rejects a non-shared directory owned by another account',async()=>{
- const remote=new engine.SFTPFileSystem(path.posix,{client:{}});
- remote.lstat=async name=>({type:engine.FileType.Directory,uid:name==='/other'?1234:0,mode:0o755});
- await assert.rejects(engine.assertIsolatedParents(remote,'/other/file'),/untrusted owner/);
-});
 
-
-test('remote ownership accepts the authenticated home and administrator but rejects inconsistent jail owners',async()=>{
- const remote=new engine.SFTPFileSystem(path.posix,{client:{}});
- remote.lstat=async name=>({type:engine.FileType.Directory,uid:name==='.'||name==='/home/account'?1000:0,mode:0o755});
- await engine.assertIsolatedParents(remote,'/home/account/file');
- remote.lstat=async name=>({type:engine.FileType.Directory,uid:name==='.'?1001:1000,mode:0o755});
- await assert.rejects(engine.assertIsolatedParents(remote,'/file'),/inconsistent ownership/);
- remote.lstat=async()=>({type:engine.FileType.Directory,mode:0o755});
- await assert.rejects(engine.assertIsolatedParents(remote,'/file'),/ownership is unverifiable/);
-});
-
-
-test('parent isolation policy uses metadata ports independently of protocol adapters',async()=>{
- const calls=[],metadata={pathResolver:path.posix,parentIsolationStat:async name=>{calls.push(name);return {type:engine.FileType.Directory,mode:0o755,uid:name==='/'?0:1000};}};
- await engine.assertIsolatedParents(metadata,'/home/account/file');assert.deepEqual(calls,['/','.','/home','/home/account']);
- metadata.parentIsolationStat=async name=>({type:engine.FileType.Directory,mode:name==='/shared'?0o777:0o755,uid:0});
- await assert.rejects(engine.assertIsolatedParents(metadata,'/shared/file'),/shared-writable/);
-});
 
 test('POSIX nonprivileged local downloads populate unreadable directories and restore exact modes', {skip:process.platform==='win32'},async t=>{
  assert.notEqual(process.getuid(),0,'Run this regression as a nonprivileged POSIX account');
@@ -1375,33 +1326,8 @@ test('POSIX nonprivileged local downloads populate unreadable directories and re
 });
 
 
-test('FTP LIST self entries support named and numeric owners when MLST facts are unavailable',async()=>{
- for(const owner of ['account-name','1000']){
-  const commands=[],entry={name:'.',type:'d',owner,rights:{user:'rwx',group:'r-x',other:'r-x'},date:new Date(),size:0};
-  const remote=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({_send:(cmd,cb)=>{commands.push(cmd);cb(Object.assign(new Error('Unsupported'),{code:502}));},list:(_path,cb)=>cb(null,[entry]),pwd:cb=>cb(null,'/')})}});
-  remote.lstat=async name=>({type:engine.FileType.Directory,mode:0o755,owner:name==='/other'?'stranger':owner});
-  await engine.assertIsolatedParents(remote,'/owned/file');
-  await assert.rejects(engine.assertIsolatedParents(remote,'/other/file'),/untrusted owner/);
-  entry.rights.other='rwx';await assert.rejects(engine.assertIsolatedParents(remote,'/file'),/shared-writable/);
-  entry.type='l';await assert.rejects(engine.assertIsolatedParents(remote,'/file'),/shared-writable|unverifiable/);
- }
-});
-
-test('FTP root fallback rejects missing, ambiguous, unknown and transient metadata without fabricating permissions',async()=>{
- for(const kind of ['missing','duplicate','unknown','transient']){
-  let lists=0;const entry={name:'.',type:'d',owner:kind==='unknown'?'': 'account',rights:{user:'rwx',group:'r-x',other:'r-x'},date:new Date(),size:0};
-  const remote=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({_send:(_cmd,cb)=>cb(Object.assign(new Error('Unavailable'),{code:kind==='transient'?450:502})),list:(_path,cb)=>{lists++;cb(null,kind==='missing'?[{...entry,name:'child'}]:kind==='duplicate'?[entry,entry]:[entry]);},pwd:cb=>cb(null,'/')})}});
-  await assert.rejects(engine.assertIsolatedParents(remote,'/file'),/permissions.ownership|ambiguous|ownership is unverifiable/);
-  if(kind==='transient')assert.equal(lists,0);
- }
-});
 
 
-test('FTP ancestry coalesces root aliases only within one verification and refreshes between files',async()=>{
- let roots=0,mode='0755';const adapter=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({_send:(_command,cb)=>{roots++;cb(null,'type=dir;UNIX.mode='+mode+';UNIX.uid=0; /');},pwd:cb=>cb(null,'/')})}});
- await engine.assertIsolatedParents(adapter,'/first');assert.equal(roots,1,'home alias reuses actual root evidence in this pass');
- mode='0777';await assert.rejects(engine.assertIsolatedParents(adapter,'/second'),/shared-writable/);assert.equal(roots,2,'next file reads fresh permissions');
-});
 
 test('verified FTP absence is not probed twice during backup inspection',async t=>{
  const base=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-absence-performance-'));t.after(()=>fs.rmSync(base,{recursive:true,force:true}));let probes=0;
@@ -1449,4 +1375,24 @@ test('cancelled FTP STOR signals EOF on its own relay before queued ABOR and cle
 test('service disposal defers connection release only until active transfer cleanup settles',t=>{
  const {session}=fixture(t),service=session.service,dispose=service._disposeFileSystem;let closed=0;service._disposeFileSystem=()=>closed++;
  try{const first=service.retainTransferResources(),second=service.retainTransferResources();service.dispose();assert.equal(closed,0);first();first();assert.equal(closed,0);second();assert.equal(closed,1);}finally{service._disposeFileSystem=dispose;}
+});
+
+
+test('remote parent validation permits shared modes, other owners and absent permission facts',async()=>{
+ for(const mode of [0o775,0o777,Number.NaN,undefined]){
+  const seen=[],remote={pathResolver:path.posix,lstat:async name=>{seen.push(name);return {type:engine.FileType.Directory,mode,uid:name==='/'?0:1234};}};
+  await engine.assertRemoteParentDirectories(remote,'/var/www/cms/file.php');assert.deepEqual(seen,['/','/var','/var/www','/var/www/cms']);
+ }
+ const remote={pathResolver:path.posix,lstat:async()=>({type:engine.FileType.Directory})};await engine.assertRemoteParentDirectories(remote,'/var/www/cms/file.php');
+});
+
+test('remote parent validation retains missing-path and non-directory errors without checking permissions',async()=>{
+ const remote={pathResolver:path.posix,lstat:async name=>{if(name==='/')return {type:engine.FileType.Directory};throw Object.assign(new Error('server path missing: '+name),{code:'ENOENT'});}};
+ await assert.rejects(engine.assertRemoteParentDirectories(remote,'/missing/child/file'),/server path missing/);await engine.assertRemoteParentDirectories(remote,'/missing/child/file',true);
+ remote.lstat=async name=>({type:name==='/var/www'?engine.FileType.SymbolicLink:engine.FileType.Directory,mode:0o777});await assert.rejects(engine.assertRemoteParentDirectories(remote,'/var/www/cms/file'),/not a real directory.*var.www/);
+});
+
+test('FTP ancestor checks use ordinary listings without requiring root mode or UID facts',async()=>{
+ const commands=[],remote=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({list:(_name,cb)=>cb(null,[{name:'var',type:'d',rights:undefined,date:new Date(),size:0}]),_send:(cmd,cb)=>{commands.push(cmd);cb(Object.assign(new Error('unsupported'),{code:502}));}})}});
+ await engine.assertRemoteParentDirectories(remote,'/var/file.php');assert.deepEqual(commands,[]);
 });

@@ -1,4 +1,4 @@
-import {assertIsolatedParents} from '../parent-isolation';
+import {assertRemoteParentDirectories} from '../parent-directories';
 // Adapted from ng-jk/vscode-sftp (MIT); see THIRD-PARTY-NOTICES.md.
 import { Readable } from 'stream';
 import {stagingPath, replaceStaged} from './staged-replacement';
@@ -166,7 +166,7 @@ export default class TransferTask implements Task {
       if(this._transferDirection===TransferDirection.LOCAL_TO_REMOTE) mode=uploadMode(mode,filePerm);
       if (sourceError) throw sourceError;
       if (this._cancelled) throw new Error('Transfer cancelled');
-      if(targetFs instanceof RemoteFileSystem)await assertIsolatedParents(targetFs,target);
+      if(targetFs instanceof RemoteFileSystem)await assertRemoteParentDirectories(targetFs,target);
       fd = await targetFs.open(staged, 'wx', mode);
       finishMetadata?.();finishMetadata=undefined;
       await targetFs.prepareStagedFile?.(staged, target, mode, fd);

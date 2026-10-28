@@ -1,5 +1,12 @@
 # Release notes
 
+## 0.7.16 — 2026-10-28
+
+- Remove the proactive remote ancestor permission/ownership restriction as requested. Shared 775/777 folders, different owners and absent Unix ownership facts no longer block uploads. The server enforces write access.
+- Stop requiring FTP root MLST ownership facts or a LIST self entry; retain ordinary non-following directory/path validation and backups.
+- Preserve existing remote directory modes without comparing them to new-directory dirPerm settings. Creation defaults remain configurable.
+- Add FTP/SFTP wire regressions for uploads to /var/www/cms with 775/777 ancestors and no root ownership metadata, plus headless acceptance and path-error tests.
+
 ## 0.7.15 — 2026-10-28
 
 - Run FTP batch uploads through a bounded pool of independent authenticated connections. Configure ftpConnections per context/profile (default 3, range 1–8); use 1 for servers with session limits.

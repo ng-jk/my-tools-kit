@@ -6,7 +6,7 @@ The comparison uses ng-jk/vscode-sftp commit `ef4d3ca3e6fd2c0c24e05079d3dcf6093d
 | --- | --- | --- |
 | FTP payload | `put` directly calls STOR | Keep private staging and verified permissions; remove cleanup requests only after confirmed successful moves. |
 | Transfer preparation | Some source/open work runs concurrently; directory setup uses ensureDir | Keep safe ancestry and mode checks. Share FTP listings only during a file's read-only preflight, ending the snapshot before staged-file mutation. |
-| Ancestor metadata | No equivalent root/owner isolation policy | Keep root-to-leaf verification for each file; coalesce aliases to the same root within that single pass, without carrying trust to the next file. |
+| Ancestor metadata | No equivalent root/owner isolation policy | Historical 0.7.14 behavior checked owners/modes. From 0.7.16 these audits are removed by request; ordinary directory-type checks remain. |
 | Backup absence | Mirror skips missing/read errors as best effort | Keep fail-closed backups. An adapter-issued verified absence result avoids repeating its exact successful absence probe; generic ENOENT from incomplete listings still requires verification. |
 | Backup index | Upstream mirror stages a batch | Enumerate our backup Git index once per serialized batch, retaining per-path validation, conflict handling, committed content and link verification. |
 

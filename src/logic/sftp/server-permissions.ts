@@ -1,4 +1,4 @@
-import {assertIsolatedParents} from './parent-isolation';
+import {assertRemoteParentDirectories} from './parent-directories';
 import {FileSystem,FileType,RemoteFileSystem} from '../../data/sftp/core/fs';
 import * as operations from '../../data/sftp/core/fileBaseOperations';
 
@@ -10,7 +10,7 @@ export function serverCreationMode(value: number|string|undefined, label: string
 }
 export async function createServerDirectory(fs: FileSystem, path: string, configured?:number|string, exclusive=false): Promise<void> {
   const mode=serverCreationMode(configured,'dirPerm'),missing:string[]=[];
-  if(fs instanceof RemoteFileSystem)await assertIsolatedParents(fs,path,true);
+  if(fs instanceof RemoteFileSystem)await assertRemoteParentDirectories(fs,path,true);
   let current=path;
   while(true){
     let existing;
@@ -21,7 +21,7 @@ export async function createServerDirectory(fs: FileSystem, path: string, config
     if(parent===current)throw new Error('Server root is unavailable: '+current);
     current=parent;
   }
-  if(fs instanceof RemoteFileSystem)await assertIsolatedParents(fs,fs.pathResolver.join(current,'__creation_parent_check__'));
+  if(fs instanceof RemoteFileSystem)await assertRemoteParentDirectories(fs,fs.pathResolver.join(current,'__creation_parent_check__'));
   if(missing.length>1 && (mode&0o300)!==0o300)throw new Error('Create missing parent folders with owner write/search permission first, then create the final read-only folder. No folders were created.');
   for(const target of missing.reverse()){
     // SFTP supplies the mode in MKDIR itself. FTP uses its server creation
@@ -32,6 +32,6 @@ export async function createServerDirectory(fs: FileSystem, path: string, config
   }
 }
 export async function createServerFile(fs:FileSystem,path:string,configured?:number|string):Promise<void>{
-  if(fs instanceof RemoteFileSystem)await assertIsolatedParents(fs,path);
+  if(fs instanceof RemoteFileSystem)await assertRemoteParentDirectories(fs,path);
   await operations.createFile(path,fs,{mode:serverCreationMode(configured,'filePerm')});
 }

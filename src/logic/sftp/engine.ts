@@ -100,6 +100,6 @@ export {default as MirrorService} from './mirror';
 
 export {serverCreationMode,createServerDirectory,createServerFile} from './server-permissions';
 
-export {assertIsolatedParents} from './parent-isolation';
+export {assertRemoteParentDirectories} from './parent-directories';
 
 export {createTransferConnections} from './transfer-connections';

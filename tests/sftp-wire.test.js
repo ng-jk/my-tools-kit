@@ -73,6 +73,9 @@ test('SFTP wire: password authentication, list, upload, temp rename, download an
   await engine.operate(session,'delete','created-unverified.txt',{yes:true});await engine.operate(session,'create','created-unverified.txt');assert.equal(modes.get('/created-unverified.txt'),0o755,'inspect/remove and retry restores exclusive creation after fixing server permissions');
   honorOpen=true;allowChmod=true;
 
+  fs.mkdirSync(path.join(remote,'var','www','cms'),{recursive:true});fs.mkdirSync(path.join(local,'var','www','cms'),{recursive:true});modes.set('/var',0o755);modes.set('/var/www',0o775);modes.set('/var/www/cms',0o777);
+  fs.writeFileSync(path.join(local,'var','www','cms','shared.php'),'shared SFTP upload');session.config.dirPerm=755;await engine.operate(session,'upload','var/www/cms/shared.php');delete session.config.dirPerm;
+  assert.equal(fs.readFileSync(path.join(remote,'var','www','cms','shared.php'),'utf8'),'shared SFTP upload');assert.equal(modes.get('/var/www'),0o775);assert.equal(modes.get('/var/www/cms'),0o777);
   assert.equal((await engine.operate(session,'list')).some(item=>item.name==='wire.txt'),true);
   fs.writeFileSync(path.join(remote,'wire.txt'),'server change');await engine.operate(session,'download','wire.txt');assert.equal(fs.readFileSync(path.join(local,'wire.txt'),'utf8'),'server change');
   fs.mkdirSync(path.join(remote,'nested'));modes.set('/nested',0o755);fs.writeFileSync(path.join(remote,'nested','remote-only.txt'),'nested from server');

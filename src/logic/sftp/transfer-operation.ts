@@ -1,7 +1,8 @@
+import {RemoteFileSystem} from '../../data/sftp/core/fs';
 import {logger} from '../../data/sftp/ports';
 import {createTransferConnections} from './transfer-connections';
 import {connectionFailure} from './diagnostics';
-import {assertIsolatedParents} from './parent-isolation';
+import {assertRemoteParentDirectories} from './parent-directories';
 import {filesystemIdentity} from './core/staged-replacement';
 import {transfer, sync} from './fileHandlers/transfer/transfer';
 import * as path from 'path';
@@ -50,7 +51,7 @@ export async function executeTransfer(service: any, config: any, local: string, 
     checkCancelled();
     if(!down)releaseUpload=await acquireUploadLock(config,remote,checkCancelled);
     const remoteFs = guard(await service.getRemoteFileSystem(config));
-    if(!down && typeof remoteFs.parentIsolationStat==='function')await assertIsolatedParents(remoteFs,remote,true);
+    if(!down && remoteFs instanceof RemoteFileSystem)await assertRemoteParentDirectories(remoteFs,remote,true);
     finishMetadata=(remoteFs as any).beginMetadataReadScope?.();
     checkCancelled();
     await assertRemoteAncestors(remoteFs, remote, config.remotePath, true, true);

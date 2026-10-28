@@ -67,7 +67,7 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-ftp-'));
   fs.writeFileSync(path.join(root,'local.txt'),'ftp payload');
   let referentReads=0;const linkTargets=new Map([['/.hidden-link','/outside/private']]);
-  const files=new Map([['/nul',Buffer.from('valid remote sibling')],['/.hidden.txt',Buffer.from('hidden original')],['/.hidden-link',Buffer.from('link placeholder')]]),modes=new Map(),directories=new Set(),payloadParents=[],commands=[],sockets=new Set(),servers=new Set();let heldLogins=0,holdPeerLogin=false;let controlCount=0,activeControls=0,extraLimit=Infinity,storeDelay=0,activeStores=0,peakStores=0;let legacyIsolation=false;let permissionsSupported=true,permissionsHonored=true,filePermissionsHonored=true,failStore=false,probeMode='mlst',probeDenied='',probeAmbiguous='',rejectHidden=false;const omitted=new Set(),mlstReferentTypes=new Map();
+  const files=new Map([['/nul',Buffer.from('valid remote sibling')],['/.hidden.txt',Buffer.from('hidden original')],['/.hidden-link',Buffer.from('link placeholder')]]),modes=new Map(),directories=new Set(),payloadParents=[],commands=[],sockets=new Set(),servers=new Set();let rootFactsSupported=true;let heldLogins=0,holdPeerLogin=false;let controlCount=0,activeControls=0,extraLimit=Infinity,storeDelay=0,activeStores=0,peakStores=0;let legacyIsolation=false;let permissionsSupported=true,permissionsHonored=true,filePermissionsHonored=true,failStore=false,probeMode='mlst',probeDenied='',probeAmbiguous='',rejectHidden=false;const omitted=new Set(),mlstReferentTypes=new Map();
   const rights=mode=>[6,3,0].map(shift=>[4,2,1].map((bit,index)=>((mode>>shift)&bit)?'rwx'[index]:'-').join('')).join('');
   const server=net.createServer(socket=>{
     controlCount++;activeControls++;socket.on('close',()=>activeControls--);if(controlCount>extraLimit){socket.end('421 Too many sessions\r\n');return;}
@@ -87,6 +87,7 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
         else if(cmd==='CWD')reply('250 Changed');
         else if(cmd==='MLST'||cmd==='STAT'){
           if(legacyIsolation)reply('502 MLST unsupported');
+          else if(arg==='/'&&!rootFactsSupported)reply('502 Root facts unavailable');
           else if(arg==='/')reply('250-Root\r\n type=dir;UNIX.mode=0755;UNIX.uid=0; /\r\n250 End');
           else if(probeMode==='metadata450')reply('450 File unavailable');
           else if(['unsupported','rnfr'].includes(probeMode)||(cmd==='MLST'&&probeMode==='stat'))reply('502 Unsupported');
@@ -143,6 +144,12 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
     fs.writeFileSync(process.env.DEVKIT_BENCHMARK_OUTPUT,JSON.stringify({latencyPerReplyMs:3,depth:3,metrics},null,2));
     return;
   }
+  for(const [directory,mode] of [['/var',0o755],['/var/www',0o775],['/var/www/cms',0o777]]){directories.add(directory);modes.set(directory,mode);}
+  fs.mkdirSync(path.join(root,'var','www','cms'),{recursive:true});fs.writeFileSync(path.join(root,'var','www','cms','shared.php'),'shared directory upload');
+  const sharedSession=engine.createSession(root,{protocol:'ftp',host:'127.0.0.1',port:server.address().port,username:'fixture',password:'fixture',remotePath:'/',dirPerm:755,ftpConnections:1});
+  rootFactsSupported=false;try{await engine.operate(sharedSession,'upload','var/www/cms/shared.php');}finally{sharedSession.service.dispose();rootFactsSupported=true;}await waitUntil(()=>activeControls===1,'shared-directory test connection cleanup',3000);
+  assert.equal(files.get('/var/www/cms/shared.php').toString(),'shared directory upload');assert.equal(modes.get('/var/www'),0o775);assert.equal(modes.get('/var/www/cms'),0o777,'existing directory mode remains unchanged');
+  files.delete('/var/www/cms/shared.php');for(const directory of ['/var/www/cms','/var/www','/var']){directories.delete(directory);modes.delete(directory);}
   console.log('FTP fixture: parallel upload');
   fs.mkdirSync(path.join(root,'parallel'));for(let n=0;n<4;n++)fs.writeFileSync(path.join(root,'parallel','file'+n+'.txt'),'parallel '+n);
   storeDelay=100;peakStores=0;const connectionsBefore=controlCount;

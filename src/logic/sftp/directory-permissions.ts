@@ -1,4 +1,4 @@
-import {assertIsolatedParents} from './parent-isolation';
+import {assertRemoteParentDirectories} from './parent-directories';
 import {serverCreationMode} from './server-permissions';
 import {FileSystem, FileType, RemoteFileSystem} from '../../data/sftp/core/fs';
 import {filesystemIdentity} from './core/staged-replacement';
@@ -18,7 +18,7 @@ async function withDirectoryLock(target: FileSystem, to: string, operation: () =
 }
 async function ensure(source: FileSystem, target: FileSystem, from: string, to: string, override?: number, scope?: DirectoryPermissionScope, ancestor = false, newMode?: number) {
   const verificationOnly = newMode !== undefined || target instanceof RemoteFileSystem;
-  if(target instanceof RemoteFileSystem)await assertIsolatedParents(target,to,true);
+  if(target instanceof RemoteFileSystem)await assertRemoteParentDirectories(target,to,true);
   let existing;
   try { existing = await target.lstat(to); }
   catch (error) { if (error.code !== 'ENOENT' && error.code !== 2) throw error; }
@@ -28,7 +28,8 @@ async function ensure(source: FileSystem, target: FileSystem, from: string, to: 
     // SFTP and a second LIST on FTP for every file sharing this parent.
     // Local ensureDir still validates native path/ACL constraints.
     if (!(target instanceof RemoteFileSystem)) await target.ensureDir(to);
-    const requested = ancestor || override === undefined ? undefined : serverCreationMode(override,'dirPerm');
+    // Creation overrides apply to new remote directories, not existing ones.
+    const requested = verificationOnly || ancestor || override === undefined ? undefined : serverCreationMode(override,'dirPerm');
     if (scope) await scope.establish(target, to, requested, verificationOnly);
     else if (requested !== undefined) await (verificationOnly ? target.verifyDirectoryMode(to,requested) : target.establishDirectoryMode(to, requested));
     return;

@@ -1,6 +1,6 @@
 // Adapted from ng-jk/vscode-sftp (MIT); see THIRD-PARTY-NOTICES.md.
 import { Readable } from 'stream';
-import FileSystem, { FileOption,FileType } from './fileSystem';
+import FileSystem, { FileOption } from './fileSystem';
 import { RemoteClient, ConnectOption, RemoteClientConfig } from '../remote-client/index';
 
 interface RFSOptionDefaults {
@@ -48,8 +48,6 @@ export default abstract class RemoteFileSystem extends FileSystem {
     await this.verifyDirectoryMode(path,mode);
   }
 
-  parentIsolationStat(path:string):Promise<any>{return this.lstat(path);}
-  createParentMetadataReader(){return (path:string)=>this.parentIsolationStat(path);}
 
   setRemoteTimeOffsetInHours(offset: number) {
     this._remoteTimeOffsetInSeconds = offset * SECONDS_PER_HOUR;
