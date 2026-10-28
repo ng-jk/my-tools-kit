@@ -62,7 +62,7 @@ test('implicit FTPS keeps authentication and passive data in verified TLS',{time
   await assert.rejects(remote.list('/'),/certificate|hostname|altnames|IP/i);
   assert.equal(commands.filter(line=>line.startsWith('LIST')).length,lists,'invalid data certificate rejects before sending a transfer command');
 });
-test('FTP wire: passive upload, listing and download share the transfer engine',{timeout:process.env.DEVKIT_BENCHMARK_OUTPUT?180000:60000},async t=>{
+test('FTP wire: passive upload, listing and download share the transfer engine',{timeout:180000},async t=>{
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-ftp-'));
   fs.writeFileSync(path.join(root,'local.txt'),'ftp payload');
   let referentReads=0;const linkTargets=new Map([['/.hidden-link','/outside/private']]);
@@ -149,8 +149,13 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
   session.config.ftpConnections=3;extraLimit=controlCount+1;const stores=commands.filter(c=>c==='STOR').length;
   await assert.rejects(engine.operate(session,'upload','parallel'),/parallel connection setup failed.*ftpConnections to 1/);assert.equal(commands.filter(c=>c==='STOR').length,stores,'connection failure sends no payload');extraLimit=Infinity;
   await new Promise(resolve=>setTimeout(resolve,30));assert.equal(activeControls,1,'successful partial peers are closed on setup failure');
-  holdPeerLogin=true;const setupBefore=controlCount,setup=engine.operate(session,'upload','parallel');while(controlCount===setupBefore)await new Promise(resolve=>setTimeout(resolve,5));const cancelStart=performance.now();engine.cancelActiveTransfers();await assert.rejects(setup,/cancel/i);assert.ok(performance.now()-cancelStart<1000,'cancel does not wait for the connection timeout');holdPeerLogin=false;
-  await new Promise(resolve=>setTimeout(resolve,30));assert.equal(activeControls,1,'pending worker logins close on cancellation');
+  for(const cancelSetup of [()=>engine.cancelActiveTransfers(),()=>session.service.cancelTransferTasks()]){
+    holdPeerLogin=true;const setupBefore=controlCount,setup=engine.operate(session,'upload','parallel');while(controlCount===setupBefore)await new Promise(resolve=>setTimeout(resolve,5));const cancelStart=performance.now();cancelSetup();await assert.rejects(setup,/cancel/i);assert.ok(performance.now()-cancelStart<1000,'global and service cancellation abort pending worker login promptly');holdPeerLogin=false;
+    await new Promise(resolve=>setTimeout(resolve,30));assert.equal(activeControls,1,'pending worker logins close on cancellation');
+  }
+  const disposedSession=engine.createSession(root,{protocol:'ftp',host:'127.0.0.1',port:server.address().port,username:'fixture',password:'fixture',remotePath:'/',connectTimeout:30000});await disposedSession.service.getRemoteFileSystem(disposedSession.config);
+  holdPeerLogin=true;const disposalBefore=controlCount,disposal=engine.operate(disposedSession,'upload','parallel');while(controlCount===disposalBefore)await new Promise(resolve=>setTimeout(resolve,5));const disposalStart=performance.now();disposedSession.service.dispose();await assert.rejects(disposal,/cancel/i);assert.ok(performance.now()-disposalStart<1000,'service disposal aborts independent worker logins instead of waiting 30 seconds');holdPeerLogin=false;
+  await new Promise(resolve=>setTimeout(resolve,30));assert.equal(activeControls,1,'disposal closes worker and disposed primary sessions');
   for(let n=0;n<4;n++)fs.writeFileSync(path.join(root,'parallel','file'+n+'.txt'),'cancelled new '+n);
   const cancelled=engine.operate(session,'upload','parallel');while(activeStores===0)await new Promise(resolve=>setTimeout(resolve,5));engine.cancelActiveTransfers();await assert.rejects(cancelled,/cancel|abort/i);
   for(let n=0;n<4;n++)assert.equal(files.get('/parallel/file'+n+'.txt').toString(),'parallel '+n,'cancelled upload preserves backed-up destination');

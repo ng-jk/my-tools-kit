@@ -473,6 +473,8 @@ export default class FileService {
   }
 
   private cancellationGeneration = 0;
+  private cancellationListeners=new Set<()=>void>();
+  onCancellation(listener:()=>void){this.cancellationListeners.add(listener);return ()=>{this.cancellationListeners.delete(listener);};}
   private disposed = false;
 
   cancellationCheck() {
@@ -483,6 +485,7 @@ export default class FileService {
 
   cancelTransferTasks() {
     this.cancellationGeneration++;
+    for(const listener of [...this.cancellationListeners])listener();
     // keep the order
     // 1, remove tasks not start
     [...this._transferSchedulers].forEach(transfer => transfer.stop());

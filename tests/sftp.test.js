@@ -1429,3 +1429,9 @@ test('connection setup closes partial peers and closed pools reject waiters',asy
  await assert.rejects(engine.createTransferConnections(primary,3,new AbortController().signal,()=>{}),/session rejected/);assert.equal(closed,1);
  const pool=await engine.createTransferConnections(primary,1,new AbortController().signal,()=>{}),lease=await pool.acquire(),waiting=pool.acquire();pool.close();await assert.rejects(waiting,/closed/);lease.release();await assert.rejects(pool.acquire(),/closed/);
 });
+
+
+test('service cancellation listeners include disposal and can be unsubscribed',t=>{
+ const {session}=fixture(t);let calls=0;const remove=session.service.onCancellation(()=>calls++);
+ session.service.cancelTransferTasks();assert.equal(calls,1);session.service.dispose();assert.equal(calls,2);remove();session.service.cancelTransferTasks();assert.equal(calls,2);
+});

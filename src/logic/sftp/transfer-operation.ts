@@ -30,6 +30,7 @@ export function cancelActiveTransfers() { cancelPendingOperations(); for (const 
 export async function executeTransfer(service: any, config: any, local: string, remote: string, down: boolean, options: any, synchronize = false) {
   const checkCancelled = service.cancellationCheck();
   const setupCancellation=new AbortController();
+  const removeCancellationListener=service.onCancellation?.(()=>setupCancellation.abort());
   const cancel = () => {setupCancellation.abort();service.cancelTransferTasks();};
   active.add(cancel);
   const directoryScope = new DirectoryPermissionScope();
@@ -90,6 +91,7 @@ export async function executeTransfer(service: any, config: any, local: string, 
     checkCancelled();
     return {passed: true, transferred: tasks.length, deleted: deleted || []};
   } finally {
+    removeCancellationListener?.();
     finishMetadata?.();
     scheduler?.stop();connectionPool?.close(); active.delete(cancel);
     try{await directoryScope.finish();}finally{releaseUpload?.();}
