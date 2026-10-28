@@ -1408,3 +1408,36 @@ test('FTP stages privately without applying destination ownership or permission 
  assert.throws(()=>engine.createSession(os.tmpdir(),{protocol:'ftp',host:'fixture',username:'fixture',remotePath:'/',ftpStagingPath:'relative'}),/ftpStagingPath/);
  const session=engine.createSession(os.tmpdir(),{protocol:'ftp',host:'fixture',username:'fixture',remotePath:'/',ftpStagingPath:'/private',profiles:{other:{ftpStagingPath:'/other'}}});try{assert.equal(session.config.ftpStagingPath,'/private');assert.equal(session.service.getConfig('other').ftpStagingPath,'/other');}finally{session.service.dispose();}
 });
+
+
+test('FTP private staging requests missing root facts and rejects ambiguous facts',async()=>{
+ const calls=[],replies=['type=dir; /','OK','type=dir;UNIX.mode=0755;UNIX.uid=0; /'];
+ const remote=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({_send:(command,cb)=>{calls.push(command);cb(null,replies.shift());},pwd:cb=>cb(null,'/')})}});
+ await engine.prepareFtpStaging(remote);assert.deepEqual(calls,['MLST /','OPTS MLST type;UNIX.mode;UNIX.uid;','MLST /']);
+ replies.push('type=dir;UNIX.mode=0755;unix.mode=0777;UNIX.uid=0; /');await assert.rejects(engine.prepareFtpStaging(remote),/Ambiguous FTP/);
+});
+
+test('FTP private staging LIST fallback supports named and numeric owners',async()=>{
+ for(const owner of ['account-name','1000']){
+  const entry={name:'.',type:'d',owner,rights:{user:'rwx',group:'r-x',other:'r-x'},date:new Date(),size:0};
+  const remote=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({_send:(_cmd,cb)=>cb(Object.assign(new Error('Unsupported'),{code:502})),list:(_path,cb)=>cb(null,[entry]),pwd:cb=>cb(null,'/')})}});
+  remote.lstat=async name=>({type:engine.FileType.Directory,mode:0o755,owner:name==='/other'?'stranger':owner});
+  assert.equal(await engine.prepareFtpStaging(remote,'/owned'),'/owned');await assert.rejects(engine.prepareFtpStaging(remote,'/other'),/private staging owner/);
+  entry.rights.other='rwx';await assert.rejects(engine.prepareFtpStaging(remote),/not protected/);
+  entry.type='l';await assert.rejects(engine.prepareFtpStaging(remote),/not protected/);
+ }
+});
+
+test('FTP staging fallback rejects missing, duplicate, unknown mode and transient metadata',async()=>{
+ for(const kind of ['missing','duplicate','unknown','transient']){
+  let lists=0;const entry={name:'.',type:'d',owner:'account',rights:kind==='unknown'?undefined:{user:'rwx',group:'r-x',other:'r-x'},date:new Date(),size:0};
+  const remote=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({_send:(_cmd,cb)=>cb(Object.assign(new Error('Unavailable'),{code:kind==='transient'?450:502})),list:(_path,cb)=>{lists++;cb(null,kind==='missing'?[{...entry,name:'child'}]:kind==='duplicate'?[entry,entry]:[entry]);},pwd:cb=>cb(null,'/')})}});
+  await assert.rejects(engine.prepareFtpStaging(remote),/not protected|ambiguous|cannot be verified/);if(kind==='transient')assert.equal(lists,0);
+ }
+});
+
+test('FTP staging root facts coalesce within a file but refresh for the next file',async()=>{
+ let roots=0,mode='0755';const remote=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({_send:(_cmd,cb)=>{roots++;cb(null,'type=dir;UNIX.mode='+mode+'; /');},pwd:cb=>cb(null,'/')})}});
+ assert.equal(await engine.prepareFtpStaging(remote),'/');assert.equal(roots,1);
+ mode='0777';await assert.rejects(engine.prepareFtpStaging(remote),/not protected/);assert.equal(roots,2);
+});
