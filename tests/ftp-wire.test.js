@@ -67,7 +67,7 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-ftp-'));
   fs.writeFileSync(path.join(root,'local.txt'),'ftp payload');
   let referentReads=0;const linkTargets=new Map([['/.hidden-link','/outside/private']]);
-  const files=new Map([['/nul',Buffer.from('valid remote sibling')],['/.hidden.txt',Buffer.from('hidden original')],['/.hidden-link',Buffer.from('link placeholder')]]),modes=new Map(),directories=new Set(),payloadParents=[],commands=[],sockets=new Set(),servers=new Set();let rootFactsSupported=true;let heldLogins=0,holdPeerLogin=false;let controlCount=0,activeControls=0,extraLimit=Infinity,storeDelay=0,activeStores=0,peakStores=0;let legacyIsolation=false;let permissionsSupported=true,permissionsHonored=true,filePermissionsHonored=true,failStore=false,probeMode='mlst',probeDenied='',probeAmbiguous='',rejectHidden=false;const omitted=new Set(),mlstReferentTypes=new Map();
+  const files=new Map([['/nul',Buffer.from('valid remote sibling')],['/.hidden.txt',Buffer.from('hidden original')],['/.hidden-link',Buffer.from('link placeholder')]]),modes=new Map(),directories=new Set(),payloadParents=[],commands=[],sockets=new Set(),servers=new Set();let attackStaging=false,attackAttempts=0,attackDenied=0;const storeTargets=[];let rootFactsSupported=true;let heldLogins=0,holdPeerLogin=false;let controlCount=0,activeControls=0,extraLimit=Infinity,storeDelay=0,activeStores=0,peakStores=0;let legacyIsolation=false;let permissionsSupported=true,permissionsHonored=true,filePermissionsHonored=true,failStore=false,probeMode='mlst',probeDenied='',probeAmbiguous='',rejectHidden=false;const omitted=new Set(),mlstReferentTypes=new Map();
   const rights=mode=>[6,3,0].map(shift=>[4,2,1].map((bit,index)=>((mode>>shift)&bit)?'rwx'[index]:'-').join('')).join('');
   const server=net.createServer(socket=>{
     controlCount++;activeControls++;socket.on('close',()=>activeControls--);if(controlCount>extraLimit){socket.end('421 Too many sessions\r\n');return;}
@@ -87,7 +87,7 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
         else if(cmd==='CWD')reply('250 Changed');
         else if(cmd==='MLST'||cmd==='STAT'){
           if(legacyIsolation)reply('502 MLST unsupported');
-          else if(arg==='/'&&!rootFactsSupported)reply('502 Root facts unavailable');
+          else if(arg==='/'&&!rootFactsSupported)reply('250-Root\r\n type=dir;UNIX.mode=0755; /\r\n250 End');
           else if(arg==='/')reply('250-Root\r\n type=dir;UNIX.mode=0755;UNIX.uid=0; /\r\n250 End');
           else if(probeMode==='metadata450')reply('450 File unavailable');
           else if(['unsupported','rnfr'].includes(probeMode)||(cmd==='MLST'&&probeMode==='stat'))reply('502 Unsupported');
@@ -103,7 +103,8 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
         }else if(cmd==='APPE'||cmd==='REST'){
           reply('550 Append/Restart not permitted, try again');dataSocket?.destroy();
         }else if(cmd==='STOR'){
-          reply('150 Receiving');activeStores++;peakStores=Math.max(peakStores,activeStores);const transferSocket=dataSocket,chunks=[];transferSocket.on('data',b=>chunks.push(b));transferSocket.on('end',()=>{setTimeout(()=>{const body=Buffer.concat(chunks);payloadParents.push(modes.get(path.posix.dirname(arg)));files.set(arg,body);modes.set(arg,0o644);activeStores--;transferSocket.end();reply(failStore?'451 Simulated transfer failure':'226 Done');},storeDelay);});transferSocket.resume();
+          storeTargets.push(arg);if(attackStaging){attackAttempts++;const parent=path.posix.dirname(path.posix.dirname(arg));if((modes.get(parent)||0o755)&0o022){linkTargets.set(path.posix.dirname(arg),'/public-victim');}else attackDenied++;}
+          reply('150 Receiving');activeStores++;peakStores=Math.max(peakStores,activeStores);const transferSocket=dataSocket,chunks=[];transferSocket.on('data',b=>chunks.push(b));transferSocket.on('end',()=>{setTimeout(()=>{const body=Buffer.concat(chunks);payloadParents.push(modes.get(path.posix.dirname(arg)));const actual=linkTargets.has(path.posix.dirname(arg))?linkTargets.get(path.posix.dirname(arg))+'/payload':arg;files.set(actual,body);modes.set(actual,0o644);activeStores--;transferSocket.end();reply(failStore?'451 Simulated transfer failure':'226 Done');},storeDelay);});transferSocket.resume();
         }else if(cmd==='RETR'){
           if(linkTargets.has(arg)){referentReads++;reply('550 Symlink must not be dereferenced');dataSocket.destroy();}else if(!files.has(arg)){reply('550 Missing');dataSocket.destroy();}else{reply('150 Sending');dataSocket.end(files.get(arg),()=>reply('226 Done'));}
         }else if(cmd==='LIST'){
@@ -147,8 +148,9 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
   for(const [directory,mode] of [['/var',0o755],['/var/www',0o775],['/var/www/cms',0o777]]){directories.add(directory);modes.set(directory,mode);}
   fs.mkdirSync(path.join(root,'var','www','cms'),{recursive:true});fs.writeFileSync(path.join(root,'var','www','cms','shared.php'),'shared directory upload');
   const sharedSession=engine.createSession(root,{protocol:'ftp',host:'127.0.0.1',port:server.address().port,username:'fixture',password:'fixture',remotePath:'/',dirPerm:755,ftpConnections:1});
-  rootFactsSupported=false;try{await engine.operate(sharedSession,'upload','var/www/cms/shared.php');}finally{sharedSession.service.dispose();rootFactsSupported=true;}await waitUntil(()=>activeControls===1,'shared-directory test connection cleanup',3000);
+  const sharedStores=storeTargets.length;files.set('/public-victim/payload',Buffer.from('unmodified'));attackStaging=true;rootFactsSupported=false;try{await engine.operate(sharedSession,'upload','var/www/cms/shared.php');}finally{sharedSession.service.dispose();rootFactsSupported=true;attackStaging=false;}await waitUntil(()=>activeControls===1,'shared-directory test connection cleanup',3000);
   assert.equal(files.get('/var/www/cms/shared.php').toString(),'shared directory upload');assert.equal(modes.get('/var/www'),0o775);assert.equal(modes.get('/var/www/cms'),0o777,'existing directory mode remains unchanged');
+  assert.ok(attackAttempts>0);assert.equal(attackDenied,attackAttempts,'co-writer cannot replace staging under the protected login directory');assert.equal(files.get('/public-victim/payload').toString(),'unmodified');assert.ok(storeTargets.slice(sharedStores).every(name=>!name.startsWith('/var/www/cms/')),'STOR stays outside the shared destination namespace');files.delete('/public-victim/payload');
   files.delete('/var/www/cms/shared.php');for(const directory of ['/var/www/cms','/var/www','/var']){directories.delete(directory);modes.delete(directory);}
   console.log('FTP fixture: parallel upload');
   fs.mkdirSync(path.join(root,'parallel'));for(let n=0;n<4;n++)fs.writeFileSync(path.join(root,'parallel','file'+n+'.txt'),'parallel '+n);
@@ -225,7 +227,7 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
   const list=await engine.operate(session,'list');assert.ok(list.some(item=>item.name==='local.txt'));
   const remoteFs=await session.service.getRemoteFileSystem(session.config);
   const longTarget='/'+ 'a'.repeat(204)+'.devkit-00000000-0000-4000-8000-000000000000';
-  await remoteFs.put(require('node:stream').Readable.from(['long filename payload']),longTarget,{mode:0o600});
+  await remoteFs.put(require('node:stream').Readable.from(['long filename payload']),longTarget,{mode:0o600,ftpStagingRoot:await engine.prepareFtpStaging(remoteFs)});
   assert.equal(files.get(longTarget).toString(),'long filename payload');assert.equal(modes.get(longTarget),0o600);assert.deepEqual([...directories],['/parallel','/legacy-folder','/nested']);
   for(const relative of ['.','./']) assert.equal((await remoteFs.lstat(relative)).type,engine.FileType.Directory);
   await assert.rejects(remoteFs.rename('/local.txt\r\nDELE /local.txt\r\nNOOP','/renamed.txt'),/prohibited control/);

@@ -371,7 +371,7 @@ New Folder sends the requested mode during SFTP MKDIR, then verifies it without 
 
 Remote access policy (0.7.16): existing ancestor permissions and owners do not block uploads. Shared 775/777 folders and servers without Unix ownership facts are supported. The server decides whether the authenticated account may write. Existing directory modes are neither changed nor compared with creation defaults. Non-following directory/path checks, backups, new-entry creation modes and private staging remain.
 
-FTP no longer requires MLST UNIX.mode/UNIX.uid facts or a root LIST self entry as an upload prerequisite. Ordinary directory listings still identify paths and backup sources. Actual connection, path, backup and server permission errors are reported when those operations fail.
+FTP destination folders no longer require Unix mode/owner facts. FTP payloads are instead staged in a separate protected login directory by default, or an existing absolute `ftpStagingPath` configured per context/profile on the same filesystem. Only this private staging namespace requires verified directory modes and ownership (root UID is optional); it must support 0700 temporary directories and rename to the destination. Shared destination modes are accepted unchanged. Ordinary directory listings still identify paths and backup sources. Actual connection, path, backup and server permission errors are reported when those operations fail.
 
 The toolkit uses ordinary trusted-server file transfer semantics rather than claiming exclusive ownership of every ancestor. It does not audit other server-side writers or guarantee namespace isolation from them. New Folder retains existing-name collision handling; terminal mkdir remains idempotent.
 

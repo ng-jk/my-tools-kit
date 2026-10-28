@@ -28,6 +28,7 @@ export interface FileOption {
   encoding?: string;
   mode?: number;
   autoClose?: boolean;
+  ftpStagingRoot?: string;
   fd?: FileHandle;
 }
 

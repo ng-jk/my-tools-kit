@@ -55,6 +55,7 @@ const configScheme = {
   },
   concurrency: Joi.number().integer(),
   ftpConnections: Joi.number().integer().min(1).max(8),
+  ftpStagingPath: Joi.string().regex(/^\/[^\r\n\0]*$/),
 
   syncOption: {
     delete: Joi.boolean(),

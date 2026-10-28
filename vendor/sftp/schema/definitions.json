@@ -345,6 +345,11 @@
         "maximum": 8,
         "default": 3,
         "description": "Total FTP connections for batch uploads. One file per connection; use 1 for servers with session limits. Backups finish before upload."
+      },
+      "ftpStagingPath": {
+        "type": "string",
+        "pattern": "^/[^\\r\\n\\u0000]*$",
+        "description": "Existing private FTP staging directory on the same server filesystem. Defaults to the login directory. Its ancestors must be protected from other writers; upload destinations may be shared."
       }
     }
   },

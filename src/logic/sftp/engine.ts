@@ -103,3 +103,5 @@ export {serverCreationMode,createServerDirectory,createServerFile} from './serve
 export {assertRemoteParentDirectories} from './parent-directories';
 
 export {createTransferConnections} from './transfer-connections';
+
+export {prepareFtpStaging} from './ftp-staging';

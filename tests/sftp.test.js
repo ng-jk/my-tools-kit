@@ -257,7 +257,7 @@ test('source failure during protocol permission checks rejects instead of hangin
     const fail=async()=>{stream.destroy(new Error('source failed during permissions'));await new Promise(setImmediate);};
     if(protocol==='sftp') {adapter.fchmod=fail;adapter.fstat=async()=>({mode:0o600});adapter._put=async()=>{payloads++;};}
     else {adapter.mkdir=async()=>{};adapter.chmod=async()=>{};adapter.unlink=async()=>{};adapter.rmdir=async()=>{};adapter.verifyMode=fail;adapter.atomicPut=async()=>{payloads++;};}
-    await assert.rejects(adapter.put(stream,'/target',{mode:0o600,fd:{handle:Buffer.from('h'),path:'/target',prepared:true,mode:0o600}}),/source failed during permissions/);
+    await assert.rejects(adapter.put(stream,'/target',{mode:0o600,ftpStagingRoot:'/safe',fd:{handle:Buffer.from('h'),path:'/target',prepared:true,mode:0o600}}),/source failed during permissions/);
     assert.equal(payloads,0);
   }
 });
@@ -1368,7 +1368,7 @@ test('cancelled FTP STOR signals EOF on its own relay before queued ABOR and cle
  const ftp={_pasvSocket:{destroyed:false,end:()=>{throw new Error('unrelated data stream must not be closed');}},put:(stream,_path,cb)=>{relay=stream;stream.on('end',()=>{events.push('EOF');cb(null);});stream.resume();queueMicrotask(()=>input.emit('error',new Error('Transfer cancelled')));},abort:cb=>{assert.equal(relay.writableEnded,true,'this upload EOF is signalled before ABOR is queued');events.push('ABOR');cb(null);}};
  const adapter=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>ftp}});
  adapter.mkdir=async()=>{};adapter.chmod=async()=>{};adapter.lstat=async()=>({type:engine.FileType.Directory,mode:0o700});adapter.unlink=async name=>removed.push(name);adapter.rmdir=async name=>removed.push(name);adapter.renameAtomic=async()=>{throw new Error('cancelled payload must not replace its destination');};
- await assert.rejects(adapter.put(input,'/destination',{mode:0o600}),/Transfer cancelled/);assert.deepEqual(events,['ABOR','EOF']);assert.equal(removed.length,2);assert.ok(removed[0].endsWith('/payload'));
+ await assert.rejects(adapter.put(input,'/destination',{mode:0o600,ftpStagingRoot:'/safe'}),/Transfer cancelled/);assert.deepEqual(events,['ABOR','EOF']);assert.equal(removed.length,2);assert.ok(removed[0].endsWith('/payload'));
 });
 
 
@@ -1395,4 +1395,16 @@ test('remote parent validation retains missing-path and non-directory errors wit
 test('FTP ancestor checks use ordinary listings without requiring root mode or UID facts',async()=>{
  const commands=[],remote=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({list:(_name,cb)=>cb(null,[{name:'var',type:'d',rights:undefined,date:new Date(),size:0}]),_send:(cmd,cb)=>{commands.push(cmd);cb(Object.assign(new Error('unsupported'),{code:502}));}})}});
  await engine.assertRemoteParentDirectories(remote,'/var/file.php');assert.deepEqual(commands,[]);
+});
+
+
+test('FTP stages privately without applying destination ownership or permission policy',async()=>{
+ const seen=[],metadata=new Map([['/',{type:engine.FileType.Directory,mode:0o755}],['/home',{type:engine.FileType.Directory,mode:0o755,uid:0}],['/home/account',{type:engine.FileType.Directory,mode:0o700,uid:1000}]]);
+ const remote={pathResolver:path.posix,getLoginDirectory:async()=>'/home/account',createStagingMetadataReader:()=>async name=>{seen.push(name);if(!metadata.has(name))throw new Error('unknown');return metadata.get(name);}};
+ assert.equal(await engine.prepareFtpStaging(remote),'/home/account');assert.ok(!seen.includes('/var/www/cms'));
+ metadata.set('/home',{type:engine.FileType.Directory,mode:0o777,uid:0});await assert.rejects(engine.prepareFtpStaging(remote),/private staging location is not protected/);
+ metadata.set('/home',{type:engine.FileType.Directory,mode:0o755,uid:0});metadata.set('/private',{type:engine.FileType.Directory,mode:0o700,uid:1000});assert.equal(await engine.prepareFtpStaging(remote,'/private'),'/private');
+ metadata.set('/private',{type:engine.FileType.SymbolicLink,mode:0o700,uid:1000});await assert.rejects(engine.prepareFtpStaging(remote,'/private'),/private staging/);
+ assert.throws(()=>engine.createSession(os.tmpdir(),{protocol:'ftp',host:'fixture',username:'fixture',remotePath:'/',ftpStagingPath:'relative'}),/ftpStagingPath/);
+ const session=engine.createSession(os.tmpdir(),{protocol:'ftp',host:'fixture',username:'fixture',remotePath:'/',ftpStagingPath:'/private',profiles:{other:{ftpStagingPath:'/other'}}});try{assert.equal(session.config.ftpStagingPath,'/private');assert.equal(session.service.getConfig('other').ftpStagingPath,'/other');}finally{session.service.dispose();}
 });

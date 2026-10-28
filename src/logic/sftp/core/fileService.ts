@@ -82,6 +82,7 @@ interface SftpOption {
   sshConfigPath?: string;
   concurrency: number;
   ftpConnections?: number;
+  ftpStagingPath?: string;
   sshCustomParams?: string;
   hop: (Host & SftpOption)[] | (Host & SftpOption);
 }
@@ -166,6 +167,7 @@ function getHostInfo(config: { [x: string]: any }) {
     'watcher',
     'concurrency',
     'ftpConnections',
+    'ftpStagingPath',
     'syncOption',
     'sshConfigPath',
   ];

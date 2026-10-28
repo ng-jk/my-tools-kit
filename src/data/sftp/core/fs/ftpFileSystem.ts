@@ -135,6 +135,79 @@ export default class FTPFileSystem extends RemoteFileSystem {
     return fileStat;
   }
 
+  async getLoginDirectory():Promise<string>{
+    const value=await this.queue.add(()=>new Promise<string>((resolve,reject)=>this.ftp.pwd((error:any,path:string)=>error?reject(error):resolve(path))));
+    if(typeof value!=='string'||!this.pathResolver.isAbsolute(value)||/[\r\n\0]/.test(value))throw new Error('FTP returned an invalid login directory');
+    return this.pathResolver.normalize(value);
+  }
+
+  private async stagingFacts(path:string,requireMode:boolean):Promise<{uid?:number;mode?:number}>{
+    return this.queue.add(async()=>{
+      const send=(command:string)=>new Promise<string>((resolve,reject)=>this.ftp._send(command,(error:any,reply:string)=>error?reject(error):resolve(reply||'')));
+      const parse=(reply:string)=>{
+        for(const line of reply.split(/\r?\n/)){
+          const entry=/^\s*((?:[A-Za-z0-9._-]+=[^;\r\n]*;)+) (.+)$/.exec(line);
+          if(!entry||entry[2]!==path)continue;
+          const facts=entry[1].split(';').filter(Boolean),types=facts.filter(f=>/^type=/i.test(f)),modes=facts.filter(f=>/^unix\.mode=/i.test(f)),uids=facts.filter(f=>/^unix\.uid=/i.test(f));
+          if(types.length>1||modes.length>1||uids.length>1)throw Object.assign(new Error('Ambiguous FTP ownership facts'),{code:'FTP_STAGING_AMBIGUOUS'});
+          if(types.length!==1||!/^type=dir$/i.test(types[0]))continue;
+          const parsedUid=uids.length===1&&/^unix\.uid=\d+$/i.test(uids[0])?Number(uids[0].split('=')[1]):undefined;
+          const uid=Number.isSafeInteger(parsedUid)&&parsedUid!>=0?parsedUid:undefined;
+          const validMode=modes.length===1&&/^unix\.mode=[0-7]{3,4}$/i.test(modes[0]);
+          if(requireMode&&!validMode)continue;
+          return {uid,mode:validMode?parseInt(modes[0].split('=')[1],8)&0o777:undefined};
+        }
+      };
+      let result=parse(await send('MLST '+path));
+      if(result===undefined){await send('OPTS MLST type;UNIX.mode;UNIX.uid;');result=parse(await send('MLST '+path));}
+      if(result===undefined)throw Object.assign(new Error('Required ownership/mode facts unavailable'),{code:'FTP_STAGING_UNAVAILABLE'});
+      return result;
+    }).catch(error=>{throw Object.assign(new Error('FTP private staging metadata cannot be verified: '+path+'. '+error.message),{code:error.code});});
+  }
+
+  createStagingMetadataReader(){
+    const pending=new Map<string,Promise<FileStats>>(),context={usesListingOwner:false};
+    const read=(path:string):Promise<FileStats>=>{
+      const key=this.pathResolver.normalize(path);let result=pending.get(key);
+      if(!result){result=this.readStagingMetadataStat(path,read,context);pending.set(key,result);}
+      return result;
+    };
+    return read;
+  }
+  stagingMetadataStat(path:string):Promise<FileStats>{return this.createStagingMetadataReader()(path);}
+  private async readStagingMetadataStat(path:string,read:(path:string)=>Promise<FileStats>,context:{usesListingOwner:boolean}):Promise<FileStats>{
+    const normalized=this.pathResolver.normalize(path);
+    if(normalized==='.'){
+      const cwd=await this.queue.add(()=>new Promise<string>((resolve,reject)=>this.ftp.pwd((error:any,value:string)=>error?reject(error):resolve(value))));
+      if(this.pathResolver.normalize(cwd)==='.')throw new Error('FTP cannot resolve current-directory ownership for safe uploads.');
+      return read(cwd);
+    }
+    if(normalized==='/'){
+      try {
+        const facts=await this.stagingFacts('/',true);
+        context.usesListingOwner=false;
+        return {type:FileType.Directory,uid:facts.uid,mode:facts.mode!,size:0,mtime:0,atime:0};
+      } catch(error) {
+        if(!['FTP_STAGING_UNAVAILABLE',500,501,502,504].includes(error.code))throw error;
+        // Read only the root's own entry. Never infer its mode/owner from children
+        // or '..', and never substitute the synthetic root used by read APIs.
+        for(const command of ['-al /','/']) {
+          let entries:any[];
+          try {entries=await this.atomicList(command);}catch(listError){if([500,501,502,504,550].includes(Number(listError.code)))continue;throw listError;}
+          if(!Array.isArray(entries))throw new Error('FTP root listing is unparseable; upload stopped.');
+          const own=entries.filter(entry=>entry && (entry.name==='.'||entry.name==='/'));
+          if(own.length>1)throw new Error('FTP root listing contains ambiguous self entries; upload stopped.');
+          if(own.length===1){context.usesListingOwner=true;return this.toFileStat(own[0]);}
+        }
+        throw new Error('FTP private staging metadata cannot be verified: /. The server supplies neither MLST UNIX.mode/UNIX.uid nor a Unix LIST self entry (.) for /. Ask the server administrator to enable one of these listing forms. No payload was uploaded.');
+      }
+    }
+    const stat=await this.lstat(path);
+    if(stat.type!==FileType.Directory||Number.isSafeInteger(stat.uid)||(context.usesListingOwner&&stat.owner))return stat;
+    const facts=await this.stagingFacts(path,false);
+    return {...stat,uid:facts.uid};
+  }
+
   async lstatForBackup(path:string):Promise<FileStats> {return this.lstat(path);}
 
   private async probePath(path:string):Promise<FileStats> {
@@ -227,8 +300,9 @@ export default class FTPFileSystem extends RemoteFileSystem {
       if(inputError)throw inputError;
       if(input.destroyed&&!input.readableEnded)throw new Error('Source stream closed before transfer completed');
     };
+    if(!option?.ftpStagingRoot)throw new Error('FTP private staging location was not prepared');
     input.on('error',remember);
-    const directory=this.pathResolver.join(this.pathResolver.dirname(path),'upload.devkit-'+randomUUID()+'.upload');
+    const directory=this.pathResolver.join(option.ftpStagingRoot,'upload.devkit-'+randomUUID()+'.upload');
     const payload=this.pathResolver.join(directory,'payload');
     let created=false,payloadMoved=false;
     try {

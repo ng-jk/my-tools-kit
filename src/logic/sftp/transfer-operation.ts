@@ -67,7 +67,7 @@ export async function executeTransfer(service: any, config: any, local: string, 
       srcFsPath: down ? remote : local, targetFsPath: down ? local : remote,
       srcFs: down ? remoteFs : localFs, targetFs: down ? localFs : remoteFs,
       transferDirection: down ? TransferDirection.REMOTE_TO_LOCAL : TransferDirection.LOCAL_TO_REMOTE,
-      transferOption: options, filePerm: config.filePerm, dirPerm: config.dirPerm,
+      transferOption: {...options,ftpStagingPath:config.ftpStagingPath}, filePerm: config.filePerm, dirPerm: config.dirPerm,
     }, task => { checkCancelled(); tasks.push(task); });
     checkCancelled();
     if (!down) await backupBeforeUpload({config, fileService: service}, tasks, remoteFs);
