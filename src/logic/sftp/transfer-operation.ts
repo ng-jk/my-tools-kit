@@ -29,6 +29,7 @@ export function cancelActiveTransfers() { cancelPendingOperations(); for (const 
 
 export async function executeTransfer(service: any, config: any, local: string, remote: string, down: boolean, options: any, synchronize = false) {
   const checkCancelled = service.cancellationCheck();
+  const releaseResources=service.retainTransferResources?.();
   const setupCancellation=new AbortController();
   const removeCancellationListener=service.onCancellation?.(()=>setupCancellation.abort());
   const cancel = () => {setupCancellation.abort();service.cancelTransferTasks();};
@@ -94,6 +95,6 @@ export async function executeTransfer(service: any, config: any, local: string, 
     removeCancellationListener?.();
     finishMetadata?.();
     scheduler?.stop();connectionPool?.close(); active.delete(cancel);
-    try{await directoryScope.finish();}finally{releaseUpload?.();}
+    try{await directoryScope.finish();}finally{try{releaseUpload?.();}finally{releaseResources?.();}}
   }
 }

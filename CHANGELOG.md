@@ -4,6 +4,8 @@
 
 - Run FTP batch uploads through a bounded pool of independent authenticated connections. Configure ftpConnections per context/profile (default 3, range 1–8); use 1 for servers with session limits.
 - Keep one active file per FTP connection. Finish all verified backups before any upload, retain fresh permissions/TLS checks, and close added connections after completion, failure or cancellation.
+- Keep the primary connection alive during cancellation cleanup, then release it when service disposal completes.
+- End a cancelled FTP STOR data stream before queued ABOR so partial payloads remain private, cleanup settles and originals are preserved.
 - Reuse resolved authentication without repeated password prompts; cancel pending worker logins promptly through global cancellation, service cancellation and disposal (including the terminal Ctrl+C path). SFTP keeps its existing asynchronous concurrency setting.
 - Add wire regressions for real overlap, serial mode, partial setup failure, cancellation, FTPS security and prompted-credential reuse.
 

@@ -1435,3 +1435,18 @@ test('service cancellation listeners include disposal and can be unsubscribed',t
  const {session}=fixture(t);let calls=0;const remove=session.service.onCancellation(()=>calls++);
  session.service.cancelTransferTasks();assert.equal(calls,1);session.service.dispose();assert.equal(calls,2);remove();session.service.cancelTransferTasks();assert.equal(calls,2);
 });
+
+
+test('cancelled FTP STOR ends its data stream before ABOR and removes private staging without replacement',{timeout:2000},async()=>{
+ const {PassThrough}=require('node:stream'),input=new PassThrough(),events=[],removed=[];let storeFinished;
+ const ftp={_pasvSocket:{destroyed:false,end:()=>{events.push('EOF');storeFinished(null);}},put:(_input,_path,cb)=>{storeFinished=cb;queueMicrotask(()=>input.emit('error',new Error('Transfer cancelled')));},abort:cb=>{events.push('ABOR');cb(null);}};
+ const adapter=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>ftp}});
+ adapter.mkdir=async()=>{};adapter.chmod=async()=>{};adapter.lstat=async()=>({type:engine.FileType.Directory,mode:0o700});adapter.unlink=async name=>removed.push(name);adapter.rmdir=async name=>removed.push(name);adapter.renameAtomic=async()=>{throw new Error('cancelled payload must not replace its destination');};
+ await assert.rejects(adapter.put(input,'/destination',{mode:0o600}),/Transfer cancelled/);assert.deepEqual(events,['EOF','ABOR']);assert.equal(removed.length,2);assert.ok(removed[0].endsWith('/payload'));
+});
+
+
+test('service disposal defers connection release only until active transfer cleanup settles',t=>{
+ const {session}=fixture(t),service=session.service,dispose=service._disposeFileSystem;let closed=0;service._disposeFileSystem=()=>closed++;
+ try{const first=service.retainTransferResources(),second=service.retainTransferResources();service.dispose();assert.equal(closed,0);first();first();assert.equal(closed,0);second();assert.equal(closed,1);}finally{service._disposeFileSystem=dispose;}
+});

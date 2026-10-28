@@ -288,7 +288,7 @@ export default class FTPFileSystem extends RemoteFileSystem {
 
   async put(input: Readable, path: string, option?: FileOption): Promise<void> {
     let inputError:Error|undefined;
-    const remember=(error:Error)=>{inputError=error;this.ftp.abort((err:any)=>{if(err)logger.warn('FTP abort failed');});};
+    const remember=(error:Error)=>{inputError=error;};
     const checkSource=()=>{
       if(inputError)throw inputError;
       if(input.destroyed&&!input.readableEnded)throw new Error('Source stream closed before transfer completed');
@@ -306,7 +306,7 @@ export default class FTPFileSystem extends RemoteFileSystem {
       checkSource();
       // No APPE or REST: even servers that recreate STOR files cannot expose
       // their contents through this verified owner-only parent directory.
-      await this.atomicPut(input,payload);
+      await this.atomicPut(input,payload,checkSource);
       checkSource();
       await this.chmod(payload,prepared.mode!);await this.verifyMode(payload,prepared.mode!);
       checkSource();
@@ -488,18 +488,20 @@ export default class FTPFileSystem extends RemoteFileSystem {
     return this.queue.add(task);
   }
 
-  private async atomicPut(input: Readable, path: string): Promise<void> {
-    const task = () =>
-      new Promise<void>((resolve, reject) => {
-        this.ftp.put(input, path, (err: any) => {
-          if (err) {
-            return reject(err);
-          }
-
-          resolve();
-        });
-      });
-
+  private async atomicPut(input:Readable,path:string,checkSource:()=>void):Promise<void> {
+    const task=()=>new Promise<void>((resolve,reject)=>{
+      try{checkSource();}catch(error){reject(error);return;}
+      const abort=()=>{
+        // ftp queues ABOR behind STOR. End this operation's data stream first
+        // so STOR can finish even when its cancelled source never emits EOF.
+        // Partial bytes remain inside the verified private staging directory.
+        const socket=this.ftp._pasvSocket;
+        if(socket&&!socket.destroyed){input.unpipe(socket);socket.end();}
+        this.ftp.abort((error:any)=>{if(error)logger.warn('FTP abort failed');});
+      };
+      input.on('error',abort);
+      this.ftp.put(input,path,(error:any)=>{input.removeListener('error',abort);if(error)reject(error);else resolve();});
+    });
     return this.queue.add(()=>this.mutation(task));
   }
 

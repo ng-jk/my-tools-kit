@@ -472,6 +472,11 @@ export default class FileService {
     return this._transferSchedulers.length > 0;
   }
 
+  private activeTransferOperations=0;
+  retainTransferResources(){
+    this.activeTransferOperations++;let released=false;
+    return ()=>{if(released)return;released=true;if(--this.activeTransferOperations===0&&this.disposed)this._disposeFileSystem();};
+  }
   private cancellationGeneration = 0;
   private cancellationListeners=new Set<()=>void>();
   onCancellation(listener:()=>void){this.cancellationListeners.add(listener);return ()=>{this.cancellationListeners.delete(listener);};}
@@ -619,7 +624,7 @@ export default class FileService {
     this.disposed = true;
     this.cancelTransferTasks();
     this._disposeWatcher();
-    this._disposeFileSystem();
+    if(this.activeTransferOperations===0)this._disposeFileSystem();
   }
 
   private _resolveServiceConfig(
