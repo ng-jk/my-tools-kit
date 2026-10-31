@@ -9,12 +9,12 @@ function ownerIdentity(stat:FileStats):string|undefined {
 
 function assertProtected(stat:FileStats,path:string):void {
   if(stat.type!==FileType.Directory||!Number.isInteger(stat.mode)||(stat.mode&0o022)!==0) {
-    throw new Error('FTP private staging location is not protected: '+path+'. Configure ftpStagingPath to a private server directory outside shared upload folders. Destination permissions are not restricted.');
+    throw new Error('FTP private staging location is not protected: '+path+'. Configure ftpStagingPath to a private server directory outside shared upload folders. Destination ancestors also require protected ownership and permissions.');
   }
 }
 
-// Destination permissions are intentionally unrestricted. FTP's pathname-based
-// STOR/chmod requires a separate protected namespace for private staging.
+// FTP pathname-based STOR/chmod needs a separate protected staging namespace.
+// The mutation policy independently protects destination ancestors.
 export async function prepareFtpStaging(fs:FTPFileSystem,configured?:string):Promise<string> {
   const home=await fs.getLoginDirectory(),root=configured??home;
   if(!fs.pathResolver.isAbsolute(root)||/[\r\n\0]/.test(root))throw new Error('ftpStagingPath must be an absolute server directory');
@@ -42,7 +42,7 @@ export async function prepareFtpStaging(fs:FTPFileSystem,configured?:string):Pro
     const stat=await read(path);
     assertProtected(stat,path);
     const owner=ownerIdentity(stat);
-    if(!owner||!owners.has(owner))throw new Error('FTP private staging owner cannot be verified at '+path+'. Configure ftpStagingPath to the account private directory. Destination ownership is not restricted.');
+    if(!owner||!owners.has(owner))throw new Error('FTP private staging owner cannot be verified at '+path+'. Configure ftpStagingPath to the account private directory. Destination ancestors also require protected ownership and permissions.');
   }
   return fs.pathResolver.normalize(root);
 }
