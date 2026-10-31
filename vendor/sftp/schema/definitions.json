@@ -349,7 +349,7 @@
       "ftpStagingPath": {
         "type": "string",
         "pattern": "^/[^\\r\\n\\u0000]*$",
-        "description": "Existing private FTP staging directory on the same server filesystem. Defaults to the login directory. Its ancestors must be protected from other writers; upload destinations may be shared."
+        "description": "Existing private FTP staging directory on the same server filesystem. Defaults to the login directory. Both staging and destination ancestors require protected owner/mode metadata; a jail assertion does not bypass verification."
       }
     }
   },

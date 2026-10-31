@@ -1484,3 +1484,16 @@ test('terminal isolation diagnostics returns nonzero for unverifiable namespace 
  const {local,raw}=fixture(t);fs.mkdirSync(path.join(local,'.vscode'));fs.writeFileSync(path.join(local,'.vscode','sftp.json'),JSON.stringify(raw));
  const result=spawnSync(process.execPath,[path.join(__dirname,'..','cli.js'),'sftp','isolation',local],{encoding:'utf8'});assert.equal(result.status,1,result.stderr);const report=JSON.parse(result.stdout);assert.equal(report.passed,false);assert.equal(report.results[0].result.jail,'not-verifiable-over-FTP-or-SFTP');assert.deepEqual(fs.readdirSync(raw.remotePath),[]);
 });
+
+
+test('FTP mutation ownership negotiates partial MLST then falls back to valid Unix LIST owners',async()=>{
+ for(const owner of ['account-name','1000']){
+  const commands=[],entry={name:'.',type:'d',owner,rights:{user:'rwx',group:'r-x',other:'r-x'},date:new Date(),size:0};
+  const remote=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({_send:(command,cb)=>{commands.push(command);cb(null,command.startsWith('MLST')?'type=dir;UNIX.mode=0755; /':'200 OK');},list:(name,cb)=>{commands.push('LIST '+name);cb(null,[entry]);},pwd:cb=>cb(null,'/')})}});
+  remote.lstat=async()=>({type:engine.FileType.Directory,mode:0o755,owner});
+  await engine.assertRemoteParentDirectories(remote,'/owned/file.txt');assert.deepEqual(commands.slice(0,4),['MLST /','OPTS MLST type;UNIX.mode;UNIX.uid;','MLST /','LIST -al /']);
+ }
+ const commands=[];let count=0;const remote=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({_send:(command,cb)=>{commands.push(command);cb(null,command.startsWith('MLST')?'type=dir;UNIX.mode=0755;'+(++count===2?'UNIX.uid=0;':'')+' /':'200 OK');},pwd:cb=>cb(null,'/')})}});
+ await engine.assertRemoteParentDirectories(remote,'/file.txt');assert.equal(count,2);assert.ok(!commands.some(command=>command.startsWith('LIST')));
+ const schema=JSON.parse(fs.readFileSync(path.join(__dirname,'../vendor/sftp/schema/definitions.json'),'utf8'));const option=Object.values(schema).find(item=>item?.properties?.ftpStagingPath).properties.ftpStagingPath;const pattern=new RegExp(option.pattern);assert.ok(pattern.test('/private/staging'));assert.ok(!pattern.test('/bad\nname'));
+});

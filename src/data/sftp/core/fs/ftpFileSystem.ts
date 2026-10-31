@@ -141,7 +141,7 @@ export default class FTPFileSystem extends RemoteFileSystem {
     return this.pathResolver.normalize(value);
   }
 
-  private async stagingFacts(path:string,requireMode:boolean):Promise<{uid?:number;mode?:number}>{
+  private async stagingFacts(path:string,requireMode:boolean,requireOwner=false):Promise<{uid?:number;mode?:number}>{
     return this.queue.add(async()=>{
       const send=(command:string)=>new Promise<string>((resolve,reject)=>this.ftp._send(command,(error:any,reply:string)=>error?reject(error):resolve(reply||'')));
       const parse=(reply:string)=>{
@@ -154,7 +154,7 @@ export default class FTPFileSystem extends RemoteFileSystem {
           const parsedUid=uids.length===1&&/^unix\.uid=\d+$/i.test(uids[0])?Number(uids[0].split('=')[1]):undefined;
           const uid=Number.isSafeInteger(parsedUid)&&parsedUid!>=0?parsedUid:undefined;
           const validMode=modes.length===1&&/^unix\.mode=[0-7]{3,4}$/i.test(modes[0]);
-          if(requireMode&&!validMode)continue;
+          if((requireMode&&!validMode)||(requireOwner&&uid===undefined))continue;
           return {uid,mode:validMode?parseInt(modes[0].split('=')[1],8)&0o777:undefined};
         }
       };
@@ -165,19 +165,19 @@ export default class FTPFileSystem extends RemoteFileSystem {
     }).catch(error=>{throw Object.assign(new Error('FTP private staging metadata cannot be verified: '+path+'. '+error.message),{code:error.code});});
   }
 
-  createMutationMetadataReader(){return this.createStagingMetadataReader();}
+  createMutationMetadataReader(){return this.createStagingMetadataReader(true);}
 
-  createStagingMetadataReader(){
+  createStagingMetadataReader(requireOwner=false){
     const pending=new Map<string,Promise<FileStats>>(),context={usesListingOwner:false};
     const read=(path:string):Promise<FileStats>=>{
       const key=this.pathResolver.normalize(path);let result=pending.get(key);
-      if(!result){result=this.readStagingMetadataStat(path,read,context);pending.set(key,result);}
+      if(!result){result=this.readStagingMetadataStat(path,read,context,requireOwner);pending.set(key,result);}
       return result;
     };
     return read;
   }
   stagingMetadataStat(path:string):Promise<FileStats>{return this.createStagingMetadataReader()(path);}
-  private async readStagingMetadataStat(path:string,read:(path:string)=>Promise<FileStats>,context:{usesListingOwner:boolean}):Promise<FileStats>{
+  private async readStagingMetadataStat(path:string,read:(path:string)=>Promise<FileStats>,context:{usesListingOwner:boolean},requireOwner=false):Promise<FileStats>{
     const normalized=this.pathResolver.normalize(path);
     if(normalized==='.'){
       const cwd=await this.queue.add(()=>new Promise<string>((resolve,reject)=>this.ftp.pwd((error:any,value:string)=>error?reject(error):resolve(value))));
@@ -186,7 +186,7 @@ export default class FTPFileSystem extends RemoteFileSystem {
     }
     if(normalized==='/'){
       try {
-        const facts=await this.stagingFacts('/',true);
+        const facts=await this.stagingFacts('/',true,requireOwner);
         context.usesListingOwner=false;
         return {type:FileType.Directory,uid:facts.uid,mode:facts.mode!,size:0,mtime:0,atime:0};
       } catch(error) {

@@ -388,4 +388,4 @@ Folder/batch FTP uploads use up to three independent connections by default. Set
 SFTP uses its existing `"concurrency": 4` setting over one SSH connection. VS Code commands and the terminal use the same settings: `devkit sftp upload path/to/folder`. No extra process is required. Separate individual commands do not become a single pooled batch.
 
 
-[Remote permission policy](https://github.com/ng-jk/my-tools-kit/blob/developement/docs/remote-permission-policy.md): existing directory permissions and owners do not gate uploads; the server enforces write access.
+[Remote permission policy](https://github.com/ng-jk/my-tools-kit/blob/developement/docs/remote-permission-policy.md): remote mutations require protected ancestor metadata; the administrator must confirm jail, ACL and account isolation. Existing modes are never automatically changed.
