@@ -29,6 +29,7 @@ export interface FileOption {
   mode?: number;
   autoClose?: boolean;
   ftpStagingRoot?: string;
+  beforeReplace?:()=>Promise<void>;
   fd?: FileHandle;
 }
 

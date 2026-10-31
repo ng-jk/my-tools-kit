@@ -1,11 +1,12 @@
 # Release notes
 
-## 0.7.16 — 2026-10-28
+## 0.7.16 — 2026-10-31
 
-- Remove the proactive remote ancestor permission/ownership restriction as requested. Shared 775/777 folders, different owners and absent Unix ownership facts no longer block uploads. The server enforces write access.
-- Remove destination ancestor owner/mode requirements; retain ordinary non-following directory/path validation and backups. Stage FTP plaintext in a separately verified protected login directory (or configured ftpStagingPath), outside shared destination directories.
-- Preserve existing remote directory modes without comparing them to new-directory dirPerm settings. Creation defaults remain configurable.
-- Add FTP/SFTP wire regressions for uploads to /var/www/cms with 775/777 ancestors and no root ownership metadata, plus headless acceptance and path-error tests.
+- Add server-isolation diagnostics through SFTP: Check Server Isolation and the shared terminal isolation action. Report protected metadata separately from jail status, which ordinary protocols cannot verify.
+- Require protected account/admin directory ancestors for remote mutations. Shared or unverifiable trees stop with the actual path and administrator guidance; existing directories are never automatically chmodded. Read-only access remains available.
+- Keep FTP plaintext staging outside destinations, with per-profile ftpStagingPath support. Recheck parents before replacement and guard failure cleanup against replaced folders.
+- Add headless and FTP/SFTP wire folder-replacement regressions, metadata edge cases and no-admin recovery instructions. Document dedicated account/jail setup and its limits; a jail alone does not prevent interference by other writers inside it.
+- Preserve configurable new-entry permissions, verified backups, bounded FTP batch connections and cancellation behavior.
 
 ## 0.7.15 — 2026-10-28
 

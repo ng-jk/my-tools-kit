@@ -11,7 +11,7 @@ test('SFTP wire: password authentication, list, upload, temp rename, download an
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-ssh-'));
   const local=path.join(root,'local'),remote=path.join(root,'remote');fs.mkdirSync(local);fs.mkdirSync(remote);
   const hostKey=crypto.generateKeyPairSync('rsa',{modulusLength:2048}).privateKey.export({type:'pkcs1',format:'pem'});
-  let authentications=0,honorOpen=true,allowChmod=true;const modes=new Map([['/',0o755]]),writeModes=[];let pathChmods=0;
+  let replaceOnClose=false,replacedFolder=false,renamesAfterRace=0;let authentications=0,honorOpen=true,allowChmod=true;const modes=new Map([['/',0o755]]),writeModes=[];let pathChmods=0;
   const clients=new Set();const {STATUS_CODE,OPEN_MODE}=utils.sftp;
   const server=new Server({hostKeys:[hostKey]},client=>{
     clients.add(client);client.on('close',()=>clients.delete(client));client.on('error',()=>{});
@@ -19,7 +19,7 @@ test('SFTP wire: password authentication, list, upload, temp rename, download an
     client.on('ready',()=>client.on('session',accept=>accept().on('sftp',accept=>{
       const sftp=accept(),handles=new Map();let id=0;
       const resolve=p=>{const target=path.resolve(remote,'.'+p);if(!target.startsWith(remote+path.sep)&&target!==remote)throw new Error('outside fixture');return target;};
-      const attrs=(s,p)=>({mode:(s.mode & ~0o777)|(modes.get(p)??(s.mode & 0o777)),size:s.size,uid:0,gid:0,atime:Math.floor(s.atimeMs/1000),mtime:Math.floor(s.mtimeMs/1000)});
+      const attrs=(s,p)=>({mode:p==='/race'&&replacedFolder?0o120755:(s.mode & ~0o777)|(modes.get(p)??(s.mode & 0o777)),size:s.size,uid:0,gid:0,atime:Math.floor(s.atimeMs/1000),mtime:Math.floor(s.mtimeMs/1000)});
       const guard=fn=>(request,...args)=>{try{fn(request,...args);}catch(e){sftp.status(request,e.code==='ENOENT'?STATUS_CODE.NO_SUCH_FILE:STATUS_CODE.FAILURE,e.message);}};
       const handle=value=>{const h=Buffer.alloc(4);h.writeUInt32BE(++id);handles.set(h.toString('hex'),value);return h;};
       for(const name of ['STAT','LSTAT'])sftp.on(name,guard((req,p)=>sftp.attrs(req,attrs(fs.statSync(resolve(p)),p))));
@@ -30,13 +30,13 @@ test('SFTP wire: password authentication, list, upload, temp rename, download an
       sftp.on('FSTAT',guard((req,h)=>{const value=handles.get(h.toString('hex'));sftp.attrs(req,attrs(fs.fstatSync(value.fd),value.path));}));
       sftp.on('READ',guard((req,h,offset,len)=>{const data=Buffer.alloc(len),n=fs.readSync(handles.get(h.toString('hex')).fd,data,0,len,offset);if(n)sftp.data(req,data.subarray(0,n));else sftp.status(req,STATUS_CODE.EOF);}));
       sftp.on('WRITE',guard((req,h,offset,data)=>{writeModes.push(modes.get(handles.get(h.toString('hex')).path));fs.writeSync(handles.get(h.toString('hex')).fd,data,0,data.length,offset);sftp.status(req,STATUS_CODE.OK);}));
-      sftp.on('CLOSE',guard((req,h)=>{const v=handles.get(h.toString('hex'));if(v.fd!==undefined)fs.closeSync(v.fd);handles.delete(h.toString('hex'));sftp.status(req,STATUS_CODE.OK);}));
+      sftp.on('CLOSE',guard((req,h)=>{const v=handles.get(h.toString('hex'));if(v.fd!==undefined){fs.closeSync(v.fd);if(replaceOnClose&&v.path.startsWith('/race/')){replaceOnClose=false;replacedFolder=true;}}handles.delete(h.toString('hex'));sftp.status(req,STATUS_CODE.OK);}));
       sftp.on('FSETSTAT',guard((req,h,a)=>{if(a.mode!==undefined){if(!allowChmod)return sftp.status(req,STATUS_CODE.PERMISSION_DENIED);modes.set(handles.get(h.toString('hex')).path,a.mode&0o777);}if(a.atime!==undefined)fs.futimesSync(handles.get(h.toString('hex')).fd,a.atime,a.mtime);sftp.status(req,STATUS_CODE.OK);}));
       sftp.on('SETSTAT',guard((req,p,a)=>{if(a.mode!==undefined){pathChmods++;if(!allowChmod)return sftp.status(req,STATUS_CODE.PERMISSION_DENIED);modes.set(p,a.mode&0o777);}if(a.atime!==undefined)fs.utimesSync(resolve(p),a.atime,a.mtime);sftp.status(req,STATUS_CODE.OK);}));
       sftp.on('MKDIR',guard((req,p,a)=>{modes.set(p,a.mode??0o755);fs.mkdirSync(resolve(p));sftp.status(req,STATUS_CODE.OK);}));
       sftp.on('REMOVE',guard((req,p)=>{fs.unlinkSync(resolve(p));sftp.status(req,STATUS_CODE.OK);}));
       sftp.on('RMDIR',guard((req,p)=>{fs.rmdirSync(resolve(p));sftp.status(req,STATUS_CODE.OK);}));
-      sftp.on('RENAME',guard((req,a,b)=>{fs.renameSync(resolve(a),resolve(b));modes.set(b,modes.get(a));modes.delete(a);sftp.status(req,STATUS_CODE.OK);}));
+      sftp.on('RENAME',guard((req,a,b)=>{if(replacedFolder)renamesAfterRace++;fs.renameSync(resolve(a),resolve(b));modes.set(b,modes.get(a));modes.delete(a);sftp.status(req,STATUS_CODE.OK);}));
       sftp.on('EXTENDED',(req)=>sftp.status(req,STATUS_CODE.OP_UNSUPPORTED));
       sftp.on('close',()=>{for(const value of handles.values())if(value.fd!==undefined)try{fs.closeSync(value.fd);}catch{};});
     })));
@@ -74,8 +74,10 @@ test('SFTP wire: password authentication, list, upload, temp rename, download an
   honorOpen=true;allowChmod=true;
 
   fs.mkdirSync(path.join(remote,'var','www','cms'),{recursive:true});fs.mkdirSync(path.join(local,'var','www','cms'),{recursive:true});modes.set('/var',0o755);modes.set('/var/www',0o775);modes.set('/var/www/cms',0o777);
-  fs.writeFileSync(path.join(local,'var','www','cms','shared.php'),'shared SFTP upload');session.config.dirPerm=755;await engine.operate(session,'upload','var/www/cms/shared.php');delete session.config.dirPerm;
-  assert.equal(fs.readFileSync(path.join(remote,'var','www','cms','shared.php'),'utf8'),'shared SFTP upload');assert.equal(modes.get('/var/www'),0o775);assert.equal(modes.get('/var/www/cms'),0o777);
+  fs.writeFileSync(path.join(local,'var','www','cms','shared.php'),'shared SFTP upload');session.config.dirPerm=755;await assert.rejects(engine.operate(session,'upload','var/www/cms/shared.php'),/isolation check failed/);modes.set('/var/www',0o755);modes.set('/var/www/cms',0o755);await engine.operate(session,'upload','var/www/cms/shared.php');delete session.config.dirPerm;
+  assert.equal(fs.readFileSync(path.join(remote,'var','www','cms','shared.php'),'utf8'),'shared SFTP upload');assert.equal(modes.get('/var/www'),0o755);assert.equal(modes.get('/var/www/cms'),0o755);
+  fs.mkdirSync(path.join(remote,'race'));modes.set('/race',0o755);fs.mkdirSync(path.join(local,'race'));fs.writeFileSync(path.join(local,'race','victim.txt'),'new payload');fs.writeFileSync(path.join(remote,'race','victim.txt'),'original');replaceOnClose=true;
+  await assert.rejects(engine.operate(session,'upload','race/victim.txt'),/not a real directory/);assert.equal(renamesAfterRace,0);assert.equal(fs.readFileSync(path.join(remote,'race','victim.txt'),'utf8'),'original');replacedFolder=false;fs.rmSync(path.join(local,'race'),{recursive:true,force:true});fs.rmSync(path.join(remote,'race'),{recursive:true,force:true});modes.delete('/race');
   assert.equal((await engine.operate(session,'list')).some(item=>item.name==='wire.txt'),true);
   fs.writeFileSync(path.join(remote,'wire.txt'),'server change');await engine.operate(session,'download','wire.txt');assert.equal(fs.readFileSync(path.join(local,'wire.txt'),'utf8'),'server change');
   fs.mkdirSync(path.join(remote,'nested'));modes.set('/nested',0o755);fs.writeFileSync(path.join(remote,'nested','remote-only.txt'),'nested from server');

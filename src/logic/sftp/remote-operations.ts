@@ -1,12 +1,14 @@
+import {assertRemoteParentDirectories} from './parent-directories';
 import * as path from 'path';
 import {checkedEntries} from '../../data/sftp/path-safety';
-import {FileSystem,FileType} from '../../data/sftp/core/fs';
+import {FileSystem,FileType,RemoteFileSystem} from '../../data/sftp/core/fs';
 export function assertRemoteChild(target:string,root:string) {
   const base=path.posix.resolve('/',root.replace(/\\/g,'/')),value=path.posix.resolve('/',target.replace(/\\/g,'/'));
   const relative=path.posix.relative(base,value);
   if(!relative||relative==='..'||relative.startsWith('../')||path.posix.isAbsolute(relative)) throw new Error('Operation requires a non-root path inside the configured remote root');
 }
-export async function assertRemoteAncestors(fs:FileSystem,target:string,root:string,allowRoot=false,allowMissing=false) {
+export async function assertRemoteAncestors(fs:FileSystem,target:string,root:string,allowRoot=false,allowMissing=false,mutation=false) {
+  if(mutation&&fs instanceof RemoteFileSystem)await assertRemoteParentDirectories(fs,target,allowMissing);
   const same=path.posix.resolve('/',target.replace(/\\/g,'/'))===path.posix.resolve('/',root.replace(/\\/g,'/'));
   if(!allowRoot || !same)assertRemoteChild(target,root);
   const base=path.posix.normalize(root.replace(/\\/g,'/'));
@@ -24,7 +26,7 @@ export async function assertRemoteAncestors(fs:FileSystem,target:string,root:str
 export async function removeRemotePath(fs:FileSystem,target:string,root:string,skipDir=false,ignore?: (path:string, side?: 'local' | 'remote')=>boolean) {
   assertRemoteChild(target,root);
   if(ignore?.(target, 'remote')) return;
-  await assertRemoteAncestors(fs,target,root);
+  await assertRemoteAncestors(fs,target,root,false,false,true);
   const stat=await fs.lstat(target);
   if(stat.type===FileType.Directory) {
     if(skipDir) return;
@@ -36,7 +38,7 @@ export async function removeRemotePath(fs:FileSystem,target:string,root:string,s
   else throw new Error('Unsupported remote file type');
 }
 export async function renameRemotePath(fs:FileSystem,from:string,to:string,root:string) {
-  await assertRemoteAncestors(fs,from,root);
+  await assertRemoteAncestors(fs,from,root,false,false,true);
   try { await fs.lstat(from); } catch(error) { if(error.code==='ENOENT'||error.code===2) { error.missingRenameSource=true; } throw error; }
-  await assertRemoteAncestors(fs,to,root);await fs.rename(from,to);
+  await assertRemoteAncestors(fs,to,root,false,false,true);await fs.rename(from,to);
 }

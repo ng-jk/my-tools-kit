@@ -403,6 +403,10 @@
         "title": "Find Database Entry",
         "category": "Development Tools Kit",
         "icon": "$(search)"
+      },
+      {
+        "command": "devkit.sftp.checkIsolation",
+        "title": "SFTP: Check Server Isolation"
       }
     ],
     "menus": {

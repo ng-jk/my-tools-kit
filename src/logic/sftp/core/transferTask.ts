@@ -175,7 +175,7 @@ export default class TransferTask implements Task {
       await targetFs.prepareStagedFile?.(staged, target, mode, fd);
       if (sourceError) throw sourceError;
       this.checkCancelled();
-      await targetFs.put(this._handle, staged, {mode, fd, autoClose:false,ftpStagingRoot});
+      await targetFs.put(this._handle, staged, {mode, fd, autoClose:false,ftpStagingRoot,beforeReplace:targetFs instanceof RemoteFileSystem?()=>assertRemoteParentDirectories(targetFs,staged):undefined});
       if (sourceError) throw sourceError;
       if (this._cancelled) throw new Error('Transfer cancelled');
       if (atime && mtime) {
@@ -190,7 +190,10 @@ export default class TransferTask implements Task {
       finishMetadata?.();
       if (this._handle) { this._handle.destroy(); this._handle.removeListener('error', rememberError); }
       if (fd !== undefined) await targetFs.close(fd).catch(error => logger.warn(error.message));
-      if(!stagedConsumed)await targetFs.unlink(staged).catch(() => {});
+      if(!stagedConsumed){
+        // Never follow a newly substituted ancestor during failure cleanup.
+        try{if(targetFs instanceof RemoteFileSystem)await assertRemoteParentDirectories(targetFs,staged);await targetFs.unlink(staged);}catch{}
+      }
     }
   }
 }

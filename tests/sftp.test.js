@@ -1168,7 +1168,7 @@ test('verified remote parent avoids redundant mkdir and lstat and still rejects 
  remote.lstat=async()=>{stats++;return {type:engine.FileType.Directory,uid:0,mode:0o755};};
  remote.ensureDir=async()=>{throw new Error('redundant mkdir');};
  const source={pathResolver:path.posix};
- await engine.ensureTransferDirectory(source,remote,'/local','/remote');assert.equal(stats,2,'target and namespace-root directory type checks');
+ await engine.ensureTransferDirectory(source,remote,'/local','/remote');assert.equal(stats,3,'target, namespace root and authenticated home checks');
  remote.lstat=async name=>({type:name==='/'?engine.FileType.Directory:engine.FileType.SymbolicLink,uid:0,mode:0o755});
  await assert.rejects(engine.ensureTransferDirectory(source,remote,'/local','/remote'),/not a real directory/);
 });
@@ -1392,9 +1392,9 @@ test('remote parent validation retains missing-path and non-directory errors wit
  remote.lstat=async name=>({type:name==='/var/www'?engine.FileType.SymbolicLink:engine.FileType.Directory,mode:0o777});await assert.rejects(engine.assertRemoteParentDirectories(remote,'/var/www/cms/file'),/not a real directory.*var.www/);
 });
 
-test('FTP ancestor checks use ordinary listings without requiring root mode or UID facts',async()=>{
+test('FTP mutations reject missing namespace root metadata instead of assuming a jail',async()=>{
  const commands=[],remote=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({list:(_name,cb)=>cb(null,[{name:'var',type:'d',rights:undefined,date:new Date(),size:0}]),_send:(cmd,cb)=>{commands.push(cmd);cb(Object.assign(new Error('unsupported'),{code:502}));}})}});
- await engine.assertRemoteParentDirectories(remote,'/var/file.php');assert.deepEqual(commands,[]);
+ await assert.rejects(engine.assertRemoteParentDirectories(remote,'/var/file.php'),/metadata cannot be verified: \/.*administrator/);assert.ok(commands.length>0);
 });
 
 
@@ -1440,4 +1440,47 @@ test('FTP staging root facts coalesce within a file but refresh for the next fil
  let roots=0,mode='0755';const remote=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({_send:(_cmd,cb)=>{roots++;cb(null,'type=dir;UNIX.mode='+mode+'; /');},pwd:cb=>cb(null,'/')})}});
  assert.equal(await engine.prepareFtpStaging(remote),'/');assert.equal(roots,1);
  mode='0777';await assert.rejects(engine.prepareFtpStaging(remote),/not protected/);assert.equal(roots,2);
+});
+
+
+test('server isolation diagnostics accepts protected account trees and never claims jail verification',async()=>{
+ const metadata=new Map([['/',{type:engine.FileType.Directory,mode:0o755,uid:0}],['.',{type:engine.FileType.Directory,mode:0o700,uid:1000}],['/project',{type:engine.FileType.Directory,mode:0o755,uid:1000}]]);
+ const remote={pathResolver:path.posix,lstat:async name=>metadata.get(name),createMutationMetadataReader:()=>async name=>metadata.get(name)};
+ const relative=await engine.inspectServerIsolation(remote,'relative');assert.equal(relative.passed,false);assert.match(relative.message,/absolute account-visible path/);
+ const report=await engine.inspectServerIsolation(remote,'/project');assert.equal(report.passed,true);assert.equal(report.jail,'not-verifiable-over-FTP-or-SFTP');
+ for(const stat of [{type:engine.FileType.Directory,mode:0o775,uid:1000},{type:engine.FileType.Directory,mode:0o755,uid:2000},{type:engine.FileType.Directory,mode:NaN,uid:1000},{type:engine.FileType.SymbolicLink,mode:0o755,uid:1000}]){
+  metadata.set('/project',stat);const failed=await engine.inspectServerIsolation(remote,'/project');assert.equal(failed.passed,false);assert.equal(failed.code,'REMOTE_ISOLATION_REQUIRED');assert.match(failed.message,/hosting administrator/);
+ }
+});
+
+test('folder replacement after descriptor close blocks final rename and unsafe cleanup',async()=>{
+ const {Readable}=require('node:stream');
+ for(const Adapter of [engine.SFTPFileSystem,engine.FTPFileSystem]){
+  let replaced=false,opens=0,renames=0,unlinks=0;
+  const remote=new Adapter(path.posix,{client:{}});
+  remote.createMutationMetadataReader=()=>async name=>({type:replaced&&name==='/project'?engine.FileType.SymbolicLink:engine.FileType.Directory,mode:0o755,uid:0});
+  remote.lstat=async name=>{if(name.endsWith('file.txt'))throw Object.assign(new Error('missing'),{code:'ENOENT'});return {type:engine.FileType.Directory,mode:0o755,uid:0};};
+  remote.open=async()=>{opens++;return {};};remote.close=async()=>{replaced=true;};remote.prepareStagedFile=async()=>{};remote.put=async input=>{input.resume();await new Promise(resolve=>input.on('end',resolve));};remote.rename=remote.renameAtomic=async()=>{renames++;};remote.unlink=async()=>{unlinks++;};
+  if(Adapter===engine.FTPFileSystem){remote.getLoginDirectory=async()=>'/';remote.createStagingMetadataReader=remote.createMutationMetadataReader;}
+  const source={pathResolver:path.posix,get:async()=>Readable.from(['payload'])};
+  const task=new engine.TransferTask({fsPath:'/source',fileSystem:source},{fsPath:'/project/file.txt',fileSystem:remote},{fileType:engine.FileType.File,transferDirection:engine.TransferDirection.LOCAL_TO_REMOTE,transferOption:{mode:0o600}});
+  await assert.rejects(task.run(),/isolation check failed/);assert.equal(opens,1);assert.equal(renames,0);assert.equal(unlinks,0,'cleanup must not follow replaced destination parents');
+ }
+});
+
+test('unsafe namespace stops both protocol tasks before OPEN and any payload',async()=>{
+ const {Readable}=require('node:stream');
+ for(const Adapter of [engine.SFTPFileSystem,engine.FTPFileSystem]){
+  const remote=new Adapter(path.posix,{client:{}});let mutations=0;
+  remote.createMutationMetadataReader=()=>async name=>({type:engine.FileType.Directory,mode:name==='/project'?0o777:0o755,uid:0});remote.open=remote.put=remote.unlink=async()=>{mutations++;};
+  const source={pathResolver:path.posix,get:async()=>Readable.from(['private'])};
+  const task=new engine.TransferTask({fsPath:'/source',fileSystem:source},{fsPath:'/project/file.txt',fileSystem:remote},{fileType:engine.FileType.File,transferDirection:engine.TransferDirection.LOCAL_TO_REMOTE,transferOption:{mode:0o600}});
+  await assert.rejects(task.run(),/isolation check failed/);assert.equal(mutations,0);
+ }
+});
+
+
+test('terminal isolation diagnostics returns nonzero for unverifiable namespace without changing files',t=>{
+ const {local,raw}=fixture(t);fs.mkdirSync(path.join(local,'.vscode'));fs.writeFileSync(path.join(local,'.vscode','sftp.json'),JSON.stringify(raw));
+ const result=spawnSync(process.execPath,[path.join(__dirname,'..','cli.js'),'sftp','isolation',local],{encoding:'utf8'});assert.equal(result.status,1,result.stderr);const report=JSON.parse(result.stdout);assert.equal(report.passed,false);assert.equal(report.results[0].result.jail,'not-verifiable-over-FTP-or-SFTP');assert.deepEqual(fs.readdirSync(raw.remotePath),[]);
 });

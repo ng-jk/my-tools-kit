@@ -6,7 +6,7 @@ const { createSession, operate, configurePorts, sshArguments, watchPolicy, findG
 async function main(args) {
   if (!args.length || args.includes('--help')) {
     console.log(`devkit sftp <action> <workspace> [relative-path] [options]
-Actions: config, profiles, list, read, diff, upload, download, sync-up, sync-down,
+Actions: config, profiles, isolation, list, read, diff, upload, download, sync-up, sync-down,
 sync-both, mkdir, create, rename, delete, upload-changed, upload-commit, watch, ssh
 Options: --config FILE --profile NAME --context NAME --all-profiles --force --yes
          --to RELATIVE-PATH --commit REVISION
@@ -100,9 +100,9 @@ paths and JSON output here. Transfer, profile and sync logic is shared.`);
       } else if (action === 'ssh') {
         const argv = sshArguments(session.config);
         await runSsh(argv);
-      } else results.push({profile:session.profile,result:await operate(session,action,relative,{...flags,batch:!!flags['all-profiles']})});
+      } else {const result=await operate(session,action,relative,{...flags,batch:!!flags['all-profiles']});if(action==='isolation'&&!result.passed)process.exitCode=1;results.push({profile:session.profile,result});}
     } finally { process.removeListener('SIGINT',cancel); session.service.dispose(); }
   }
-  console.log(JSON.stringify({passed:process.exitCode!==130,results},null,2));
+  console.log(JSON.stringify({passed:!process.exitCode,results},null,2));
 }
 module.exports = {main};

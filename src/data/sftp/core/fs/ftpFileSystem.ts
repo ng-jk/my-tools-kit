@@ -165,6 +165,8 @@ export default class FTPFileSystem extends RemoteFileSystem {
     }).catch(error=>{throw Object.assign(new Error('FTP private staging metadata cannot be verified: '+path+'. '+error.message),{code:error.code});});
   }
 
+  createMutationMetadataReader(){return this.createStagingMetadataReader();}
+
   createStagingMetadataReader(){
     const pending=new Map<string,Promise<FileStats>>(),context={usesListingOwner:false};
     const read=(path:string):Promise<FileStats>=>{
@@ -318,6 +320,7 @@ export default class FTPFileSystem extends RemoteFileSystem {
       checkSource();
       await this.chmod(payload,prepared.mode!);await this.verifyMode(payload,prepared.mode!);
       checkSource();
+      await option?.beforeReplace?.();
       await this.renameAtomic(payload,path);payloadMoved=true;
     } catch(error) {throw inputError||error;}
     finally {

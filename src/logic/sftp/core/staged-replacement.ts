@@ -1,5 +1,6 @@
+import {assertRemoteParentDirectories} from '../parent-directories';
 import {randomUUID} from 'crypto';
-import {FileSystem, FileType} from '../../../data/sftp/core/fs';
+import {FileSystem, FileType, RemoteFileSystem} from '../../../data/sftp/core/fs';
 export function stagingPath(target: string) { return target + '.devkit-' + randomUUID(); }
 export function isTransferArtifact(value: string) { return /\.devkit-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:\.backup|\.upload)?$/i.test(value); }
 export const filesystemIdentity = Symbol("filesystemIdentity");
@@ -19,6 +20,7 @@ export async function replaceStaged(fs: FileSystem, staged: string, target: stri
 }
 async function replace(fs: FileSystem, staged: string, target: string, atomic: boolean, checkCancelled: () => void) {
   checkCancelled();
+  if(fs instanceof RemoteFileSystem){await assertRemoteParentDirectories(fs,staged);await assertRemoteParentDirectories(fs,target);}
   if (atomic) { await fs.renameAtomic(staged, target); return; }
   let existing;
   try { existing = await fs.lstat(target); }

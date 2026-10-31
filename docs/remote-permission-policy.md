@@ -1,9 +1,13 @@
-# Remote permission policy
+# Remote permission and isolation policy
 
-User requirement, 2026-10-28: do not reject uploads because remote ancestors are group/other-writable, owned by a different account, or lack Unix owner/mode facts. Version 0.7.16 intentionally removes that client-side access policy. No setting, warning popup or ownership exception is required.
+Version 0.7.16 uses a protected account namespace for remote mutations. Earlier unpublished candidates allowed shared destination ancestors; review identified a pathname replacement race, so those candidates were never uploaded. The user subsequently requested server isolation support and replacement tests.
 
-The authenticated server enforces actual write authorization. This is ordinary trusted-server file transfer behavior, not a claim that remote paths are isolated from other server-side writers. The toolkit does not audit malicious co-writers or guarantee namespace stability against them.
+A jail limits account reach, but does not protect a selected path from another writer inside that jail. Use a dedicated transfer account, administrator-owned non-writable jail root and account-owned protected project/staging directories. Ancestor ownership/mode checks fail closed; existing remote directories are never automatically chmodded. Ownership, modes, symlink/type errors and missing facts identify the actual failing path.
 
-Real-directory, non-following path checks, configured-root boundaries, backups, private staging and chosen new-entry modes remain. Existing directory modes are left unchanged even when a creation dirPerm is configured. New entries still use configurable creation defaults (755), and explicit server errors, missing paths and backup failures remain actionable failures. This policy does not add automatic chmod of existing directories or weaken local credential handling, TLS, SSH host checks or release security reviews.
+The server administrator remains responsible for ACLs, mounts and privileged writers. The client cannot prove jail configuration through ordinary FTP/SFTP, and no boolean setting bypasses that limitation. A passed metadata diagnostic is not an attestation of server configuration.
 
-FTP plaintext staging uses a separate protected namespace, defaulting to the login directory. Configure an existing absolute `ftpStagingPath` in the context/profile when another private directory is needed; it must be on the same filesystem for rename. Its ancestor modes and owners must establish protection from other writers. This does not restrict destination ownership or modes. SFTP uses descriptor-based file protection. A hostile replacement wire regression confirms FTP STOR never targets the shared destination namespace.
+Without server administration access, run the read-only isolation diagnostic. Existing protected account trees work without server edits. Otherwise ask the host for a dedicated jailed transfer account and protected directories, or deploy to a protected location. Read-only browsing/download remains available. Backups or another client do not eliminate the replacement race.
+
+FTP plaintext staging stays in a separate private directory until final mode verification. Parent checks refresh before final replacement and before cleanup; a detected replacement prevents unsafe rename/unlink. These checks supplement protected server permissions, not an atomic rename-at guarantee. Ordinary protocols cannot guarantee safety against a malicious server administrator or another process using the same authenticated account.
+
+See [server-isolation.md](server-isolation.md) for setup examples and commands.

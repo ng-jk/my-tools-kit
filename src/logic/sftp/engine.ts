@@ -1,3 +1,4 @@
+import {inspectServerIsolation} from './parent-directories';
 import {createServerDirectory,createServerFile} from './server-permissions';
 import * as path from 'path';
 import { FileService, FileType, TransferDirection, fileOperations } from './core';
@@ -66,6 +67,7 @@ async function operate(session: any, action: string, relative = '.', flags: any 
   const remoteFs = guard(await service.getRemoteFileSystem(config));
   checkCancelled();
   const localFs = guard(service.getLocalFileSystem());
+  if (action === 'isolation') return inspectServerIsolation(remoteFs,remote);
   if (action === 'list') return remoteFs.list(remote);
   if (action === 'read') return (await remoteFs.readFile(remote)).toString('utf8');
   if (action === 'diff') {
@@ -73,8 +75,8 @@ async function operate(session: any, action: string, relative = '.', flags: any 
     await requireDiffFile(localFs,local,'local');await requireDiffFile(remoteFs,remote,'remote');
     return { local: (await localFs.readFile(local)).toString('utf8'), remote: (await remoteFs.readFile(remote)).toString('utf8') };
   }
-  if (action === 'mkdir') { await assertRemoteAncestors(remoteFs,remote,config.remotePath,true,true); await createServerDirectory(remoteFs,remote,config.dirPerm); return { passed: true }; }
-  if (action === 'create') { await assertRemoteAncestors(remoteFs,remote,config.remotePath,false,true); await createServerFile(remoteFs,remote,config.filePerm); return { passed: true }; }
+  if (action === 'mkdir') { await assertRemoteAncestors(remoteFs,remote,config.remotePath,true,true,true); await createServerDirectory(remoteFs,remote,config.dirPerm); return { passed: true }; }
+  if (action === 'create') { await assertRemoteAncestors(remoteFs,remote,config.remotePath,false,true,true); await createServerFile(remoteFs,remote,config.filePerm); return { passed: true }; }
   if (action === 'rename') {
     if (!flags.to || path.posix.resolve('/', remote) === path.posix.resolve('/', config.remotePath)) throw new Error('Rename requires a non-root path and --to');
     const destination = resolveTarget(session, flags.to).remote;
@@ -105,3 +107,5 @@ export {assertRemoteParentDirectories} from './parent-directories';
 export {createTransferConnections} from './transfer-connections';
 
 export {prepareFtpStaging} from './ftp-staging';
+
+export {inspectServerIsolation,assertProtectedRemoteParents} from './parent-directories';
