@@ -1,12 +1,12 @@
 # FTP/SFTP server isolation
 
-Use **SFTP: Check Server Isolation** in VS Code. Select the connection/context/profile; the command opens a read-only report and changes no files or server settings. Terminal equivalent:
+Use **SFTP: Check Server Isolation** in VS Code. Select the connection/context/profile; duplicate names are distinguished by host/port and workspace/context. Connection establishment and metadata inspection both show progress. The command opens a read-only report and changes no files or server settings. Terminal equivalent:
 
 ```sh
 node cli.js sftp isolation . --context production --profile live
 ```
 
-Omit context/profile when your configuration does not use them. The terminal returns exit 0 for protected directory metadata, exit 1 for an unsafe or unverifiable tree. It reports the remote path and reason. Upload, sync-up, create, rename and delete use the same checks. Read-only browsing/download is not gated by the mutation isolation policy.
+Omit context/profile when your configuration does not use them. The terminal returns exit 0 for protected directory metadata, exit 1 for an unsafe or unverifiable tree. It reports the host/port, workspace/context/profile, remote path and reason without credentials. Upload, sync-up, create, rename and delete use the same checks. Read-only browsing/download is not gated by the mutation isolation policy.
 
 A passing check verifies metadata only. FTP/SFTP do not provide a trustworthy jail-status query. It does not establish OS chroot, ACLs, mount policy or protection from a privileged administrator. No workspace flag can certify or bypass these requirements.
 

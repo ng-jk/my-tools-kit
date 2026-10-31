@@ -1482,7 +1482,7 @@ test('unsafe namespace stops both protocol tasks before OPEN and any payload',as
 
 test('terminal isolation diagnostics returns nonzero for unverifiable namespace without changing files',t=>{
  const {local,raw}=fixture(t);fs.mkdirSync(path.join(local,'.vscode'));fs.writeFileSync(path.join(local,'.vscode','sftp.json'),JSON.stringify(raw));
- const result=spawnSync(process.execPath,[path.join(__dirname,'..','cli.js'),'sftp','isolation',local],{encoding:'utf8'});assert.equal(result.status,1,result.stderr);const report=JSON.parse(result.stdout);assert.equal(report.passed,false);assert.equal(report.results[0].result.jail,'not-verifiable-over-FTP-or-SFTP');assert.deepEqual(fs.readdirSync(raw.remotePath),[]);
+ const result=spawnSync(process.execPath,[path.join(__dirname,'..','cli.js'),'sftp','isolation',local],{encoding:'utf8'});assert.equal(result.status,1,result.stderr);const report=JSON.parse(result.stdout);assert.equal(report.passed,false);assert.equal(report.results[0].result.jail,'not-verifiable-over-FTP-or-SFTP');assert.equal(report.results[0].result.connection.host,'fixture');assert.equal(report.results[0].result.connection.workspace,local);assert.ok(!Object.hasOwn(report.results[0].result.connection,'password'));assert.deepEqual(fs.readdirSync(raw.remotePath),[]);
 });
 
 

@@ -1,4 +1,4 @@
-import {inspectServerIsolation} from './parent-directories';
+import {inspectServerIsolation,isolationConnection} from './parent-directories';
 import {createServerDirectory,createServerFile} from './server-permissions';
 import * as path from 'path';
 import { FileService, FileType, TransferDirection, fileOperations } from './core';
@@ -67,7 +67,7 @@ async function operate(session: any, action: string, relative = '.', flags: any 
   const remoteFs = guard(await service.getRemoteFileSystem(config));
   checkCancelled();
   const localFs = guard(service.getLocalFileSystem());
-  if (action === 'isolation') return inspectServerIsolation(remoteFs,remote);
+  if (action === 'isolation') return inspectServerIsolation(remoteFs,remote,isolationConnection(service,config));
   if (action === 'list') return remoteFs.list(remote);
   if (action === 'read') return (await remoteFs.readFile(remote)).toString('utf8');
   if (action === 'diff') {
@@ -108,4 +108,4 @@ export {createTransferConnections} from './transfer-connections';
 
 export {prepareFtpStaging} from './ftp-staging';
 
-export {inspectServerIsolation,assertProtectedRemoteParents} from './parent-directories';
+export {inspectServerIsolation,assertProtectedRemoteParents,isolationConnection} from './parent-directories';

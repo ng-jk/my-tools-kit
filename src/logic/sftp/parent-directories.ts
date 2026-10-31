@@ -47,9 +47,13 @@ export async function assertProtectedRemoteParents(fs:ParentDirectories,target:s
   }
 }
 
-export async function inspectServerIsolation(fs:ParentDirectories,root:string) {
+export function isolationConnection(service:{workspace:string;baseDir:string;profile?:string|null},config:{host:string;port:number}) {
+  return {host:config.host,port:config.port,workspace:service.workspace,context:service.baseDir,profile:service.profile??null};
+}
+
+export async function inspectServerIsolation(fs:ParentDirectories,root:string,connection?:ReturnType<typeof isolationConnection>) {
   try {
     await assertProtectedRemoteParents(fs,root.replace(/\/$/,'')+'/__devkit_isolation_probe__');
-    return {passed:true,root,namespace:'protected-metadata',jail:'not-verifiable-over-FTP-or-SFTP',message:'Existing ancestors have protected ownership and modes. No files were changed. The administrator must confirm the account jail, ACLs, mounts and other privileged writers; protocol metadata cannot prove these.'};
-  }catch(error){return {passed:false,root,namespace:'unsafe-or-unverifiable',jail:'not-verifiable-over-FTP-or-SFTP',code:error.code||'REMOTE_INSPECTION_FAILED',message:error.message};}
+    return {passed:true,root,connection,namespace:'protected-metadata',jail:'not-verifiable-over-FTP-or-SFTP',message:'Existing ancestors have protected ownership and modes. No files were changed. The administrator must confirm the account jail, ACLs, mounts and other privileged writers; protocol metadata cannot prove these.'};
+  }catch(error){return {passed:false,root,connection,namespace:'unsafe-or-unverifiable',jail:'not-verifiable-over-FTP-or-SFTP',code:error.code||'REMOTE_INSPECTION_FAILED',message:error.message};}
 }
