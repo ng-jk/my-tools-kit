@@ -1,22 +1,24 @@
-# FTP/SFTP server isolation
+# Optional server-isolation advisory
 
-Use **SFTP: Check Server Isolation** in VS Code. Select the connection/context/profile; duplicate names are distinguished by host/port and workspace/context. Connection establishment and metadata inspection both show progress. The command opens a read-only report and changes no files or server settings. Terminal equivalent:
+Version 0.7.17 does not require isolation checks for transfers. Existing 775/777 modes, other owners and missing Unix owner facts do not block uploads, creation, rename or delete. Transfers trust the authenticated server namespace. See [the transfer policy](remote-permission-policy.md) for its scope.
+
+**SFTP: Check Server Isolation** opens an optional, read-only advisory report. Duplicate connection names show host/port and workspace/context; progress includes connection setup. A failing advisory does not prevent uploads. It does not establish jail, ACL or mount configuration, and changes no files or server settings.
+
+Terminal equivalent:
 
 ```sh
 node cli.js sftp isolation . --context production --profile live
 ```
 
-Omit context/profile when your configuration does not use them. The terminal returns exit 0 for protected directory metadata, exit 1 for an unsafe or unverifiable tree. It reports the host/port, workspace/context/profile, remote path and reason without credentials. Upload, sync-up, create, rename and delete use the same checks. Read-only browsing/download is not gated by the mutation isolation policy.
+Omit unused context/profile options. Exit 0 means the metadata advisory passed; exit 1 means shared/unverifiable metadata or another inspection failure. This exit code applies only to this explicitly invoked advisory command. Uploads do not call it or enforce its result. The report identifies server, context/profile, remote root, its advisory result and enforced=false without credentials.
 
-A passing check verifies metadata only. FTP/SFTP do not provide a trustworthy jail-status query. It does not establish OS chroot, ACLs, mount policy or protection from a privileged administrator. No workspace flag can certify or bypass these requirements.
+## When you cannot edit the server
 
-## If you cannot edit the server
+No administrator setup is required by the client. Upload normally with your existing context/profile. Existing directory permissions are unchanged; dirPerm controls newly created directories. The server can still reject writes or report missing/unreadable files, which remain actual operation errors. FTP's temporary-upload directory must support creation of a new 0700 subdirectory and final mode verification. An absolute ftpStagingPath can select another existing temporary-upload root on the same filesystem.
 
-No edit is needed if the hosting provider already supplies a protected account tree with sufficient metadata. Set remotePath to the account-visible project path (often /project inside a jail), then run the diagnostic. Do not use the host filesystem path outside the jail.
+## Trust and optional hardening
 
-If a path is shared-writable, owned by another untrusted account, a symlink or lacks owner/mode evidence, remote mutations stop with that path and reason. Ask the host for a dedicated FTP/SFTP account limited to your project, protected ancestors, and Unix owner/mode metadata. A private account-owned deployment directory can work without changing global daemon settings if the existing parent tree is already protected. Do not automatically chmod shared hosting directories. Another client or a backup cannot provide the missing confinement guarantee.
-
-A jail alone is insufficient: another writer within it could redirect a destination to a different file inside the jail. Project ancestors must also exclude untrusted writers, including through ACLs. A process using the same account, a privileged administrator or the server itself remains trusted. If those are hostile, use an administrator-provided deployment service that performs root-anchored atomic operations; ordinary FTP/SFTP cannot supply that guarantee.
+The client trusts parties able to mutate its remote namespace. A malicious co-writer can redirect path-based operations between checks; a jail only limits account reach and does not stop interference inside it. Private staging, backups and repeated checks do not eliminate this protocol limitation. The following examples are optional hardening for administrators, not product prerequisites. They are not executed by the toolkit.
 
 ## Administrator setup example: OpenSSH SFTP
 
@@ -53,8 +55,8 @@ local_root=/srv/devkit/account
 
 Account exception lists and per-user overrides can change these settings; the administrator must verify the effective login root, including failed local_root changes, and that the account cannot reach outside the intended jail. Do not enable writable-chroot exceptions as a substitute for a protected root. Retain the host's verified TLS configuration for FTPS. [vsftpd reference](https://manpages.debian.org/testing/vsftpd/vsftpd.conf.5.en.html), [Ubuntu FTP server guide](https://ubuntu.com/server/docs/how-to/networking/ftp/).
 
-Toolkit profile: protocol ftp, remotePath /project, ftpStagingPath /staging. FTP staging and project must share a filesystem so rename works. Enable MLST UNIX.mode/UNIX.uid facts or a consistent Unix LIST root self entry and owner metadata. The toolkit identifies unavailable facts instead of assuming them. Private staging needs MKD/RMD, 0700 mode changes and verification. Existing destination directory modes are not changed by the client.
+Toolkit profile: protocol ftp, remotePath /project, ftpStagingPath /staging. FTP staging and project must share a filesystem so rename works. The optional advisory can use MLST UNIX.mode/UNIX.uid facts or a Unix LIST root self entry. Transfers do not require those root ownership facts. Private staging needs MKD/RMD, 0700 mode changes and verification. Existing destination directory modes are not changed by the client.
 
 ## What is tested
 
-Headless tests cover protected roots, login/admin owners, unknown metadata, shared-writable parents, replacement after descriptor close, blocked final rename and guarded cleanup. Real local FTP/SFTP protocol fixtures inject a changed parent after STOR or CLOSE and assert originals stay unchanged and final rename is not sent. They also verify unsafe parents are blocked before payload and protected paths succeed. These are protocol fixtures, not certification that your live server is jailed; no production credentials or server settings are used.
+Headless tests cover protected roots, login/admin owners, unknown metadata, shared-writable parents, replacement after descriptor close, blocked final rename and guarded cleanup. Real local FTP/SFTP protocol fixtures inject a changed parent after STOR or CLOSE and assert originals stay unchanged and final rename is not sent. Uploads through shared modes and without root ownership metadata are also tested. These are protocol fixtures, not certification that your live server is jailed; no production credentials or server settings are used.

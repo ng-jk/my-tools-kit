@@ -74,8 +74,8 @@ test('SFTP wire: password authentication, list, upload, temp rename, download an
   honorOpen=true;allowChmod=true;
 
   fs.mkdirSync(path.join(remote,'var','www','cms'),{recursive:true});fs.mkdirSync(path.join(local,'var','www','cms'),{recursive:true});modes.set('/var',0o755);modes.set('/var/www',0o775);modes.set('/var/www/cms',0o777);
-  fs.writeFileSync(path.join(local,'var','www','cms','shared.php'),'shared SFTP upload');session.config.dirPerm=755;await assert.rejects(engine.operate(session,'upload','var/www/cms/shared.php'),/isolation check failed/);modes.set('/var/www',0o755);modes.set('/var/www/cms',0o755);await engine.operate(session,'upload','var/www/cms/shared.php');delete session.config.dirPerm;
-  assert.equal(fs.readFileSync(path.join(remote,'var','www','cms','shared.php'),'utf8'),'shared SFTP upload');assert.equal(modes.get('/var/www'),0o755);assert.equal(modes.get('/var/www/cms'),0o755);
+  fs.writeFileSync(path.join(local,'var','www','cms','shared.php'),'shared SFTP upload');session.config.dirPerm=755;await engine.operate(session,'upload','var/www/cms/shared.php');delete session.config.dirPerm;
+  assert.equal(fs.readFileSync(path.join(remote,'var','www','cms','shared.php'),'utf8'),'shared SFTP upload');assert.equal(modes.get('/var/www'),0o775);assert.equal(modes.get('/var/www/cms'),0o777);
   fs.mkdirSync(path.join(remote,'race'));modes.set('/race',0o755);fs.mkdirSync(path.join(local,'race'));fs.writeFileSync(path.join(local,'race','victim.txt'),'new payload');fs.writeFileSync(path.join(remote,'race','victim.txt'),'original');replaceOnClose=true;
   await assert.rejects(engine.operate(session,'upload','race/victim.txt'),/not a real directory/);assert.equal(renamesAfterRace,0);assert.equal(fs.readFileSync(path.join(remote,'race','victim.txt'),'utf8'),'original');replacedFolder=false;fs.rmSync(path.join(local,'race'),{recursive:true,force:true});fs.rmSync(path.join(remote,'race'),{recursive:true,force:true});modes.delete('/race');
   assert.equal((await engine.operate(session,'list')).some(item=>item.name==='wire.txt'),true);

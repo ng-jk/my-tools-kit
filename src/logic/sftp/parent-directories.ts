@@ -1,9 +1,8 @@
 import {FileType, FileStats} from '../../data/sftp/core/fs/fileSystem';
 export interface ParentDirectories {pathResolver:{dirname(path:string):string};lstat(path:string):Promise<FileStats>;createMutationMetadataReader?(): (path:string)=>Promise<FileStats>;}
-// Ordinary metadata ports retain non-following type checks. Protocol adapters
-// supply fresh ownership/mode evidence for namespace mutation protection.
+// Uploads trust the authenticated server namespace, as requested by the owner.
+// Keep directory/type checks; permission/owner audits are advisory only.
 export async function assertRemoteParentDirectories(fs:ParentDirectories,path:string,allowMissing=false):Promise<void>{
-  if(fs.createMutationMetadataReader)return assertProtectedRemoteParents(fs,path,allowMissing);
   const parents:string[]=[];let current=fs.pathResolver.dirname(path);
   while(true){parents.push(current);const parent=fs.pathResolver.dirname(current);if(current==='/'||parent===current)break;current=parent;}
   for(const parent of parents.reverse()){
@@ -22,12 +21,12 @@ export function isolationOwner(stat:FileStats):string|undefined {
 }
 
 export async function assertProtectedRemoteParents(fs:ParentDirectories,target:string,allowMissing=false):Promise<void> {
-  if(!target.startsWith('/'))throw Object.assign(new Error('Remote isolation requires an absolute account-visible path. Set remotePath to the path visible inside the login namespace, for example /project; no server settings were changed.'),{code:'REMOTE_ISOLATION_REQUIRED',remotePath:target});
+  if(!target.startsWith('/'))throw Object.assign(new Error('Remote isolation requires an absolute account-visible path. Set remotePath to the path visible inside the login namespace, for example /project; no server settings were changed.'),{code:'REMOTE_ISOLATION_ADVISORY',remotePath:target});
   const read=fs.createMutationMetadataReader?.()||((name:string)=>fs.lstat(name));
   const paths:string[]=[];let current=fs.pathResolver.dirname(target);
   while(true){paths.push(current);const parent=fs.pathResolver.dirname(current);if(current==='/'||parent===current)break;current=parent;}
   paths.reverse();
-  const fail=(path:string,reason:string)=>Object.assign(new Error('Remote isolation check failed at '+path+': '+reason+'. No unsafe mutation was authorized. Use a dedicated account/project directory with protected ancestors; ask the hosting administrator if you cannot change the server. A jail alone does not protect folders from other writers inside it. Run SFTP: Check Server Isolation or devkit sftp isolation for details.'),{code:'REMOTE_ISOLATION_REQUIRED',remotePath:path});
+  const fail=(path:string,reason:string)=>Object.assign(new Error('Remote isolation advisory at '+path+': '+reason+'. This advisory does not block transfers. Uploads use authenticated server access; other server-side writers are trusted. No files were changed by this inspection.'),{code:'REMOTE_ISOLATION_ADVISORY',remotePath:path});
   const check=(stat:FileStats,path:string)=>{
     if(stat.type!==FileType.Directory)throw fail(path,'not a real directory (possibly replaced by a symlink)');
     if(!Number.isInteger(stat.mode)||stat.mode<0||stat.mode>0o7777)throw fail(path,'directory permissions are unavailable');
@@ -54,6 +53,6 @@ export function isolationConnection(service:{workspace:string;baseDir:string;pro
 export async function inspectServerIsolation(fs:ParentDirectories,root:string,connection?:ReturnType<typeof isolationConnection>) {
   try {
     await assertProtectedRemoteParents(fs,root.replace(/\/$/,'')+'/__devkit_isolation_probe__');
-    return {passed:true,root,connection,namespace:'protected-metadata',jail:'not-verifiable-over-FTP-or-SFTP',message:'Existing ancestors have protected ownership and modes. No files were changed. The administrator must confirm the account jail, ACLs, mounts and other privileged writers; protocol metadata cannot prove these.'};
-  }catch(error){return {passed:false,root,connection,namespace:'unsafe-or-unverifiable',jail:'not-verifiable-over-FTP-or-SFTP',code:error.code||'REMOTE_INSPECTION_FAILED',message:error.message};}
+    return {passed:true,enforced:false,root,connection,namespace:'protected-metadata',jail:'not-verifiable-over-FTP-or-SFTP',message:'Advisory metadata inspection only; this result does not authorize or block transfers. No files were changed. FTP/SFTP cannot prove account jail, ACL or mount configuration.'};
+  }catch(error){return {passed:false,enforced:false,root,connection,namespace:'unsafe-or-unverifiable',jail:'not-verifiable-over-FTP-or-SFTP',code:error.code||'REMOTE_INSPECTION_FAILED',message:error.message};}
 }

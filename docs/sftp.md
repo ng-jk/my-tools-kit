@@ -229,23 +229,10 @@ SFTP file modes are set through their open descriptor. If FSETSTAT is unsupporte
 
 New Folder sends the requested mode during SFTP MKDIR, then verifies it without pathname chmod. FTP New Folder must match the server’s creation policy; if the server creates a different mode, the command reports the retained folder instead of changing it through a pathname. Configure the server’s creation mask to match the desired dirPerm. Create missing parents with owner write/search access before creating a read-only child folder. SFTP FSTAT is required for file permission verification; pathname STAT is never used as a fallback.
 
-Remote isolation (0.7.16): uploads, remote creation, delete and rename require real directory ancestors with known owner/mode metadata, owned by the login namespace/account or administrator and not writable by other accounts. These checks require the server permissions needed to exclude untrusted directory replacements; the administrator must also confirm ACLs, mounts and privileged writers. Existing modes are not changed. A configured path or a jail assertion cannot bypass the checks. Read-only browsing/download remains available when the server allows it.
+Remote transfer policy (0.7.17): existing folder modes and ownership do not gate uploads, creation, rename or delete. Shared modes such as 775/777, different owners and missing Unix ownership facts are accepted. Transfers use the authenticated account and the server's actual access controls. Existing directories are not automatically chmodded, and no jail/administrator setup is required by the client. Relative remotePath configurations use the server login namespace as before.
 
-Run **SFTP: Check Server Isolation** from the Command Palette, or `node cli.js sftp isolation . --context NAME --profile PROFILE`. The same read-only logic reports the failing path and remedy; terminal failure uses a nonzero exit status. Passing metadata checks does not verify a jail, ACLs, mounts or privileged server writers. An administrator must confirm those. See [server isolation and no-admin guidance](https://github.com/ng-jk/my-tools-kit/blob/developement/docs/server-isolation.md).
+**SFTP: Check Server Isolation** and `node cli.js sftp isolation .` are optional, read-only advisory reports. A failed advisory does not block transfers. Their CLI result describes the advisory inspection only. They cannot certify a jail, ACLs or protection against other server-side writers.
 
-FTP payloads use a separate private login-directory staging area, or an existing absolute `ftpStagingPath` per context/profile on the same filesystem. Its metadata must be verifiable; the namespace root must expose ownership for destination checks. The server must support private 0700 staging directories, final file mode verification and rename. Missing metadata produces a specific error rather than pretending isolation is enabled.
+FTP still stages each upload in a new 0700 temporary directory under the login directory, or an existing absolute `ftpStagingPath` on the same filesystem. Only the newly created private directory and final payload mode are verified; existing ancestor ownership/modes are not audited during transfers. Backups, real-directory checks, observed symlink rejection, configured-root boundaries, credentials, SSH host keys and TLS verification remain enabled.
 
-
-
-
-For upload speed behavior, upstream comparison and the local wire benchmark, see [transfer performance](sftp-performance.md). Per-file metadata snapshots are discarded before mutations; ancestry is checked again for the next file.
-
-
-## Asynchronous batch uploads
-
-FTP folder/batch uploads use `ftpConnections` (default 3, integer 1–8) independent connections. This is a per-batch cap, not an account-wide server connection limit. Other commands or profiles may also hold connections. Each added connection uses the same resolved authentication, host, port, TLS configuration and time offset, and is closed afterward. A failed worker login stops before upload; configure ftpConnections 1 for session-limited servers. All required backups finish on the planning connection before workers start. Each worker performs fresh ancestry/permission checks, private staging and verified replacement. Cancellation aborts pending logins, stops queued transfers, cleans up running staging where possible and closes added connections. Different files can finish in different order; same destination/overlapping commands remain protected by upload locks.
-
-SFTP keeps concurrency over its existing SSH connection. Multiprocessing does not improve this I/O workload; bounded asynchronous transfers avoid extra processes and credential distribution. Single-file uploads and separate individual commands are not automatically grouped into a pooled batch.
-
-
-During active FTP upload cancellation, the data stream is ended before ABOR so the server can settle STOR. Partial content remains in private staging and cannot replace the original. Service disposal releases its primary connection after transfer cleanup settles; cleanup may require additional network round trips.
+The product trusts the authenticated server namespace and other parties able to change it. It does not provide confinement against malicious remote co-writers: pathname checks can race with server-side changes. Private staging and backups do not turn ordinary FTP/SFTP into an isolation mechanism. [Transfer policy and scope](https://github.com/ng-jk/my-tools-kit/blob/developement/docs/remote-permission-policy.md).

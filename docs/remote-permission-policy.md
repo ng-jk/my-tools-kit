@@ -1,13 +1,22 @@
-# Remote permission and isolation policy
+# FTP/SFTP transfer policy and security scope
 
-Version 0.7.16 uses a protected account namespace for remote mutations. Earlier unpublished candidates allowed shared destination ancestors; review identified a pathname replacement race, so those candidates were never uploaded. The user subsequently requested server isolation support and replacement tests.
+## Owner decision, 2026-11-04
 
-A jail limits account reach, but does not protect a selected path from another writer inside that jail. Use a dedicated transfer account, administrator-owned non-writable jail root and account-owned protected project/staging directories. Ancestor ownership/mode checks fail closed; existing remote directories are never automatically chmodded. Ownership, modes, symlink/type errors and missing facts identify the actual failing path.
+After the folder-permission and isolation limitations were explained, the owner explicitly requested: "fix it, i dont need no such restriction" for the /hr-leave mode-775 rejection. Version 0.7.17 implements that requirement: no automatic remote ancestor mode/owner/jail gate, no exception toggle, no forced chmod of existing server directories and no demand to contact an administrator before upload.
 
-The server administrator remains responsible for ACLs, mounts and privileged writers. The client cannot prove jail configuration through ordinary FTP/SFTP, and no boolean setting bypasses that limitation. A passed metadata diagnostic is not an attestation of server configuration.
+## Product contract
 
-Without server administration access, run the read-only isolation diagnostic. Existing protected account trees work without server edits. Otherwise ask the host for a dedicated jailed transfer account and protected directories, or deploy to a protected location. Read-only browsing/download remains available. Backups or another client do not eliminate the replacement race.
+This is a conventional authenticated FTP/SFTP client. It trusts the configured server, the account login namespace and other parties able to mutate that namespace. Group/other-write bits and missing Unix ownership facts are not treated as upload denials. Actual protocol permission, authentication, missing-path and backup failures still fail with the actual affected operation/path. Relative remote roots retain normal login-relative behavior.
 
-FTP plaintext staging stays in a separate private directory until final mode verification. Parent checks refresh before final replacement and before cleanup; a detected replacement prevents unsafe rename/unlink. These checks supplement protected server permissions, not an atomic rename-at guarantee. Ordinary protocols cannot guarantee safety against a malicious server administrator or another process using the same authenticated account.
+The server is responsible for access control and any OS jail/ACL policy. The product does not promise confinement against a malicious co-writer, account peer, server administrator or server itself. Such a writer can replace a directory between a path check and OPEN/rename. This is a known limitation of this owner-selected trust model; no claim is made that rechecking paths, a random name, private staging or backups eliminates it. Use a different account/server if that trust assumption does not hold.
 
-See [server-isolation.md](server-isolation.md) for setup examples and commands.
+## Retained behavior
+
+- Reject lexical escapes outside the configured local/remote root and observed symlink/non-directory parents.
+- Recheck directory types before replacement and cleanup; stop on detected replacements. These are best-effort checks, not atomic root-anchored operations.
+- Back up existing originals before replacement; preserve abort and recovery behavior.
+- FTP uses STOR inside a newly created 0700 staging directory; verify that directory and final payload mode before rename. The existing staging-root ancestors are not subject to owner/mode gates.
+- Keep TLS verification, SSH host-key checks, credential isolation, private-key handling, credential scanning and mandatory AI reviews. Those review gates are unchanged.
+- Keep optional isolation diagnostics as read-only advisory information. Their result is explicitly not enforced by upload/create/delete/rename.
+
+The tests demonstrate uploads through 775/777 parents without changing their modes, operation without root ownership facts, shared logic for UI/terminal, private FTP payload staging and detected folder replacement before later mutations. They do not certify production server isolation or exercise real production credentials.

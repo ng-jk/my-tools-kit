@@ -314,8 +314,9 @@ export default class FTPFileSystem extends RemoteFileSystem {
       await this.mkdir(directory);created=true;
       await this.chmod(directory,0o700);await this.verifyMode(directory,0o700,FileType.Directory);
       checkSource();
-      // No APPE or REST: even servers that recreate STOR files cannot expose
-      // their contents through this verified owner-only parent directory.
+      // No APPE or REST. A verified 0700 temporary parent protects normal
+      // STOR defaults within the trusted namespace; it does not isolate
+      // payloads from malicious writers able to replace its ancestors.
       await this.atomicPut(input,payload,checkSource);
       checkSource();
       await this.chmod(payload,prepared.mode!);await this.verifyMode(payload,prepared.mode!);

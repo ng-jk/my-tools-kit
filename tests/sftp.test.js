@@ -1168,7 +1168,7 @@ test('verified remote parent avoids redundant mkdir and lstat and still rejects 
  remote.lstat=async()=>{stats++;return {type:engine.FileType.Directory,uid:0,mode:0o755};};
  remote.ensureDir=async()=>{throw new Error('redundant mkdir');};
  const source={pathResolver:path.posix};
- await engine.ensureTransferDirectory(source,remote,'/local','/remote');assert.equal(stats,3,'target, namespace root and authenticated home checks');
+ await engine.ensureTransferDirectory(source,remote,'/local','/remote');assert.equal(stats,2,'target and namespace-root directory type checks');
  remote.lstat=async name=>({type:name==='/'?engine.FileType.Directory:engine.FileType.SymbolicLink,uid:0,mode:0o755});
  await assert.rejects(engine.ensureTransferDirectory(source,remote,'/local','/remote'),/not a real directory/);
 });
@@ -1392,29 +1392,25 @@ test('remote parent validation retains missing-path and non-directory errors wit
  remote.lstat=async name=>({type:name==='/var/www'?engine.FileType.SymbolicLink:engine.FileType.Directory,mode:0o777});await assert.rejects(engine.assertRemoteParentDirectories(remote,'/var/www/cms/file'),/not a real directory.*var.www/);
 });
 
-test('FTP mutations reject missing namespace root metadata instead of assuming a jail',async()=>{
+test('FTP parent checks do not require Unix root ownership metadata',async()=>{
  const commands=[],remote=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({list:(_name,cb)=>cb(null,[{name:'var',type:'d',rights:undefined,date:new Date(),size:0}]),_send:(cmd,cb)=>{commands.push(cmd);cb(Object.assign(new Error('unsupported'),{code:502}));}})}});
- await assert.rejects(engine.assertRemoteParentDirectories(remote,'/var/file.php'),/metadata cannot be verified: \/.*administrator/);assert.ok(commands.length>0);
+ await engine.assertRemoteParentDirectories(remote,'/var/file.php');assert.deepEqual(commands,[]);
 });
 
 
-test('FTP stages privately without applying destination ownership or permission policy',async()=>{
- const seen=[],metadata=new Map([['/',{type:engine.FileType.Directory,mode:0o755}],['/home',{type:engine.FileType.Directory,mode:0o755,uid:0}],['/home/account',{type:engine.FileType.Directory,mode:0o700,uid:1000}]]);
- const remote={pathResolver:path.posix,getLoginDirectory:async()=>'/home/account',createStagingMetadataReader:()=>async name=>{seen.push(name);if(!metadata.has(name))throw new Error('unknown');return metadata.get(name);}};
- assert.equal(await engine.prepareFtpStaging(remote),'/home/account');assert.ok(!seen.includes('/var/www/cms'));
- metadata.set('/home',{type:engine.FileType.Directory,mode:0o777,uid:0});await assert.rejects(engine.prepareFtpStaging(remote),/private staging location is not protected/);
- metadata.set('/home',{type:engine.FileType.Directory,mode:0o755,uid:0});metadata.set('/private',{type:engine.FileType.Directory,mode:0o700,uid:1000});assert.equal(await engine.prepareFtpStaging(remote,'/private'),'/private');
- metadata.set('/private',{type:engine.FileType.SymbolicLink,mode:0o700,uid:1000});await assert.rejects(engine.prepareFtpStaging(remote,'/private'),/private staging/);
+test('FTP staging accepts shared and unknown ancestor metadata while rejecting actual symlink parents',async()=>{
+ const metadata=new Map([['/',{type:engine.FileType.Directory}],['/home',{type:engine.FileType.Directory,mode:0o775,uid:99}],['/home/account',{type:engine.FileType.Directory,mode:0o777,uid:1234}]]);
+ const remote={pathResolver:path.posix,getLoginDirectory:async()=>'/home/account',lstat:async name=>{if(!metadata.has(name))throw new Error('missing '+name);return metadata.get(name);}};
+ assert.equal(await engine.prepareFtpStaging(remote),'/home/account');metadata.set('/home',{type:engine.FileType.Directory});assert.equal(await engine.prepareFtpStaging(remote),'/home/account');
+ metadata.set('/private',{type:engine.FileType.Directory,mode:0o775});assert.equal(await engine.prepareFtpStaging(remote,'/private'),'/private');metadata.set('/private',{type:engine.FileType.SymbolicLink});await assert.rejects(engine.prepareFtpStaging(remote,'/private'),/not a real directory/);
  assert.throws(()=>engine.createSession(os.tmpdir(),{protocol:'ftp',host:'fixture',username:'fixture',remotePath:'/',ftpStagingPath:'relative'}),/ftpStagingPath/);
- const session=engine.createSession(os.tmpdir(),{protocol:'ftp',host:'fixture',username:'fixture',remotePath:'/',ftpStagingPath:'/private',profiles:{other:{ftpStagingPath:'/other'}}});try{assert.equal(session.config.ftpStagingPath,'/private');assert.equal(session.service.getConfig('other').ftpStagingPath,'/other');}finally{session.service.dispose();}
 });
-
 
 test('FTP private staging requests missing root facts and rejects ambiguous facts',async()=>{
  const calls=[],replies=['type=dir; /','OK','type=dir;UNIX.mode=0755;UNIX.uid=0; /'];
  const remote=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({_send:(command,cb)=>{calls.push(command);cb(null,replies.shift());},pwd:cb=>cb(null,'/')})}});
- await engine.prepareFtpStaging(remote);assert.deepEqual(calls,['MLST /','OPTS MLST type;UNIX.mode;UNIX.uid;','MLST /']);
- replies.push('type=dir;UNIX.mode=0755;unix.mode=0777;UNIX.uid=0; /');await assert.rejects(engine.prepareFtpStaging(remote),/Ambiguous FTP/);
+ await engine.assertProtectedRemoteParents(remote,'/file');assert.deepEqual(calls,['MLST /','OPTS MLST type;UNIX.mode;UNIX.uid;','MLST /']);
+ replies.push('type=dir;UNIX.mode=0755;unix.mode=0777;UNIX.uid=0; /');await assert.rejects(engine.assertProtectedRemoteParents(remote,'/file'),/Ambiguous FTP/);
 });
 
 test('FTP private staging LIST fallback supports named and numeric owners',async()=>{
@@ -1422,9 +1418,9 @@ test('FTP private staging LIST fallback supports named and numeric owners',async
   const entry={name:'.',type:'d',owner,rights:{user:'rwx',group:'r-x',other:'r-x'},date:new Date(),size:0};
   const remote=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({_send:(_cmd,cb)=>cb(Object.assign(new Error('Unsupported'),{code:502})),list:(_path,cb)=>cb(null,[entry]),pwd:cb=>cb(null,'/')})}});
   remote.lstat=async name=>({type:engine.FileType.Directory,mode:0o755,owner:name==='/other'?'stranger':owner});
-  assert.equal(await engine.prepareFtpStaging(remote,'/owned'),'/owned');await assert.rejects(engine.prepareFtpStaging(remote,'/other'),/private staging owner/);
-  entry.rights.other='rwx';await assert.rejects(engine.prepareFtpStaging(remote),/not protected/);
-  entry.type='l';await assert.rejects(engine.prepareFtpStaging(remote),/not protected/);
+  await engine.assertProtectedRemoteParents(remote,'/owned/file');await assert.rejects(engine.assertProtectedRemoteParents(remote,'/other/file'),/outside the login/);
+  entry.rights.other='rwx';await assert.rejects(engine.assertProtectedRemoteParents(remote,'/file'),/other accounts|not a real directory/);
+  entry.type='l';await assert.rejects(engine.assertProtectedRemoteParents(remote,'/file'),/other accounts|not a real directory/);
  }
 });
 
@@ -1432,14 +1428,14 @@ test('FTP staging fallback rejects missing, duplicate, unknown mode and transien
  for(const kind of ['missing','duplicate','unknown','transient']){
   let lists=0;const entry={name:'.',type:'d',owner:'account',rights:kind==='unknown'?undefined:{user:'rwx',group:'r-x',other:'r-x'},date:new Date(),size:0};
   const remote=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({_send:(_cmd,cb)=>cb(Object.assign(new Error('Unavailable'),{code:kind==='transient'?450:502})),list:(_path,cb)=>{lists++;cb(null,kind==='missing'?[{...entry,name:'child'}]:kind==='duplicate'?[entry,entry]:[entry]);},pwd:cb=>cb(null,'/')})}});
-  await assert.rejects(engine.prepareFtpStaging(remote),/not protected|ambiguous|cannot be verified/);if(kind==='transient')assert.equal(lists,0);
+  await assert.rejects(engine.assertProtectedRemoteParents(remote,'/file'),/permissions are unavailable|ambiguous|cannot be verified/);if(kind==='transient')assert.equal(lists,0);
  }
 });
 
 test('FTP staging root facts coalesce within a file but refresh for the next file',async()=>{
- let roots=0,mode='0755';const remote=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({_send:(_cmd,cb)=>{roots++;cb(null,'type=dir;UNIX.mode='+mode+'; /');},pwd:cb=>cb(null,'/')})}});
- assert.equal(await engine.prepareFtpStaging(remote),'/');assert.equal(roots,1);
- mode='0777';await assert.rejects(engine.prepareFtpStaging(remote),/not protected/);assert.equal(roots,2);
+ let roots=0,mode='0755';const remote=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({_send:(_cmd,cb)=>{roots++;cb(null,'type=dir;UNIX.mode='+mode+';UNIX.uid=0; /');},pwd:cb=>cb(null,'/')})}});
+ await engine.assertProtectedRemoteParents(remote,'/file');assert.equal(roots,1);
+ mode='0777';await assert.rejects(engine.assertProtectedRemoteParents(remote,'/file'),/other accounts|not a real directory/);assert.equal(roots,2);
 });
 
 
@@ -1449,7 +1445,7 @@ test('server isolation diagnostics accepts protected account trees and never cla
  const relative=await engine.inspectServerIsolation(remote,'relative');assert.equal(relative.passed,false);assert.match(relative.message,/absolute account-visible path/);
  const report=await engine.inspectServerIsolation(remote,'/project');assert.equal(report.passed,true);assert.equal(report.jail,'not-verifiable-over-FTP-or-SFTP');
  for(const stat of [{type:engine.FileType.Directory,mode:0o775,uid:1000},{type:engine.FileType.Directory,mode:0o755,uid:2000},{type:engine.FileType.Directory,mode:NaN,uid:1000},{type:engine.FileType.SymbolicLink,mode:0o755,uid:1000}]){
-  metadata.set('/project',stat);const failed=await engine.inspectServerIsolation(remote,'/project');assert.equal(failed.passed,false);assert.equal(failed.code,'REMOTE_ISOLATION_REQUIRED');assert.match(failed.message,/hosting administrator/);
+  metadata.set('/project',stat);const failed=await engine.inspectServerIsolation(remote,'/project');assert.equal(failed.passed,false);assert.equal(failed.code,'REMOTE_ISOLATION_ADVISORY');assert.equal(failed.enforced,false);
  }
 });
 
@@ -1459,26 +1455,27 @@ test('folder replacement after descriptor close blocks final rename and unsafe c
   let replaced=false,opens=0,renames=0,unlinks=0;
   const remote=new Adapter(path.posix,{client:{}});
   remote.createMutationMetadataReader=()=>async name=>({type:replaced&&name==='/project'?engine.FileType.SymbolicLink:engine.FileType.Directory,mode:0o755,uid:0});
-  remote.lstat=async name=>{if(name.endsWith('file.txt'))throw Object.assign(new Error('missing'),{code:'ENOENT'});return {type:engine.FileType.Directory,mode:0o755,uid:0};};
+  remote.lstat=async name=>{if(name.endsWith('file.txt'))throw Object.assign(new Error('missing'),{code:'ENOENT'});return {type:replaced&&name==='/project'?engine.FileType.SymbolicLink:engine.FileType.Directory,mode:0o755,uid:0};};
   remote.open=async()=>{opens++;return {};};remote.close=async()=>{replaced=true;};remote.prepareStagedFile=async()=>{};remote.put=async input=>{input.resume();await new Promise(resolve=>input.on('end',resolve));};remote.rename=remote.renameAtomic=async()=>{renames++;};remote.unlink=async()=>{unlinks++;};
   if(Adapter===engine.FTPFileSystem){remote.getLoginDirectory=async()=>'/';remote.createStagingMetadataReader=remote.createMutationMetadataReader;}
   const source={pathResolver:path.posix,get:async()=>Readable.from(['payload'])};
   const task=new engine.TransferTask({fsPath:'/source',fileSystem:source},{fsPath:'/project/file.txt',fileSystem:remote},{fileType:engine.FileType.File,transferDirection:engine.TransferDirection.LOCAL_TO_REMOTE,transferOption:{mode:0o600}});
-  await assert.rejects(task.run(),/isolation check failed/);assert.equal(opens,1);assert.equal(renames,0);assert.equal(unlinks,0,'cleanup must not follow replaced destination parents');
+  await assert.rejects(task.run(),/not a real directory/);assert.equal(opens,1);assert.equal(renames,0);assert.equal(unlinks,0,'cleanup must not follow replaced destination parents');
  }
 });
 
-test('unsafe namespace stops both protocol tasks before OPEN and any payload',async()=>{
+test('real FTP and SFTP task adapters accept 775 or unknown parent metadata without calling isolation policy',async()=>{
  const {Readable}=require('node:stream');
- for(const Adapter of [engine.SFTPFileSystem,engine.FTPFileSystem]){
-  const remote=new Adapter(path.posix,{client:{}});let mutations=0;
-  remote.createMutationMetadataReader=()=>async name=>({type:engine.FileType.Directory,mode:name==='/project'?0o777:0o755,uid:0});remote.open=remote.put=remote.unlink=async()=>{mutations++;};
-  const source={pathResolver:path.posix,get:async()=>Readable.from(['private'])};
-  const task=new engine.TransferTask({fsPath:'/source',fileSystem:source},{fsPath:'/project/file.txt',fileSystem:remote},{fileType:engine.FileType.File,transferDirection:engine.TransferDirection.LOCAL_TO_REMOTE,transferOption:{mode:0o600}});
-  await assert.rejects(task.run(),/isolation check failed/);assert.equal(mutations,0);
+ for(const Adapter of [engine.SFTPFileSystem,engine.FTPFileSystem])for(const mode of [0o775,0o777,undefined]){
+  const remote=new Adapter(path.posix,{client:{}});let renames=0,payloads=0;
+  remote.createMutationMetadataReader=()=>{throw new Error('permission isolation must not gate uploads');};
+  remote.lstat=async name=>{if(name.endsWith('file.txt'))throw Object.assign(new Error('missing'),{code:'ENOENT'});return {type:engine.FileType.Directory,mode,uid:1234};};
+  remote.open=async()=>({});remote.close=remote.prepareStagedFile=async()=>{};remote.put=async input=>{payloads++;input.resume();await new Promise(resolve=>input.on('end',resolve));};remote.rename=remote.renameAtomic=async()=>{renames++;};remote.unlink=async()=>{};
+  if(Adapter===engine.FTPFileSystem)remote.getLoginDirectory=async()=>'/';
+  const source={pathResolver:path.posix,get:async()=>Readable.from(['payload'])};
+  await new engine.TransferTask({fsPath:'/source',fileSystem:source},{fsPath:'/hr-leave/file.txt',fileSystem:remote},{fileType:engine.FileType.File,transferDirection:engine.TransferDirection.LOCAL_TO_REMOTE,transferOption:{mode:0o600}}).run();assert.equal(payloads,1);assert.equal(renames,1);
  }
 });
-
 
 test('terminal isolation diagnostics returns nonzero for unverifiable namespace without changing files',t=>{
  const {local,raw}=fixture(t);fs.mkdirSync(path.join(local,'.vscode'));fs.writeFileSync(path.join(local,'.vscode','sftp.json'),JSON.stringify(raw));
@@ -1491,9 +1488,9 @@ test('FTP mutation ownership negotiates partial MLST then falls back to valid Un
   const commands=[],entry={name:'.',type:'d',owner,rights:{user:'rwx',group:'r-x',other:'r-x'},date:new Date(),size:0};
   const remote=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({_send:(command,cb)=>{commands.push(command);cb(null,command.startsWith('MLST')?'type=dir;UNIX.mode=0755; /':'200 OK');},list:(name,cb)=>{commands.push('LIST '+name);cb(null,[entry]);},pwd:cb=>cb(null,'/')})}});
   remote.lstat=async()=>({type:engine.FileType.Directory,mode:0o755,owner});
-  await engine.assertRemoteParentDirectories(remote,'/owned/file.txt');assert.deepEqual(commands.slice(0,4),['MLST /','OPTS MLST type;UNIX.mode;UNIX.uid;','MLST /','LIST -al /']);
+  await engine.assertProtectedRemoteParents(remote,'/owned/file.txt');assert.deepEqual(commands.slice(0,4),['MLST /','OPTS MLST type;UNIX.mode;UNIX.uid;','MLST /','LIST -al /']);
  }
  const commands=[];let count=0;const remote=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({_send:(command,cb)=>{commands.push(command);cb(null,command.startsWith('MLST')?'type=dir;UNIX.mode=0755;'+(++count===2?'UNIX.uid=0;':'')+' /':'200 OK');},pwd:cb=>cb(null,'/')})}});
- await engine.assertRemoteParentDirectories(remote,'/file.txt');assert.equal(count,2);assert.ok(!commands.some(command=>command.startsWith('LIST')));
+ await engine.assertProtectedRemoteParents(remote,'/file.txt');assert.equal(count,2);assert.ok(!commands.some(command=>command.startsWith('LIST')));
  const schema=JSON.parse(fs.readFileSync(path.join(__dirname,'../vendor/sftp/schema/definitions.json'),'utf8'));const option=Object.values(schema).find(item=>item?.properties?.ftpStagingPath).properties.ftpStagingPath;const pattern=new RegExp(option.pattern);assert.ok(pattern.test('/private/staging'));assert.ok(!pattern.test('/bad\nname'));
 });
