@@ -38,3 +38,10 @@ This toolkit repository enables `"autoPublishAfterUat": true`. After passing `te
 AI review, tests and human UAT remain required. An unavailable reviewer or failed gate stops release. If publication fails after approval, approval remains recorded and `publish` can retry using the retained package and upload receipts. Changing the candidate requires new test evidence and acceptance. Commit a new extension version before testing each Marketplace update; this workflow does not silently change a version after approval. Publishing updates the Marketplace listing; each VS Code installation must have extension auto-updates enabled to install updates automatically.
 
 With `securityReview: true`, deployment finishes with a credential-file/token scan and AI security review of source and the exact retained packages selected for upload. Failed, missing, stale or mismatched evidence stops publication. Reports redact secret values and state scanning limitations.
+
+
+## Remote FTP/SFTP review scope
+
+`remoteNamespaceTrust` defaults to `default`, preserving the generic review criteria. The fixed enum value `trusted-server` supplies an operator-selected scope to technical, UI/UX and final archive security reviewers: the remote FTP/SFTP filesystem namespace and its writers are trusted, and malicious-co-writer confinement is not a product promise. This toolkit selects that value following the owner's explicit 2026-11-04 requirement to remove mode/owner/jail upload restrictions. It is not free-form prompt text and does not accept other values.
+
+The selected scope is recorded in status and signed stage evidence, and is bound by the existing configuration digest and exact commit. Changing it invalidates prior test/review evidence. It does not disable a review, override an approval result, permit high/critical findings, skip credential scans or relax local traversal, credentials, command execution, TLS or SSH host-key checks. A reviewer can still reject the release. Automated configuration must retain the operator's chosen scope; it must not opt a different project into trusted-server scope without that owner's explicit requirement.

@@ -1,6 +1,6 @@
 # Python pipeline configurator
 
-Version 0.3.1 adds optional VS Code Marketplace publication with Microsoft Entra ID to the Python standard-library runtime. The VS Code extension, terminal wrapper, and Codex/Claude Code skill all invoke `pipeline.py`; no release policy is duplicated in JavaScript.
+Version 0.3.2 adds a bounded operator-selected FTP/SFTP review scope (default criteria remain unchanged) and retains optional VS Code Marketplace publication with Microsoft Entra ID to the Python standard-library runtime. The VS Code extension, terminal wrapper, and Codex/Claude Code skill all invoke `pipeline.py`; no release policy is duplicated in JavaScript.
 
 ## Branches and commands
 

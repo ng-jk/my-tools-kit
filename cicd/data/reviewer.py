@@ -12,15 +12,15 @@ SCHEMA = {"type": "object", "additionalProperties": False, "required": ["candida
 UX_CRITERIA = ("task_flow", "clarity_feedback", "error_recovery", "destructive_actions", "keyboard_access", "accessibility", "layout_consistency")
 
 
-def review_ui_ux(root, candidate, base, provider, output, timeout):
-    return review(root, candidate, base, provider, output, timeout, ui_ux=True)
+def review_ui_ux(root, candidate, base, provider, output, timeout, security_scope=""):
+    return review(root, candidate, base, provider, output, timeout, ui_ux=True, security_scope=security_scope)
 
 
-def review_security(root, candidate, base, provider, output, timeout, artifacts):
-    return review(root, candidate, base, provider, output, timeout, security_artifacts=artifacts)
+def review_security(root, candidate, base, provider, output, timeout, artifacts, security_scope=""):
+    return review(root, candidate, base, provider, output, timeout, security_artifacts=artifacts, security_scope=security_scope)
 
 
-def review(root, candidate, base, provider, output, timeout, ui_ux=False, security_artifacts=None):
+def review(root, candidate, base, provider, output, timeout, ui_ux=False, security_artifacts=None, security_scope=""):
     output.unlink(missing_ok=True)
     schema = output.with_suffix(".schema.json")
     response_schema = json.loads(json.dumps(SCHEMA))
@@ -42,6 +42,8 @@ def review(root, candidate, base, provider, output, timeout, ui_ux=False, securi
               "The pipeline already passed architecture, unit, function, integration, and build commands for this candidate. "
               f"Python is available at {sys.executable} if needed for diagnostics. "
               "Approve only after inspecting the changes; explain remaining limitations in summary.")
+    if security_scope:
+        prompt += " Operator-selected release security scope: " + security_scope
     if ui_ux:
         prompt += (" This is the separate required UI/UX code review replacing human acceptance. "
                    "Inspect the implemented UI entry points and whole affected user journeys, not only changed lines. "

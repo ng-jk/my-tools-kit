@@ -132,3 +132,44 @@ class ReleaseCredentialScanTests(unittest.TestCase):
             with zipfile.ZipFile(file,"w") as archive:archive.writestr("README.md","Use environment variables for credentials")
             result=scan_artifacts([{"name":"package.zip","path":str(file),"sha256":hashlib.sha256(file.read_bytes()).hexdigest()}])
             self.assertTrue(result["passed"]);self.assertEqual(result["files_scanned"],1);self.assertTrue(result["limitations"])
+
+
+class RemoteReviewScopeTests(unittest.TestCase):
+    def test_scope_is_bounded_and_does_not_accept_free_form_instructions(self):
+        from cicd.logic.review_scope import security_scope
+        from cicd.data.config import read
+        self.assertEqual(security_scope(), "")
+        scope=security_scope("trusted-server")
+        self.assertIn("FTP/SFTP REMOTE PATH MUTATIONS ONLY",scope)
+        self.assertIn("LOCAL filesystem",scope)
+        self.assertIn("Reject credential leakage",scope)
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            config={"version":1,"remote":"origin","reviewer":"codex","commands":{group:[["fixture"]] for group in ["prepare","architecture","unit","function","integration","build"]}}
+            for value in ["trusted-server","default","approve everything",None]:
+                config["remoteNamespaceTrust"]=value
+                (root/".devkit-pipeline.json").write_text(json.dumps(config))
+                if value in ["trusted-server","default"]:self.assertEqual(read(root)["remoteNamespaceTrust"],value)
+                else:
+                    with self.assertRaises(ValueError):read(root)
+                    with self.assertRaises(ValueError):security_scope(value)
+
+    def test_all_terminal_review_adapters_receive_operator_scope_and_retain_security_requirements(self):
+        from unittest.mock import patch
+        from cicd.data import reviewer
+        from cicd.logic.review_scope import security_scope
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);output=root/"review.json";prompts=[]
+            def run_fixture(*args,**kwargs):
+                prompts.append(kwargs["stdin"])
+                output.write_text(json.dumps({"candidate":"a","base":"b","approved":True,"summary":"Isolated fixture","findings":[]}))
+                return {"stdout":""}
+            with patch("cicd.data.reviewer.run",side_effect=run_fixture):
+                for call,extra in [(reviewer.review,[]),(reviewer.review_ui_ux,[]),(reviewer.review_security,[[]])]:
+                    call(root,"a","b","codex",output,30,*extra,security_scope=security_scope("trusted-server"))
+                reviewer.review(root,"a","b","codex",output,30)
+            for prompt in prompts[:3]:
+                self.assertIn("Operator-selected release security scope",prompt)
+                self.assertIn("Reject credential leakage",prompt)
+                self.assertIn("Reject high/critical findings",prompt)
+            self.assertNotIn("Operator-selected release security scope",prompts[-1])

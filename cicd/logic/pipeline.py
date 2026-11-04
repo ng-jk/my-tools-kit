@@ -9,6 +9,7 @@ from ..data.process import run
 from ..data.reviewer import review, review_ui_ux, review_security
 from ..data.security import scan_artifacts
 from .marketplace import MarketplaceRelease
+from .review_scope import security_scope
 
 
 class Pipeline:
@@ -28,6 +29,7 @@ class Pipeline:
         return {"passed": True, "branches": {key: self.git.ref(value) for key, value in BRANCHES.items()},
                 "reviewer": self.config["reviewer"], "evidence": str(self.store.root),
                 "interfaceReview": self.config.get("interfaceReview", "human"),
+                "remoteNamespaceTrust": self.config.get("remoteNamespaceTrust", "default"),
                 "autoPublishAfterUat": self.config.get("autoPublishAfterUat", False),
                 "marketplace": self.config.get("marketplace"),
                 "flow": "developement -> test -> " + ("AI UI/UX review" if self.config.get("interfaceReview") == "ai-ux" else "human interface UAT") + " -> deployment -> configured Marketplace upload -> main"}
@@ -59,6 +61,9 @@ class Pipeline:
         root = self.store.worktree_path()
         report = {"candidate": sha, "base": base, "configuration": digest(self.config), "stage": stage,
                   "created": datetime.now(timezone.utc).isoformat(), "passed": False, "gates": {}}
+        scope=security_scope(self.config.get("remoteNamespaceTrust", "default"))
+        review_options={"security_scope":scope} if scope else {}
+        report["remote_namespace_trust"]=self.config.get("remoteNamespaceTrust", "default")
         self.git.add_worktree(root, sha)
         try:
             if digest(read(root)) != digest(self.config):
@@ -72,7 +77,7 @@ class Pipeline:
                 report["gates"][name] = True
             output = self.store.root / f"review-{stage}-{sha}.json"
             self.progress(f"{stage}: running AI review with {self.config['reviewer']}")
-            result = self.reviewer(root, sha, base, self.config["reviewer"], output, self.config.get("timeout", 900))
+            result = self.reviewer(root, sha, base, self.config["reviewer"], output, self.config.get("timeout", 900), **review_options)
             report["review"] = result
             report["gates"]["ai_review"] = review_passes(result, sha, base)
             if not report["gates"]["ai_review"]:
@@ -80,7 +85,7 @@ class Pipeline:
             if self.config.get("interfaceReview") == "ai-ux":
                 self.progress(f"{stage}: running UI/UX code review with {self.config['reviewer']}")
                 report["ui_ux_review"] = self.ux_reviewer(root, sha, base, self.config["reviewer"],
-                    self.store.root / f"review-ui-ux-{stage}-{sha}.json", self.config.get("timeout", 900))
+                    self.store.root / f"review-ui-ux-{stage}-{sha}.json", self.config.get("timeout", 900), **review_options)
                 report["gates"]["ui_ux_review"] = True
                 try:
                     require_ui_ux(report, sha, base)
@@ -96,7 +101,7 @@ class Pipeline:
                 if not report["gates"]["security_scan"]:
                     raise ValueError("Release package credential scan failed; inspect redacted findings")
                 report["security_review"] = self.security_reviewer(root, sha, base, self.config["reviewer"],
-                    self.store.root / f"review-security-{stage}-{sha}.json", self.config.get("timeout",900), tested.get("artifacts", []))
+                    self.store.root / f"review-security-{stage}-{sha}.json", self.config.get("timeout",900), tested.get("artifacts", []), **review_options)
                 report["gates"]["security_review"] = review_passes(report["security_review"],sha,base)
                 if not report["gates"]["security_review"]:
                     raise ValueError("Final security review rejected the release or is invalid")

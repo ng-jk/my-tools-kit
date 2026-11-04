@@ -5,6 +5,7 @@
 - Remove the remote ancestor permission/ownership isolation gate. Existing 775/777 directories, other owners and missing Unix owner facts no longer prevent FTP/SFTP mutations; existing modes stay unchanged.
 - Keep isolation inspection available as an optional advisory. Its result is not enforced by transfer operations. Restore normal login-relative remote-path behavior.
 - Keep verified backups, directory/symlink type checks, guarded replacement/cleanup, new-entry permissions, private FTP staging and asynchronous batch transfers.
+- Pipeline plugin 0.3.2 supplies a bounded, configuration/commit-bound operator review scope to all three reviewers. It does not bypass rejected or high/critical reviews or credential scans.
 - Document the owner-selected trusted-server security model and its limits: ordinary path-based protocols do not provide confinement against malicious server-side co-writers.
 - Add protocol regressions for shared destination modes without ownership facts and retain folder-replacement, credential, TLS and host-key checks.
 
