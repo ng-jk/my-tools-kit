@@ -1,3 +1,8 @@
+# 0.7.19 — 2026-11-05
+
+- Classify FTP AUTH/PBSZ/PROT negotiation failures as structured security errors so optional connection fallback cannot conceal them.
+- Add a real FTP protocol rejection regression for the dependency error shape.
+
 # 0.7.18 — 2026-11-05
 
 - Restore single-session FTP batches; optional parallel sessions fall back when extra logins fail.

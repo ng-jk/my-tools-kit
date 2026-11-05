@@ -256,3 +256,16 @@ test('FTP disconnect rejects active and queued requests promptly without replay'
  const errors=await Promise.all([request(),request()]);assert.ok(errors.every(error=>error&&error.code==='ECONNRESET'));
  const next=await request();assert.equal(next.code,'ENOTCONN');assert.equal(callbacks,3);
 });
+
+test('FTP TLS negotiation rejection is classified as fatal security failure',{timeout:5000},async t=>{
+ const sockets=new Set(),commands=[],server=net.createServer(socket=>{sockets.add(socket);socket.on('error',()=>{});socket.on('close',()=>sockets.delete(socket));socket.write('220 fixture\r\n');let pending='';socket.on('data',chunk=>{pending+=chunk;let end;while((end=pending.indexOf('\r\n'))!==-1){commands.push(pending.slice(0,end));pending=pending.slice(end+2);socket.write('502 TLS unavailable\r\n');}});});
+ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+ const session=engine.createSession(os.tmpdir(),{protocol:'ftp',host:'127.0.0.1',port:server.address().port,username:'fixture',password:'fixture',remotePath:'/',secure:true});
+ t.after(async()=>{session.service.dispose();for(const socket of sockets)socket.destroy();await new Promise(resolve=>server.close(resolve));});
+ const options={host:'127.0.0.1',port:server.address().port,username:'fixture',password:'fixture',secure:true,connectTimeout:1000};
+ const remote=new engine.FTPFileSystem(path.posix,{clientOption:options});t.after(()=>remote.end());
+ let structured;try{await remote.connect(options,{askForPasswd:async()=>{throw new Error('unexpected prompt');}});}catch(error){structured=error;}
+ assert.ok(structured);assert.equal(structured.securityFailure,true);assert.equal(structured.code,'FTP_TLS_NEGOTIATION_FAILED');assert.equal(structured.ftpReplyCode,502);
+ assert.ok(commands.includes('AUTH TLS'));assert.ok(commands.includes('AUTH SSL'));assert.equal(commands.some(command=>command.startsWith('USER')||command.startsWith('PASS')),false);
+ await assert.rejects(engine.createTransferConnections({createTransferConnection:async()=>{throw structured;}},2,new AbortController().signal,()=>{}),error=>error===structured);
+});

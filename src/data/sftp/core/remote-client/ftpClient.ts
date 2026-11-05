@@ -103,6 +103,14 @@ export default class FTPClient extends RemoteClient {
         .once('close',()=>{clearTimeout(timer);if(!this.connected)reject(new Error('FTP connection closed before authentication'));})
         .on('error', (err: any) => {
           clearTimeout(timer);
+          // ftp reports AUTH/PBSZ/PROT negotiation failure using a numeric
+          // reply code and this fixed message. Preserve that protocol code
+          // separately and expose a structured security classification.
+          if (/^Unable to secure connection\(s\)$/.test(err.message || '')) {
+            err.ftpReplyCode = err.code;
+            err.code = 'FTP_TLS_NEGOTIATION_FAILED';
+            err.securityFailure = true;
+          }
           reject(err);
         })
         .connect({
