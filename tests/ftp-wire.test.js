@@ -172,6 +172,11 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
   session.config.ftpConnections=3;extraLimit=controlCount+1;const stores=commands.filter(c=>c==='STOR').length;
   await engine.operate(session,'upload','parallel');assert.equal(commands.filter(c=>c==='STOR').length,stores+4,'healthy connections finish the batch despite one rejected extra login');extraLimit=Infinity;
   await waitUntil(()=>activeControls===1,'partial setup cleanup',3000);
+  console.log('FTP fixture: TLS diagnostic at upload boundary');
+  const primaryForTls=await session.service.getRemoteFileSystem(session.config),originalFork=primaryForTls.createTransferConnection,beforeTlsStores=storeTargets.length;
+  primaryForTls.createTransferConnection=async()=>{throw Object.assign(new Error('Unable to secure connection(s)'),{code:'FTP_TLS_NEGOTIATION_FAILED',securityFailure:true,ftpReplyCode:502});};
+  try{await assert.rejects(engine.operate(session,'upload','parallel'),error=>{assert.match(error.message,/TLS certificate verification or negotiation failed/);assert.doesNotMatch(error.message,/ftpConnections to 1|session limits/);assert.equal(error.code,'FTP_TLS_NEGOTIATION_FAILED');return true;});}finally{primaryForTls.createTransferConnection=originalFork;}
+  assert.equal(storeTargets.length,beforeTlsStores,'TLS negotiation failure sends no payload');
   console.log('FTP fixture: global and service login cancellation');
   for(const cancelSetup of [()=>engine.cancelActiveTransfers(),()=>session.service.cancelTransferTasks()]){
     holdPeerLogin=true;const setupBefore=heldLogins,setup=engine.operate(session,'upload','parallel');await waitUntil(()=>heldLogins>setupBefore,'worker authentication reached');await cancelledPromptly(setup,cancelSetup,'global/service login cancellation');holdPeerLogin=false;

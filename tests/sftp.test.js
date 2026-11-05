@@ -1515,3 +1515,8 @@ test('failed batch stops queued files while active transfers settle',async t=>{
 test('all optional sessions rejected still retains the primary connection',async()=>{
  const primary={isConnectionAlive:()=>true,createTransferConnection:async()=>{throw new Error('Too many sessions');}};const pool=await engine.createTransferConnections(primary,4,new AbortController().signal,()=>{});assert.equal(pool.size,1);const lease=await pool.acquire();assert.equal(lease.fs,primary);lease.release();pool.close();
 });
+
+test('structured TLS failures produce actionable redacted security diagnostics',()=>{
+ const {connectionFailure}=require('../src/logic/sftp/diagnostics');const error=connectionFailure(Object.assign(new Error('Unable to secure connection(s)'),{code:'FTP_TLS_NEGOTIATION_FAILED',securityFailure:true}),{protocol:'ftp',host:'fixture',port:21,password:'not-for-diagnostics'});
+ assert.match(error.message,/TLS certificate verification or negotiation failed/);assert.equal(error.securityFailure,true);assert.equal(error.code,'FTP_TLS_NEGOTIATION_FAILED');assert.doesNotMatch(error.message,/not-for-diagnostics/);
+});

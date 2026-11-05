@@ -2,6 +2,7 @@
 function connectionFailure(error, config) {
   const code=error?.code;
   const text=String(error?.message || '');
+  const securityFailure=error?.securityFailure===true||code==='FTP_TLS_NEGOTIATION_FAILED'||/certificate|self.signed|tls|ssl|host key/i.test(text);
   let problem;
   if (['ENOTFOUND','EAI_AGAIN'].includes(code)) problem='Host name could not be resolved. Check host and DNS.';
   else if(code==='ECONNREFUSED') problem='Host refused the connection. Check port and whether FTP/SSH is running.';
@@ -9,12 +10,13 @@ function connectionFailure(error, config) {
   else if(code===530||code==='530'||error?.level==='client-authentication'||/authentication|all configured authentication|login incorrect|not logged in/i.test(text)) problem='Authentication rejected. Check username and password, or the SSH key/passphrase and account access. The server may not identify which credential is incorrect.';
   else if(code==='ENOENT') problem='A local SSH key or connection file was not found. Check privateKeyPath and SSH configuration paths.';
   else if(/host key/i.test(text)) problem='SSH host key verification failed. Verify the server fingerprint and known-hosts or pin settings.';
-  else if(/certificate|self.signed|tls|ssl/i.test(text)) problem='TLS certificate verification or negotiation failed. Check the server certificate and TLS settings.';
+  else if(securityFailure) problem='TLS certificate verification or negotiation failed. Check the server certificate and TLS settings.';
   else return error; // Preserve cancellation and other existing specific diagnostics.
   const host=typeof config.host==='string'&&config.host.length<254&&/^[a-zA-Z0-9.:[\]_-]+$/.test(config.host)?config.host:undefined;
   const endpoint=host?' to '+host+(Number.isInteger(config.port)?':'+config.port:''):'';
   const result=new Error(`${String(config.protocol || 'sftp').toUpperCase()} connection${endpoint}: ${problem}`);
   if(code!==undefined)result.code=code;
+  if(securityFailure)result.securityFailure=true;
   return result;
 }
 async function requireDiffFile(fs, file, side) {

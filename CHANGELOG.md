@@ -1,7 +1,8 @@
 # 0.7.19 — 2026-11-05
 
 - Classify FTP AUTH/PBSZ/PROT negotiation failures as structured security errors so optional connection fallback cannot conceal them.
-- Add a real FTP protocol rejection regression for the dependency error shape.
+- Preserve actionable TLS security guidance at the upload boundary instead of suggesting session-count changes.
+- Add real protocol rejection and upload-boundary regressions for the dependency error shape.
 
 # 0.7.18 — 2026-11-05
 
