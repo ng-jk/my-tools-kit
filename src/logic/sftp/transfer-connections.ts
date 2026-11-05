@@ -10,8 +10,13 @@ export async function createTransferConnections(primary:FileSystem,count:number,
       checkActive();const peer=await (primary as any).createTransferConnection(signal);
       peers.push(peer);checkActive();return peer;
     }));
-    const failed=results.find(result=>result.status==='rejected');if(failed&&failed.status==='rejected')throw failed.reason;
     checkActive();
+    // Optional extra sessions are an optimization. Busy/limited servers must
+    // not lose a healthy authenticated primary connection because one fails.
+    // Certificate/host-verification failures remain fatal, with no downgrade.
+    const fatal=results.find(result=>result.status==='rejected'&&/certificate|self.signed|tls|ssl|host.?key|cert_/i.test(String(result.reason?.code||'')+' '+String(result.reason?.message||'')));
+    if(fatal&&fatal.status==='rejected')throw fatal.reason;
+    if((primary as any).isConnectionAlive?.()===false)throw new Error('FTP primary connection closed while preparing transfer connections');
   }catch(error){for(const peer of peers)(peer as any).end();throw error;}
   const available=[primary,...peers],waiters:Array<{resolve:(fs:FileSystem)=>void;reject:(error:Error)=>void}>=[];
   let closed=false;

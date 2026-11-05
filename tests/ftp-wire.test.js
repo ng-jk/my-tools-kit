@@ -154,6 +154,11 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
   files.delete('/var/www/cms/shared.php');for(const directory of ['/var/www/cms','/var/www','/var']){directories.delete(directory);modes.delete(directory);}
   directories.add('/race');modes.set('/race',0o755);fs.mkdirSync(path.join(root,'race'));fs.writeFileSync(path.join(root,'race','victim.txt'),'new payload');files.set('/outside/victim.txt',Buffer.from('outside original'));const beforeRaceRename=renameTargets.length;replaceAfterStore=true;
   await assert.rejects(engine.operate(session,'upload','race/victim.txt'),/not a real directory/);assert.equal(files.get('/outside/victim.txt').toString(),'outside original');assert.equal(renameTargets.length,beforeRaceRename,'replacement before FTP staging rename sends no RNTO');linkTargets.delete('/race');files.delete('/race');files.delete('/outside/victim.txt');directories.add('/race');fs.rmSync(path.join(root,'race'),{recursive:true,force:true});directories.delete('/race');modes.delete('/race');
+  console.log('FTP fixture: default many-file single-session upload');
+  fs.mkdirSync(path.join(root,'many'));for(let n=0;n<48;n++)fs.writeFileSync(path.join(root,'many','file'+n),'batch '+n);
+  const batchConnections=controlCount;extraLimit=controlCount;await engine.operate(session,'upload','many');extraLimit=Infinity;assert.equal(controlCount,batchConnections);for(let n=0;n<48;n++)assert.equal(files.get('/many/file'+n).toString(),'batch '+n);
+  fs.rmSync(path.join(root,'many'),{recursive:true});for(let n=0;n<48;n++){files.delete('/many/file'+n);modes.delete('/many/file'+n);}directories.delete('/many');modes.delete('/many');
+  session.config.ftpConnections=3;
   console.log('FTP fixture: parallel upload');
   fs.mkdirSync(path.join(root,'parallel'));for(let n=0;n<4;n++)fs.writeFileSync(path.join(root,'parallel','file'+n+'.txt'),'parallel '+n);
   storeDelay=100;peakStores=0;const connectionsBefore=controlCount;
@@ -165,7 +170,7 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
   const overwrite=commands.slice(serialCommands);assert.ok(overwrite.lastIndexOf('RETR')<overwrite.indexOf('STOR'),'all original backups finish before the first overwrite');
   console.log('FTP fixture: partial setup failure');
   session.config.ftpConnections=3;extraLimit=controlCount+1;const stores=commands.filter(c=>c==='STOR').length;
-  await assert.rejects(engine.operate(session,'upload','parallel'),/parallel connection setup failed.*ftpConnections to 1/);assert.equal(commands.filter(c=>c==='STOR').length,stores,'connection failure sends no payload');extraLimit=Infinity;
+  await engine.operate(session,'upload','parallel');assert.equal(commands.filter(c=>c==='STOR').length,stores+4,'healthy connections finish the batch despite one rejected extra login');extraLimit=Infinity;
   await waitUntil(()=>activeControls===1,'partial setup cleanup',3000);
   console.log('FTP fixture: global and service login cancellation');
   for(const cancelSetup of [()=>engine.cancelActiveTransfers(),()=>session.service.cancelTransferTasks()]){
@@ -173,12 +178,12 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
     await waitUntil(()=>activeControls===1,'pending login cleanup',3000);
   }
   console.log('FTP fixture: service disposal');
-  const disposedSession=engine.createSession(root,{protocol:'ftp',host:'127.0.0.1',port:server.address().port,username:'fixture',password:'fixture',remotePath:'/',connectTimeout:30000});await disposedSession.service.getRemoteFileSystem(disposedSession.config);
+  const disposedSession=engine.createSession(root,{protocol:'ftp',host:'127.0.0.1',port:server.address().port,username:'fixture',password:'fixture',remotePath:'/',ftpConnections:3,connectTimeout:30000});await disposedSession.service.getRemoteFileSystem(disposedSession.config);
   holdPeerLogin=true;const disposalBefore=heldLogins,disposal=engine.operate(disposedSession,'upload','parallel');await waitUntil(()=>heldLogins>disposalBefore,'disposal worker authentication reached');await cancelledPromptly(disposal,()=>disposedSession.service.dispose(),'service disposal login cancellation');holdPeerLogin=false;
   await waitUntil(()=>activeControls===1,'disposal cleanup',3000);
   console.log('FTP fixture: payload cancellation');
   for(let n=0;n<4;n++)fs.writeFileSync(path.join(root,'parallel','file'+n+'.txt'),Buffer.alloc(8*1024*1024,65+n));
-  const payloadSession=engine.createSession(root,{protocol:'ftp',host:'127.0.0.1',port:server.address().port,username:'fixture',password:'fixture',remotePath:'/',connectTimeout:30000});await payloadSession.service.getRemoteFileSystem(payloadSession.config);
+  const payloadSession=engine.createSession(root,{protocol:'ftp',host:'127.0.0.1',port:server.address().port,username:'fixture',password:'fixture',remotePath:'/',ftpConnections:3,connectTimeout:30000});await payloadSession.service.getRemoteFileSystem(payloadSession.config);
   const cancelled=engine.operate(payloadSession,'upload','parallel');await waitUntil(()=>activeStores>0,'active payload reached');await cancelledPromptly(cancelled,()=>{payloadSession.service.cancelTransferTasks();payloadSession.service.dispose();},'terminal-style payload cancellation',10000);
   for(let n=0;n<4;n++)assert.equal(files.get('/parallel/file'+n+'.txt').toString(),'parallel '+n,'cancelled upload preserves backed-up destination');
   storeDelay=0;await waitUntil(()=>activeControls===1,'payload cleanup',3000);
@@ -238,4 +243,16 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
   await assert.rejects(engine.operate(session,'create','new.txt'),/exclusive file creation/);assert.equal(files.has('/new.txt'),false);
   await assert.rejects(engine.operate(session,'create','local.txt'),/exists/);
   files.set('/local.txt',Buffer.from('ftp server edit'));await engine.operate(session,'download','local.txt');assert.equal(fs.readFileSync(path.join(root,'local.txt'),'utf8'),'ftp server edit');
+});
+
+test('FTP disconnect rejects active and queued requests promptly without replay',{timeout:5000},async t=>{
+ const sockets=new Set(),server=net.createServer(socket=>{sockets.add(socket);socket.on('close',()=>sockets.delete(socket));socket.on('error',()=>{});socket.write('220 fixture\r\n');let pending='';
+ socket.on('data',chunk=>{pending+=chunk;let end;while((end=pending.indexOf('\r\n'))!==-1){const cmd=pending.slice(0,end).split(' ')[0];pending=pending.slice(end+2);if(cmd==='USER')socket.write('331 password\r\n');else if(cmd==='PASS')socket.write('230 ready\r\n');else if(cmd==='PWD')socket.destroy();else socket.write('200 OK\r\n');}});});
+ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+ const session=engine.createSession(os.tmpdir(),{protocol:'ftp',host:'127.0.0.1',port:server.address().port,username:'fixture',password:'fixture',remotePath:'/'});
+ t.after(async()=>{session.service.dispose();for(const socket of sockets)socket.destroy();await new Promise(resolve=>server.close(resolve));});
+ const remote=await session.service.getRemoteFileSystem(session.config),client=remote.getClient().getFsClient();let callbacks=0;
+ const request=()=>new Promise(resolve=>client._send('PWD',error=>{callbacks++;resolve(error);}));
+ const errors=await Promise.all([request(),request()]);assert.ok(errors.every(error=>error&&error.code==='ECONNRESET'));
+ const next=await request();assert.equal(next.code,'ENOTCONN');assert.equal(callbacks,3);
 });

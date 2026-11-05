@@ -1,3 +1,10 @@
+# 0.7.18 — 2026-11-05
+
+- Restore single-session FTP batches; optional parallel sessions fall back when extra logins fail.
+- Reject pending operations on disconnect and stop queued transfers after failure.
+- Separate configurable login (30 seconds) and passive-data setup (60 seconds) timeouts.
+- Add a 48-file real FTP batch regression and session-limit/TLS fallback tests.
+
 # Release notes
 
 ## 0.7.17 — 2026-11-04

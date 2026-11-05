@@ -34,6 +34,7 @@ interface Host {
   password: string;
   remotePath: string;
   connectTimeout: number;
+  dataTimeout: number;
 }
 
 interface ServiceOption {
@@ -528,7 +529,13 @@ export default class FileService {
 
     let runningPromise: Promise<void> | null = null;
     const failures: Error[] = [];
-    scheduler.onTaskDone((error) => { if (error) failures.push(error); });
+    scheduler.onTaskDone((error) => {
+      if(!error)return;
+      failures.push(error);
+      const remaining=scheduler.size;
+      scheduler.empty();
+      if(remaining)logger.warn('Transfer stopped after a failure; '+remaining+' queued file(s) were not started.');
+    });
     let isStopped: boolean = false;
     const transferScheduler: TransferScheduler = {
       get size() {

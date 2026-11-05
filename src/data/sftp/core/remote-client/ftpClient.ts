@@ -2,11 +2,28 @@
 import Client from 'ftp';
 import RemoteClient, { ConnectOption } from './remoteClient';
 
+// The upstream FTP dependency drops outstanding callbacks in _reset. Reject
+// them after resetting state so a closed socket cannot strand the file queue.
+const originalReset=Client.prototype._reset;
+Client.prototype._reset=function(){
+  const requests=[this._curReq,...(this._queue||[])].filter(Boolean);
+  originalReset.call(this);
+  for(const request of requests){
+    if(request.cmd==='NOOP'&&request.cb?.length===0)continue;
+    if(typeof request.cb==='function')queueMicrotask(()=>request.cb(Object.assign(new Error('FTP connection closed before the operation completed'),{code:'ECONNRESET'})));
+  }
+};
+
 // tslint:disable
 Client.prototype._send = function(cmd: string, cb: (err: Error) => void, promote: boolean) {
   if (cmd !== undefined && /[\r\n\x00]/.test(cmd)) {
     const error = new Error('FTP command contains a prohibited control character');
     if (typeof cb === 'function') queueMicrotask(() => cb(error)); else this.emit('error', error);
+    return;
+  }
+  if(cmd!==undefined&&(!this._socket||this._socket.destroyed||!this._socket.writable)){
+    const error=Object.assign(new Error('FTP connection is closed'),{code:'ENOTCONN'});
+    if(typeof cb==='function')queueMicrotask(()=>cb(error));
     return;
   }
   clearTimeout(this._keepalive);
@@ -64,7 +81,7 @@ export default class FTPClient extends RemoteClient {
       this.connected = false;
     });
 
-    const { username, connectTimeout = 3 * 1000, ...option } = connectOption;
+    const { username, connectTimeout = 30 * 1000, dataTimeout = 60 * 1000, ...option } = connectOption;
     return new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
         if (!this.connected) {
@@ -92,7 +109,7 @@ export default class FTPClient extends RemoteClient {
           keepalive: 1000 * 10, // 10 secs, original
           // keepalive: 1000 * 600, // 10 mins
           // keepalive: 1000 * 1800, // 30 mins
-          pasvTimeout: connectTimeout,
+          pasvTimeout: dataTimeout,
           ...option,
           connTimeout: connectTimeout,
           user: username,

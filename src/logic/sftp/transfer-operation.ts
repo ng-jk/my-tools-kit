@@ -74,11 +74,12 @@ export async function executeTransfer(service: any, config: any, local: string, 
     checkCancelled();
     finishMetadata?.();finishMetadata=undefined;
     planning = false;
-    const connections=!down&&config.protocol==='ftp'?Math.min(config.ftpConnections??3,tasks.length):1;
+    const connections=!down&&config.protocol==='ftp'?Math.min(config.ftpConnections??1,tasks.length):1;
     if(connections>1 && typeof (remoteFs as any).createTransferConnection==='function'){
       logger.info('Preparing '+connections+' FTP upload connections.');
       try{connectionPool=await createTransferConnections(remoteFs,connections,setupCancellation.signal,checkCancelled);}
       catch(error){checkCancelled();const diagnosed=connectionFailure(error,config);const detail=diagnosed!==error?diagnosed.message:'The server rejected an additional session; check session limits and network access.';throw new Error('FTP parallel connection setup failed. Set ftpConnections to 1 if the server limits sessions. '+detail);}
+      if(connectionPool.size<connections)logger.warn('FTP server accepted '+connectionPool.size+' of '+connections+' requested upload connections; continuing with the available connections.');
       const pool=connectionPool;
       for(const task of tasks)task.useConnectionPool(remoteFs,async()=>{
         const lease=await pool.acquire();return {...lease,fs:guard(lease.fs,(remoteFs as any)[filesystemIdentity])};

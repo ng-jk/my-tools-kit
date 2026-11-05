@@ -383,9 +383,11 @@ FTP/SFTP performance: 0.7.14 removes duplicate metadata probes, redundant stagin
 
 ### Parallel uploads
 
-Folder/batch FTP uploads use up to three independent connections by default. Set `"ftpConnections": 3` in the selected context/profile; supported values are 1–8. Set it to 1 if the server limits simultaneous logins. Each connection uploads one file at a time. All originals are backed up before the batch starts uploading; conflicting destination operations remain serialized. Added connections close when the batch finishes or fails, including cancellation. A single file is still one upload and is limited by its connection speed.
+Folder/batch FTP uploads reuse one authenticated connection by default, matching upstream behavior. Set `"ftpConnections": 3` in the selected context/profile; supported values are 1–8. Optional extra sessions fall back to accepted connections when extra logins fail; TLS verification failures remain fatal. Each connection uploads one file at a time. All originals are backed up before the batch starts uploading; conflicting destination operations remain serialized. Added connections close when the batch finishes or fails, including cancellation. A single file is still one upload and is limited by its connection speed.
 
 SFTP uses its existing `"concurrency": 4` setting over one SSH connection. VS Code commands and the terminal use the same settings: `devkit sftp upload path/to/folder`. No extra process is required. Separate individual commands do not become a single pooled batch.
 
 
 [Remote permission policy](https://github.com/ng-jk/my-tools-kit/blob/developement/docs/remote-permission-policy.md): transfers trust authenticated server access; ancestor modes and owners do not block them. Existing modes are not automatically changed.
+
+FTP login timeout (`connectTimeout`, default 30000 ms) and passive data connection timeout (`dataTimeout`, default 60000 ms) are separate and configurable per profile. Neither limits total batch duration. A lost connection fails pending operations promptly and stops starting queued files; interrupted writes are never replayed automatically.

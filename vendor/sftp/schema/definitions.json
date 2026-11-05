@@ -185,7 +185,14 @@
       "connectTimeout": {
         "type": "number",
         "description": "How long (in milliseconds) to wait for the connect to complete.",
-        "default": 10000
+        "default": 30000,
+        "minimum": 1
+      },
+      "dataTimeout": {
+        "type": "integer",
+        "minimum": 1,
+        "default": 60000,
+        "description": "FTP passive-data connection establishment timeout in milliseconds. Independent of login timeout and total batch/file duration."
       }
     }
   },
@@ -343,8 +350,8 @@
         "type": "integer",
         "minimum": 1,
         "maximum": 8,
-        "default": 3,
-        "description": "Total FTP connections for batch uploads. One file per connection; use 1 for servers with session limits. Backups finish before upload."
+        "default": 1,
+        "description": "FTP batch connections (1\u20138). Default 1 reuses a single connection like upstream. Additional sessions are optional; unavailable extras fall back to working connections, except certificate/host verification failures."
       },
       "ftpStagingPath": {
         "type": "string",

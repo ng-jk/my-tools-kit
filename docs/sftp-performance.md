@@ -20,9 +20,13 @@ Run alternating before/after samples and compare medians; local Git/ACL/disk act
 
 ## Limits
 
-FTP serializes control commands within each connection. From 0.7.15, batch uploads can use up to ftpConnections independent connections (default 3). Existing originals must be downloaded and verified in the backup before replacement. Private staging and permissions require protocol round trips. SFTP can use the configured transfer concurrency; FTP does not pretend that parallel commands on one control connection provide safe concurrent data transfers. Large-file bandwidth, server load, network latency and local backup storage still affect elapsed time. No production server credentials were used for these measurements.
+FTP serializes control commands within each connection. From 0.7.15, batch uploads can use up to ftpConnections independent connections (default 1 since 0.7.18; previously 3). Existing originals must be downloaded and verified in the backup before replacement. Private staging and permissions require protocol round trips. SFTP can use the configured transfer concurrency; FTP does not pretend that parallel commands on one control connection provide safe concurrent data transfers. Large-file bandwidth, server load, network latency and local backup storage still affect elapsed time. No production server credentials were used for these measurements.
 
 
 ## Parallel connection benchmark
 
 For a serial/parallel comparison with the same 0.7.15 engine, set DEVKIT_BENCHMARK_CONNECTIONS to 1 or 3 alongside DEVKIT_BENCHMARK_OUTPUT, then run the wire benchmark above. Added connection authentication is included in elapsed time. Originals are still downloaded and verified before workers upload. The HTML release report records three alternating samples for each setting; this is a local small-file latency workload, not a production throughput guarantee.
+
+## Large batch reliability (0.7.18)
+
+Compared against current upstream HEAD ef4d3ca3e6fd2c0c24e05079d3dcf6093d633ce8: upstream caches one connection per configuration, serializes FTP and multiplexes SFTP requests over one SSH session. The toolkit now defaults to one FTP connection too. Optional extra logins fall back to accepted sessions; certificate failures still stop the batch. Dropped FTP control connections reject pending requests instead of losing callbacks, and the scheduler stops queued transfers after failure. Login and passive-data establishment have independent 30-second and 60-second defaults. There is no total batch deadline or automatic replay of writes.

@@ -9,7 +9,8 @@ const configScheme = {
 
   host: Joi.string().required(),
   port: Joi.number().integer(),
-  connectTimeout: Joi.number().integer(),
+  connectTimeout: Joi.number().integer().min(1),
+  dataTimeout: Joi.number().integer().min(1),
   username: Joi.string().required(),
   password: nullable(Joi.string()),
 
@@ -89,7 +90,7 @@ const defaultConfig = {
   //   autoDelete: false,
   // },
   concurrency: 4,
-  ftpConnections: 3,
+  ftpConnections: 1,
   // limitOpenFilesOnRemote: false
 
   mirror: {
@@ -103,7 +104,8 @@ const defaultConfig = {
   // port,
   // username,
   // password,
-  connectTimeout: 10 * 1000,
+  connectTimeout: 30 * 1000,
+  dataTimeout: 60 * 1000,
 
   // sftp
   // agent,

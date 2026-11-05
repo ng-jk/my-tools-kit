@@ -1350,9 +1350,9 @@ test('FTP connection limits validate and are independently inherited per profile
  for(const value of [0,9,1.5])assert.throws(()=>engine.createSession(os.tmpdir(),{protocol:'ftp',host:'fixture',username:'fixture',remotePath:'/',ftpConnections:value}),/ftpConnections/);
 });
 
-test('connection setup closes partial peers and closed pools reject waiters',async()=>{
+test('connection setup retains accepted peers and closed pools reject waiters',async()=>{
  let closed=0,index=0;const peer={end:()=>closed++},primary={createTransferConnection:async()=>{if(++index===2)throw new Error('session rejected');return peer;}};
- await assert.rejects(engine.createTransferConnections(primary,3,new AbortController().signal,()=>{}),/session rejected/);assert.equal(closed,1);
+ const partial=await engine.createTransferConnections(primary,3,new AbortController().signal,()=>{});assert.equal(partial.size,2);partial.close();assert.equal(closed,1);
  const pool=await engine.createTransferConnections(primary,1,new AbortController().signal,()=>{}),lease=await pool.acquire(),waiting=pool.acquire();pool.close();await assert.rejects(waiting,/closed/);lease.release();await assert.rejects(pool.acquire(),/closed/);
 });
 
@@ -1493,4 +1493,25 @@ test('FTP mutation ownership negotiates partial MLST then falls back to valid Un
  const commands=[];let count=0;const remote=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({_send:(command,cb)=>{commands.push(command);cb(null,command.startsWith('MLST')?'type=dir;UNIX.mode=0755;'+(++count===2?'UNIX.uid=0;':'')+' /':'200 OK');},pwd:cb=>cb(null,'/')})}});
  await engine.assertProtectedRemoteParents(remote,'/file.txt');assert.equal(count,2);assert.ok(!commands.some(command=>command.startsWith('LIST')));
  const schema=JSON.parse(fs.readFileSync(path.join(__dirname,'../vendor/sftp/schema/definitions.json'),'utf8'));const option=Object.values(schema).find(item=>item?.properties?.ftpStagingPath).properties.ftpStagingPath;const pattern=new RegExp(option.pattern);assert.ok(pattern.test('/private/staging'));assert.ok(!pattern.test('/bad\nname'));
+});
+
+ test('optional FTP sessions preserve TLS failures and reject a dead primary',async()=>{
+ for(const primary of [{createTransferConnection:async()=>{throw Object.assign(new Error('certificate expired'),{code:'CERT_HAS_EXPIRED'});}},{isConnectionAlive:()=>false,createTransferConnection:async()=>{throw new Error('session limit');}}])await assert.rejects(engine.createTransferConnections(primary,2,new AbortController().signal,()=>{}),/certificate|primary connection closed/);
+ });
+ test('FTP batch defaults use one session and independent positive timeouts',()=>{
+ const session=engine.createSession(os.tmpdir(),{protocol:'ftp',host:'fixture',username:'fixture',remotePath:'/'});
+ try{assert.equal(session.config.ftpConnections,1);assert.equal(session.config.connectTimeout,30000);assert.equal(session.config.dataTimeout,60000);}finally{session.service.dispose();}
+ for(const key of ['connectTimeout','dataTimeout'])for(const value of [0,-1])assert.throws(()=>engine.createSession(os.tmpdir(),{protocol:'ftp',host:'fixture',username:'fixture',remotePath:'/',[key]:value}),new RegExp(key));
+ });
+
+test('failed batch stops queued files while active transfers settle',async t=>{
+ const {session}=fixture(t),scheduler=session.service.createTransferScheduler(2);let started=0,finished=false;
+ scheduler.add({run:async()=>{started++;throw new Error('connection dropped');}});
+ scheduler.add({run:async()=>{started++;await new Promise(resolve=>setTimeout(resolve,30));finished=true;}});
+ for(let n=0;n<100;n++)scheduler.add({run:async()=>{started++;}});
+ await assert.rejects(scheduler.run(),/connection dropped/);assert.equal(started,2);assert.equal(finished,true);assert.equal(scheduler.size,0);
+});
+
+test('all optional sessions rejected still retains the primary connection',async()=>{
+ const primary={isConnectionAlive:()=>true,createTransferConnection:async()=>{throw new Error('Too many sessions');}};const pool=await engine.createTransferConnections(primary,4,new AbortController().signal,()=>{});assert.equal(pool.size,1);const lease=await pool.acquire();assert.equal(lease.fs,primary);lease.release();pool.close();
 });

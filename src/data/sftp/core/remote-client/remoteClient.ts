@@ -8,6 +8,7 @@ export interface ConnectOption {
   username?: string;
   password?: string;
   connectTimeout?: number;
+  dataTimeout?: number;
   debug(x: string): void;
 
   // ssh-only

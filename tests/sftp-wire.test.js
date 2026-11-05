@@ -54,6 +54,9 @@ test('SFTP wire: password authentication, list, upload, temp rename, download an
   assert.equal(peerFs,originalFs,'services share the same cached connection');
   peer.service.dispose();
   assert.equal((await originalFs.list('/')).some(entry=>entry.name==='wire.txt'),true,'disposing one owner does not disconnect another');
+  const batchAuth=authentications;fs.mkdirSync(path.join(local,'many'));for(let n=0;n<32;n++)fs.writeFileSync(path.join(local,'many','file'+n),'SSH batch '+n);
+  await engine.operate(session,'upload','many');assert.equal(authentications,batchAuth,'many files reuse the authenticated SSH connection');for(let n=0;n<32;n++)assert.equal(fs.readFileSync(path.join(remote,'many','file'+n),'utf8'),'SSH batch '+n);
+  fs.rmSync(path.join(local,'many'),{recursive:true});fs.rmSync(path.join(remote,'many'),{recursive:true});
   modes.set('/wire.txt',0o600);
   await engine.operate(session,'upload','wire.txt');assert.equal(modes.get('/wire.txt'),0o600);assert.equal(writeModes.at(-1),0o600);
   modes.set('/wire.txt',0o440);
