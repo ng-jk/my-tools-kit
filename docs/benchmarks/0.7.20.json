@@ -1,0 +1,1330 @@
+{
+  "date": "2026-11-08",
+  "baseline": "0.7.19 / 5c4169125040d10efd359c7ac80dda655863bb1d",
+  "candidate": "0.7.20 pre-release performance build",
+  "method": "Windows loopback FTP/SFTP; six and 24 small files nested three directories; three samples per condition; 3ms added delay per reply/request; FTP one connection, SFTP concurrency four; warmed connections; new and overwrite phases; automatic backups enabled. Native protocol/OS timing remains part of elapsed time.",
+  "upstream": "ef4d3ca3e6fd2c0c24e05079d3dcf6093d633ce8 data/logic harness, UI log/document hooks stubbed; legacy CommonJS import interop normalized; local installed dependencies; useTempFile enabled and mirror backups enabled; expected original bytes verified before replacement. Not an installed upstream VS Code UI benchmark.",
+  "limitations": "Local small-file workload only, not production throughput. Original reference remains faster; no speed parity claim. Windows process startup and local disk scheduling vary: the six-file SFTP overwrite series was slower despite fewer requests; larger-batch medians improved. Permission/type checks and fail-closed backup verification are retained.",
+  "summary": [
+    {
+      "protocol": "ftp",
+      "phase": "new",
+      "files": 6,
+      "samples": 3,
+      "beforeMs": 6676,
+      "afterMs": 6100,
+      "elapsedReductionPercent": 8.6,
+      "beforeCommands": 423,
+      "afterCommands": 387,
+      "upstreamReferenceMs": 1128
+    },
+    {
+      "protocol": "ftp",
+      "phase": "existing",
+      "files": 6,
+      "samples": 3,
+      "beforeMs": 9518,
+      "afterMs": 6905,
+      "elapsedReductionPercent": 27.5,
+      "beforeCommands": 344,
+      "afterCommands": 308,
+      "upstreamReferenceMs": 2282
+    },
+    {
+      "protocol": "sftp",
+      "phase": "new",
+      "files": 6,
+      "samples": 3,
+      "beforeMs": 1126,
+      "afterMs": 915,
+      "elapsedReductionPercent": 18.7,
+      "beforeCommands": 162,
+      "afterCommands": 138
+    },
+    {
+      "protocol": "sftp",
+      "phase": "existing",
+      "files": 6,
+      "samples": 3,
+      "beforeMs": 3853,
+      "afterMs": 4885,
+      "elapsedReductionPercent": -26.8,
+      "beforeCommands": 185,
+      "afterCommands": 161
+    },
+    {
+      "protocol": "ftp",
+      "phase": "new",
+      "files": 24,
+      "samples": 3,
+      "beforeMs": 25014,
+      "afterMs": 22734,
+      "elapsedReductionPercent": 9.1,
+      "beforeCommands": 1575,
+      "afterCommands": 1431
+    },
+    {
+      "protocol": "ftp",
+      "phase": "existing",
+      "files": 24,
+      "samples": 3,
+      "beforeMs": 35342,
+      "afterMs": 21379,
+      "elapsedReductionPercent": 39.5,
+      "beforeCommands": 1352,
+      "afterCommands": 1208
+    },
+    {
+      "protocol": "sftp",
+      "phase": "new",
+      "files": 24,
+      "samples": 3,
+      "beforeMs": 2543,
+      "afterMs": 2131,
+      "elapsedReductionPercent": 16.2,
+      "beforeCommands": 576,
+      "afterCommands": 480
+    },
+    {
+      "protocol": "sftp",
+      "phase": "existing",
+      "files": 24,
+      "samples": 3,
+      "beforeMs": 9317,
+      "afterMs": 3668,
+      "elapsedReductionPercent": 60.6,
+      "beforeCommands": 707,
+      "afterCommands": 611
+    }
+  ],
+  "samples": {
+    "ftp": {
+      "before": [
+        {
+          "latencyPerReplyMs": 3,
+          "depth": 3,
+          "metrics": [
+            {
+              "phase": "new",
+              "files": 6,
+              "elapsedMs": 6676,
+              "commands": 423,
+              "byCommand": {
+                "PASV": 126,
+                "LIST": 120,
+                "MLST": 27,
+                "STAT": 27,
+                "RNFR": 39,
+                "NOOP": 27,
+                "MKD": 9,
+                "PWD": 6,
+                "SITE": 12,
+                "STOR": 6,
+                "RNTO": 12,
+                "RMD": 6,
+                "MFMT": 6
+              }
+            },
+            {
+              "phase": "existing",
+              "files": 6,
+              "elapsedMs": 9137,
+              "commands": 344,
+              "byCommand": {
+                "PASV": 118,
+                "LIST": 106,
+                "RETR": 6,
+                "MODE": 6,
+                "PWD": 6,
+                "MLST": 6,
+                "STAT": 6,
+                "RNFR": 24,
+                "NOOP": 6,
+                "MKD": 6,
+                "SITE": 12,
+                "STOR": 6,
+                "RNTO": 18,
+                "RMD": 6,
+                "MFMT": 6,
+                "DELE": 6
+              }
+            }
+          ]
+        },
+        {
+          "latencyPerReplyMs": 3,
+          "depth": 3,
+          "metrics": [
+            {
+              "phase": "new",
+              "files": 6,
+              "elapsedMs": 6707,
+              "commands": 423,
+              "byCommand": {
+                "PASV": 126,
+                "LIST": 120,
+                "MLST": 27,
+                "STAT": 27,
+                "RNFR": 39,
+                "NOOP": 27,
+                "MKD": 9,
+                "PWD": 6,
+                "SITE": 12,
+                "STOR": 6,
+                "RNTO": 12,
+                "RMD": 6,
+                "MFMT": 6
+              }
+            },
+            {
+              "phase": "existing",
+              "files": 6,
+              "elapsedMs": 10419,
+              "commands": 344,
+              "byCommand": {
+                "PASV": 118,
+                "LIST": 106,
+                "RETR": 6,
+                "MODE": 6,
+                "PWD": 6,
+                "MLST": 6,
+                "STAT": 6,
+                "RNFR": 24,
+                "NOOP": 6,
+                "MKD": 6,
+                "SITE": 12,
+                "STOR": 6,
+                "RNTO": 18,
+                "RMD": 6,
+                "MFMT": 6,
+                "DELE": 6
+              }
+            }
+          ]
+        },
+        {
+          "latencyPerReplyMs": 3,
+          "depth": 3,
+          "metrics": [
+            {
+              "phase": "new",
+              "files": 6,
+              "elapsedMs": 6614,
+              "commands": 423,
+              "byCommand": {
+                "PASV": 126,
+                "LIST": 120,
+                "MLST": 27,
+                "STAT": 27,
+                "RNFR": 39,
+                "NOOP": 27,
+                "MKD": 9,
+                "PWD": 6,
+                "SITE": 12,
+                "STOR": 6,
+                "RNTO": 12,
+                "RMD": 6,
+                "MFMT": 6
+              }
+            },
+            {
+              "phase": "existing",
+              "files": 6,
+              "elapsedMs": 9518,
+              "commands": 344,
+              "byCommand": {
+                "PASV": 118,
+                "LIST": 106,
+                "RETR": 6,
+                "MODE": 6,
+                "PWD": 6,
+                "MLST": 6,
+                "STAT": 6,
+                "RNFR": 24,
+                "NOOP": 6,
+                "MKD": 6,
+                "SITE": 12,
+                "STOR": 6,
+                "RNTO": 18,
+                "RMD": 6,
+                "MFMT": 6,
+                "DELE": 6
+              }
+            }
+          ]
+        }
+      ],
+      "after": [
+        {
+          "latencyPerReplyMs": 3,
+          "depth": 3,
+          "metrics": [
+            {
+              "phase": "new",
+              "files": 6,
+              "elapsedMs": 6319,
+              "commands": 387,
+              "byCommand": {
+                "PASV": 108,
+                "LIST": 102,
+                "MLST": 27,
+                "STAT": 27,
+                "RNFR": 39,
+                "NOOP": 27,
+                "MKD": 9,
+                "PWD": 6,
+                "SITE": 12,
+                "STOR": 6,
+                "RNTO": 12,
+                "RMD": 6,
+                "MFMT": 6
+              }
+            },
+            {
+              "phase": "existing",
+              "files": 6,
+              "elapsedMs": 6905,
+              "commands": 308,
+              "byCommand": {
+                "PASV": 100,
+                "LIST": 88,
+                "RETR": 6,
+                "MODE": 6,
+                "PWD": 6,
+                "MLST": 6,
+                "STAT": 6,
+                "RNFR": 24,
+                "NOOP": 6,
+                "MKD": 6,
+                "SITE": 12,
+                "STOR": 6,
+                "RNTO": 18,
+                "RMD": 6,
+                "MFMT": 6,
+                "DELE": 6
+              }
+            }
+          ]
+        },
+        {
+          "latencyPerReplyMs": 3,
+          "depth": 3,
+          "metrics": [
+            {
+              "phase": "new",
+              "files": 6,
+              "elapsedMs": 6100,
+              "commands": 387,
+              "byCommand": {
+                "PASV": 108,
+                "LIST": 102,
+                "MLST": 27,
+                "STAT": 27,
+                "RNFR": 39,
+                "NOOP": 27,
+                "MKD": 9,
+                "PWD": 6,
+                "SITE": 12,
+                "STOR": 6,
+                "RNTO": 12,
+                "RMD": 6,
+                "MFMT": 6
+              }
+            },
+            {
+              "phase": "existing",
+              "files": 6,
+              "elapsedMs": 7436,
+              "commands": 308,
+              "byCommand": {
+                "PASV": 100,
+                "LIST": 88,
+                "RETR": 6,
+                "MODE": 6,
+                "PWD": 6,
+                "MLST": 6,
+                "STAT": 6,
+                "RNFR": 24,
+                "NOOP": 6,
+                "MKD": 6,
+                "SITE": 12,
+                "STOR": 6,
+                "RNTO": 18,
+                "RMD": 6,
+                "MFMT": 6,
+                "DELE": 6
+              }
+            }
+          ]
+        },
+        {
+          "latencyPerReplyMs": 3,
+          "depth": 3,
+          "metrics": [
+            {
+              "phase": "new",
+              "files": 6,
+              "elapsedMs": 5975,
+              "commands": 387,
+              "byCommand": {
+                "PASV": 108,
+                "LIST": 102,
+                "MLST": 27,
+                "STAT": 27,
+                "RNFR": 39,
+                "NOOP": 27,
+                "MKD": 9,
+                "PWD": 6,
+                "SITE": 12,
+                "STOR": 6,
+                "RNTO": 12,
+                "RMD": 6,
+                "MFMT": 6
+              }
+            },
+            {
+              "phase": "existing",
+              "files": 6,
+              "elapsedMs": 6042,
+              "commands": 308,
+              "byCommand": {
+                "PASV": 100,
+                "LIST": 88,
+                "RETR": 6,
+                "MODE": 6,
+                "PWD": 6,
+                "MLST": 6,
+                "STAT": 6,
+                "RNFR": 24,
+                "NOOP": 6,
+                "MKD": 6,
+                "SITE": 12,
+                "STOR": 6,
+                "RNTO": 18,
+                "RMD": 6,
+                "MFMT": 6,
+                "DELE": 6
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "sftp": {
+      "before": [
+        {
+          "latencyPerReplyMs": 3,
+          "depth": 3,
+          "metrics": [
+            {
+              "phase": "new",
+              "files": 6,
+              "elapsedMs": 1204,
+              "commands": 162,
+              "byCommand": {
+                "LSTAT": 111,
+                "OPEN": 6,
+                "FSETSTAT": 12,
+                "FSTAT": 12,
+                "WRITE": 6,
+                "CLOSE": 6,
+                "RENAME": 6,
+                "MKDIR": 3
+              }
+            },
+            {
+              "phase": "existing",
+              "files": 6,
+              "elapsedMs": 4206,
+              "commands": 185,
+              "byCommand": {
+                "LSTAT": 101,
+                "OPEN": 12,
+                "FSETSTAT": 12,
+                "FSTAT": 12,
+                "WRITE": 6,
+                "CLOSE": 12,
+                "RENAME": 12,
+                "READ": 12,
+                "REMOVE": 6
+              }
+            }
+          ]
+        },
+        {
+          "latencyPerReplyMs": 3,
+          "depth": 3,
+          "metrics": [
+            {
+              "phase": "new",
+              "files": 6,
+              "elapsedMs": 1115,
+              "commands": 162,
+              "byCommand": {
+                "LSTAT": 111,
+                "OPEN": 6,
+                "FSETSTAT": 12,
+                "FSTAT": 12,
+                "WRITE": 6,
+                "CLOSE": 6,
+                "RENAME": 6,
+                "MKDIR": 3
+              }
+            },
+            {
+              "phase": "existing",
+              "files": 6,
+              "elapsedMs": 3794,
+              "commands": 185,
+              "byCommand": {
+                "LSTAT": 101,
+                "OPEN": 12,
+                "FSETSTAT": 12,
+                "FSTAT": 12,
+                "WRITE": 6,
+                "CLOSE": 12,
+                "RENAME": 12,
+                "READ": 12,
+                "REMOVE": 6
+              }
+            }
+          ]
+        },
+        {
+          "latencyPerReplyMs": 3,
+          "depth": 3,
+          "metrics": [
+            {
+              "phase": "new",
+              "files": 6,
+              "elapsedMs": 1126,
+              "commands": 162,
+              "byCommand": {
+                "LSTAT": 111,
+                "OPEN": 6,
+                "FSETSTAT": 12,
+                "FSTAT": 12,
+                "WRITE": 6,
+                "CLOSE": 6,
+                "RENAME": 6,
+                "MKDIR": 3
+              }
+            },
+            {
+              "phase": "existing",
+              "files": 6,
+              "elapsedMs": 3853,
+              "commands": 185,
+              "byCommand": {
+                "LSTAT": 101,
+                "OPEN": 12,
+                "FSETSTAT": 12,
+                "FSTAT": 12,
+                "WRITE": 6,
+                "CLOSE": 12,
+                "RENAME": 12,
+                "READ": 12,
+                "REMOVE": 6
+              }
+            }
+          ]
+        }
+      ],
+      "after": [
+        {
+          "latencyPerReplyMs": 3,
+          "depth": 3,
+          "metrics": [
+            {
+              "phase": "new",
+              "files": 6,
+              "elapsedMs": 915,
+              "commands": 138,
+              "byCommand": {
+                "LSTAT": 87,
+                "OPEN": 6,
+                "FSETSTAT": 12,
+                "FSTAT": 12,
+                "WRITE": 6,
+                "CLOSE": 6,
+                "RENAME": 6,
+                "MKDIR": 3
+              }
+            },
+            {
+              "phase": "existing",
+              "files": 6,
+              "elapsedMs": 5402,
+              "commands": 161,
+              "byCommand": {
+                "LSTAT": 77,
+                "OPEN": 12,
+                "FSETSTAT": 12,
+                "FSTAT": 12,
+                "WRITE": 6,
+                "CLOSE": 12,
+                "RENAME": 12,
+                "READ": 12,
+                "REMOVE": 6
+              }
+            }
+          ]
+        },
+        {
+          "latencyPerReplyMs": 3,
+          "depth": 3,
+          "metrics": [
+            {
+              "phase": "new",
+              "files": 6,
+              "elapsedMs": 933,
+              "commands": 138,
+              "byCommand": {
+                "LSTAT": 87,
+                "OPEN": 6,
+                "FSETSTAT": 12,
+                "FSTAT": 12,
+                "WRITE": 6,
+                "CLOSE": 6,
+                "RENAME": 6,
+                "MKDIR": 3
+              }
+            },
+            {
+              "phase": "existing",
+              "files": 6,
+              "elapsedMs": 4885,
+              "commands": 161,
+              "byCommand": {
+                "LSTAT": 77,
+                "OPEN": 12,
+                "FSETSTAT": 12,
+                "FSTAT": 12,
+                "WRITE": 6,
+                "CLOSE": 12,
+                "RENAME": 12,
+                "READ": 12,
+                "REMOVE": 6
+              }
+            }
+          ]
+        },
+        {
+          "latencyPerReplyMs": 3,
+          "depth": 3,
+          "metrics": [
+            {
+              "phase": "new",
+              "files": 6,
+              "elapsedMs": 865,
+              "commands": 138,
+              "byCommand": {
+                "LSTAT": 87,
+                "OPEN": 6,
+                "FSETSTAT": 12,
+                "FSTAT": 12,
+                "WRITE": 6,
+                "CLOSE": 6,
+                "RENAME": 6,
+                "MKDIR": 3
+              }
+            },
+            {
+              "phase": "existing",
+              "files": 6,
+              "elapsedMs": 3328,
+              "commands": 161,
+              "byCommand": {
+                "LSTAT": 77,
+                "OPEN": 12,
+                "FSETSTAT": 12,
+                "FSTAT": 12,
+                "WRITE": 6,
+                "CLOSE": 12,
+                "RENAME": 12,
+                "READ": 12,
+                "REMOVE": 6
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "upstream_ftp": [
+      {
+        "latencyPerReplyMs": 3,
+        "depth": 3,
+        "metrics": [
+          {
+            "phase": "new",
+            "files": 6,
+            "elapsedMs": 1112,
+            "commands": 69,
+            "byCommand": {
+              "PASV": 21,
+              "LIST": 15,
+              "MKD": 3,
+              "STOR": 6,
+              "MFMT": 6,
+              "DELE": 6,
+              "RNFR": 6,
+              "RNTO": 6
+            }
+          },
+          {
+            "phase": "existing",
+            "files": 6,
+            "elapsedMs": 1882,
+            "commands": 87,
+            "byCommand": {
+              "PASV": 27,
+              "LIST": 15,
+              "RETR": 6,
+              "MODE": 6,
+              "ABOR": 3,
+              "STOR": 6,
+              "MFMT": 6,
+              "DELE": 6,
+              "RNFR": 6,
+              "RNTO": 6
+            }
+          }
+        ]
+      },
+      {
+        "latencyPerReplyMs": 3,
+        "depth": 3,
+        "metrics": [
+          {
+            "phase": "new",
+            "files": 6,
+            "elapsedMs": 1128,
+            "commands": 69,
+            "byCommand": {
+              "PASV": 21,
+              "LIST": 15,
+              "MKD": 3,
+              "STOR": 6,
+              "MFMT": 6,
+              "DELE": 6,
+              "RNFR": 6,
+              "RNTO": 6
+            }
+          },
+          {
+            "phase": "existing",
+            "files": 6,
+            "elapsedMs": 3195,
+            "commands": 86,
+            "byCommand": {
+              "PASV": 27,
+              "LIST": 15,
+              "RETR": 6,
+              "MODE": 6,
+              "ABOR": 2,
+              "STOR": 6,
+              "MFMT": 6,
+              "DELE": 6,
+              "RNFR": 6,
+              "RNTO": 6
+            }
+          }
+        ]
+      },
+      {
+        "latencyPerReplyMs": 3,
+        "depth": 3,
+        "metrics": [
+          {
+            "phase": "new",
+            "files": 6,
+            "elapsedMs": 1223,
+            "commands": 69,
+            "byCommand": {
+              "PASV": 21,
+              "LIST": 15,
+              "MKD": 3,
+              "STOR": 6,
+              "MFMT": 6,
+              "DELE": 6,
+              "RNFR": 6,
+              "RNTO": 6
+            }
+          },
+          {
+            "phase": "existing",
+            "files": 6,
+            "elapsedMs": 2282,
+            "commands": 87,
+            "byCommand": {
+              "PASV": 27,
+              "LIST": 15,
+              "RETR": 6,
+              "MODE": 6,
+              "ABOR": 3,
+              "STOR": 6,
+              "MFMT": 6,
+              "DELE": 6,
+              "RNFR": 6,
+              "RNTO": 6
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "largeSamples": {
+    "ftp": {
+      "before": [
+        {
+          "latencyPerReplyMs": 3,
+          "depth": 3,
+          "metrics": [
+            {
+              "phase": "new",
+              "files": 24,
+              "elapsedMs": 25014,
+              "commands": 1575,
+              "byCommand": {
+                "PASV": 468,
+                "LIST": 444,
+                "MLST": 99,
+                "STAT": 99,
+                "RNFR": 147,
+                "NOOP": 99,
+                "MKD": 27,
+                "PWD": 24,
+                "SITE": 48,
+                "STOR": 24,
+                "RNTO": 48,
+                "RMD": 24,
+                "MFMT": 24
+              }
+            },
+            {
+              "phase": "existing",
+              "files": 24,
+              "elapsedMs": 35342,
+              "commands": 1352,
+              "byCommand": {
+                "PASV": 460,
+                "LIST": 412,
+                "RETR": 24,
+                "MODE": 24,
+                "PWD": 24,
+                "MLST": 24,
+                "STAT": 24,
+                "RNFR": 96,
+                "NOOP": 24,
+                "MKD": 24,
+                "SITE": 48,
+                "STOR": 24,
+                "RNTO": 72,
+                "RMD": 24,
+                "MFMT": 24,
+                "DELE": 24
+              }
+            }
+          ]
+        },
+        {
+          "latencyPerReplyMs": 3,
+          "depth": 3,
+          "metrics": [
+            {
+              "phase": "new",
+              "files": 24,
+              "elapsedMs": 23653,
+              "commands": 1575,
+              "byCommand": {
+                "PASV": 468,
+                "LIST": 444,
+                "MLST": 99,
+                "STAT": 99,
+                "RNFR": 147,
+                "NOOP": 99,
+                "MKD": 27,
+                "PWD": 24,
+                "SITE": 48,
+                "STOR": 24,
+                "RNTO": 48,
+                "RMD": 24,
+                "MFMT": 24
+              }
+            },
+            {
+              "phase": "existing",
+              "files": 24,
+              "elapsedMs": 34891,
+              "commands": 1352,
+              "byCommand": {
+                "PASV": 460,
+                "LIST": 412,
+                "RETR": 24,
+                "MODE": 24,
+                "PWD": 24,
+                "MLST": 24,
+                "STAT": 24,
+                "RNFR": 96,
+                "NOOP": 24,
+                "MKD": 24,
+                "SITE": 48,
+                "STOR": 24,
+                "RNTO": 72,
+                "RMD": 24,
+                "MFMT": 24,
+                "DELE": 24
+              }
+            }
+          ]
+        },
+        {
+          "latencyPerReplyMs": 3,
+          "depth": 3,
+          "metrics": [
+            {
+              "phase": "new",
+              "files": 24,
+              "elapsedMs": 25522,
+              "commands": 1575,
+              "byCommand": {
+                "PASV": 468,
+                "LIST": 444,
+                "MLST": 99,
+                "STAT": 99,
+                "RNFR": 147,
+                "NOOP": 99,
+                "MKD": 27,
+                "PWD": 24,
+                "SITE": 48,
+                "STOR": 24,
+                "RNTO": 48,
+                "RMD": 24,
+                "MFMT": 24
+              }
+            },
+            {
+              "phase": "existing",
+              "files": 24,
+              "elapsedMs": 41238,
+              "commands": 1352,
+              "byCommand": {
+                "PASV": 460,
+                "LIST": 412,
+                "RETR": 24,
+                "MODE": 24,
+                "PWD": 24,
+                "MLST": 24,
+                "STAT": 24,
+                "RNFR": 96,
+                "NOOP": 24,
+                "MKD": 24,
+                "SITE": 48,
+                "STOR": 24,
+                "RNTO": 72,
+                "RMD": 24,
+                "MFMT": 24,
+                "DELE": 24
+              }
+            }
+          ]
+        }
+      ],
+      "after": [
+        {
+          "latencyPerReplyMs": 3,
+          "depth": 3,
+          "metrics": [
+            {
+              "phase": "new",
+              "files": 24,
+              "elapsedMs": 22734,
+              "commands": 1431,
+              "byCommand": {
+                "PASV": 396,
+                "LIST": 372,
+                "MLST": 99,
+                "STAT": 99,
+                "RNFR": 147,
+                "NOOP": 99,
+                "MKD": 27,
+                "PWD": 24,
+                "SITE": 48,
+                "STOR": 24,
+                "RNTO": 48,
+                "RMD": 24,
+                "MFMT": 24
+              }
+            },
+            {
+              "phase": "existing",
+              "files": 24,
+              "elapsedMs": 20704,
+              "commands": 1208,
+              "byCommand": {
+                "PASV": 388,
+                "LIST": 340,
+                "RETR": 24,
+                "MODE": 24,
+                "PWD": 24,
+                "MLST": 24,
+                "STAT": 24,
+                "RNFR": 96,
+                "NOOP": 24,
+                "MKD": 24,
+                "SITE": 48,
+                "STOR": 24,
+                "RNTO": 72,
+                "RMD": 24,
+                "MFMT": 24,
+                "DELE": 24
+              }
+            }
+          ]
+        },
+        {
+          "latencyPerReplyMs": 3,
+          "depth": 3,
+          "metrics": [
+            {
+              "phase": "new",
+              "files": 24,
+              "elapsedMs": 21409,
+              "commands": 1431,
+              "byCommand": {
+                "PASV": 396,
+                "LIST": 372,
+                "MLST": 99,
+                "STAT": 99,
+                "RNFR": 147,
+                "NOOP": 99,
+                "MKD": 27,
+                "PWD": 24,
+                "SITE": 48,
+                "STOR": 24,
+                "RNTO": 48,
+                "RMD": 24,
+                "MFMT": 24
+              }
+            },
+            {
+              "phase": "existing",
+              "files": 24,
+              "elapsedMs": 21551,
+              "commands": 1208,
+              "byCommand": {
+                "PASV": 388,
+                "LIST": 340,
+                "RETR": 24,
+                "MODE": 24,
+                "PWD": 24,
+                "MLST": 24,
+                "STAT": 24,
+                "RNFR": 96,
+                "NOOP": 24,
+                "MKD": 24,
+                "SITE": 48,
+                "STOR": 24,
+                "RNTO": 72,
+                "RMD": 24,
+                "MFMT": 24,
+                "DELE": 24
+              }
+            }
+          ]
+        },
+        {
+          "latencyPerReplyMs": 3,
+          "depth": 3,
+          "metrics": [
+            {
+              "phase": "new",
+              "files": 24,
+              "elapsedMs": 23532,
+              "commands": 1431,
+              "byCommand": {
+                "PASV": 396,
+                "LIST": 372,
+                "MLST": 99,
+                "STAT": 99,
+                "RNFR": 147,
+                "NOOP": 99,
+                "MKD": 27,
+                "PWD": 24,
+                "SITE": 48,
+                "STOR": 24,
+                "RNTO": 48,
+                "RMD": 24,
+                "MFMT": 24
+              }
+            },
+            {
+              "phase": "existing",
+              "files": 24,
+              "elapsedMs": 21379,
+              "commands": 1208,
+              "byCommand": {
+                "PASV": 388,
+                "LIST": 340,
+                "RETR": 24,
+                "MODE": 24,
+                "PWD": 24,
+                "MLST": 24,
+                "STAT": 24,
+                "RNFR": 96,
+                "NOOP": 24,
+                "MKD": 24,
+                "SITE": 48,
+                "STOR": 24,
+                "RNTO": 72,
+                "RMD": 24,
+                "MFMT": 24,
+                "DELE": 24
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "sftp": {
+      "before": [
+        {
+          "latencyPerReplyMs": 3,
+          "depth": 3,
+          "metrics": [
+            {
+              "phase": "new",
+              "files": 24,
+              "elapsedMs": 2543,
+              "commands": 576,
+              "byCommand": {
+                "LSTAT": 381,
+                "OPEN": 24,
+                "FSETSTAT": 48,
+                "FSTAT": 48,
+                "WRITE": 24,
+                "CLOSE": 24,
+                "RENAME": 24,
+                "MKDIR": 3
+              }
+            },
+            {
+              "phase": "existing",
+              "files": 24,
+              "elapsedMs": 9590,
+              "commands": 707,
+              "byCommand": {
+                "LSTAT": 371,
+                "OPEN": 48,
+                "FSETSTAT": 48,
+                "FSTAT": 48,
+                "WRITE": 24,
+                "CLOSE": 48,
+                "RENAME": 48,
+                "READ": 48,
+                "REMOVE": 24
+              }
+            }
+          ]
+        },
+        {
+          "latencyPerReplyMs": 3,
+          "depth": 3,
+          "metrics": [
+            {
+              "phase": "new",
+              "files": 24,
+              "elapsedMs": 2645,
+              "commands": 576,
+              "byCommand": {
+                "LSTAT": 381,
+                "OPEN": 24,
+                "FSETSTAT": 48,
+                "FSTAT": 48,
+                "WRITE": 24,
+                "CLOSE": 24,
+                "RENAME": 24,
+                "MKDIR": 3
+              }
+            },
+            {
+              "phase": "existing",
+              "files": 24,
+              "elapsedMs": 9317,
+              "commands": 707,
+              "byCommand": {
+                "LSTAT": 371,
+                "OPEN": 48,
+                "FSETSTAT": 48,
+                "FSTAT": 48,
+                "WRITE": 24,
+                "CLOSE": 48,
+                "RENAME": 48,
+                "READ": 48,
+                "REMOVE": 24
+              }
+            }
+          ]
+        },
+        {
+          "latencyPerReplyMs": 3,
+          "depth": 3,
+          "metrics": [
+            {
+              "phase": "new",
+              "files": 24,
+              "elapsedMs": 2512,
+              "commands": 576,
+              "byCommand": {
+                "LSTAT": 381,
+                "OPEN": 24,
+                "FSETSTAT": 48,
+                "FSTAT": 48,
+                "WRITE": 24,
+                "CLOSE": 24,
+                "RENAME": 24,
+                "MKDIR": 3
+              }
+            },
+            {
+              "phase": "existing",
+              "files": 24,
+              "elapsedMs": 7125,
+              "commands": 707,
+              "byCommand": {
+                "LSTAT": 371,
+                "OPEN": 48,
+                "FSETSTAT": 48,
+                "FSTAT": 48,
+                "WRITE": 24,
+                "CLOSE": 48,
+                "RENAME": 48,
+                "READ": 48,
+                "REMOVE": 24
+              }
+            }
+          ]
+        }
+      ],
+      "after": [
+        {
+          "latencyPerReplyMs": 3,
+          "depth": 3,
+          "metrics": [
+            {
+              "phase": "new",
+              "files": 24,
+              "elapsedMs": 2123,
+              "commands": 480,
+              "byCommand": {
+                "LSTAT": 285,
+                "OPEN": 24,
+                "FSETSTAT": 48,
+                "FSTAT": 48,
+                "WRITE": 24,
+                "CLOSE": 24,
+                "RENAME": 24,
+                "MKDIR": 3
+              }
+            },
+            {
+              "phase": "existing",
+              "files": 24,
+              "elapsedMs": 3952,
+              "commands": 611,
+              "byCommand": {
+                "LSTAT": 275,
+                "OPEN": 48,
+                "FSETSTAT": 48,
+                "FSTAT": 48,
+                "WRITE": 24,
+                "CLOSE": 48,
+                "RENAME": 48,
+                "READ": 48,
+                "REMOVE": 24
+              }
+            }
+          ]
+        },
+        {
+          "latencyPerReplyMs": 3,
+          "depth": 3,
+          "metrics": [
+            {
+              "phase": "new",
+              "files": 24,
+              "elapsedMs": 2148,
+              "commands": 480,
+              "byCommand": {
+                "LSTAT": 285,
+                "OPEN": 24,
+                "FSETSTAT": 48,
+                "FSTAT": 48,
+                "WRITE": 24,
+                "CLOSE": 24,
+                "RENAME": 24,
+                "MKDIR": 3
+              }
+            },
+            {
+              "phase": "existing",
+              "files": 24,
+              "elapsedMs": 3460,
+              "commands": 611,
+              "byCommand": {
+                "LSTAT": 275,
+                "OPEN": 48,
+                "FSETSTAT": 48,
+                "FSTAT": 48,
+                "WRITE": 24,
+                "CLOSE": 48,
+                "RENAME": 48,
+                "READ": 48,
+                "REMOVE": 24
+              }
+            }
+          ]
+        },
+        {
+          "latencyPerReplyMs": 3,
+          "depth": 3,
+          "metrics": [
+            {
+              "phase": "new",
+              "files": 24,
+              "elapsedMs": 2131,
+              "commands": 480,
+              "byCommand": {
+                "LSTAT": 285,
+                "OPEN": 24,
+                "FSETSTAT": 48,
+                "FSTAT": 48,
+                "WRITE": 24,
+                "CLOSE": 24,
+                "RENAME": 24,
+                "MKDIR": 3
+              }
+            },
+            {
+              "phase": "existing",
+              "files": 24,
+              "elapsedMs": 3668,
+              "commands": 611,
+              "byCommand": {
+                "LSTAT": 275,
+                "OPEN": 48,
+                "FSETSTAT": 48,
+                "FSTAT": 48,
+                "WRITE": 24,
+                "CLOSE": 48,
+                "RENAME": 48,
+                "READ": 48,
+                "REMOVE": 24
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -109,3 +109,5 @@ export {createTransferConnections} from './transfer-connections';
 export {prepareFtpStaging} from './ftp-staging';
 
 export {inspectServerIsolation,assertProtectedRemoteParents,isolationConnection} from './parent-directories';
+
+export {createWindowsStagingBatch} from '../../data/sftp/windows-directory-permissions';

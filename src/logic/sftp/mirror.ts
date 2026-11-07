@@ -47,37 +47,40 @@ export default class MirrorService {
     if(inspectionFailure&&inspectionFailure.status==='rejected')throw inspectionFailure.reason;
     const originals=inspected.filter((item):item is {target:MirrorTarget;relative:string;stat:any}=>item!==undefined);
     if(!originals.length)return;
-    await this.repository.initialize();
-    await this.repository.prepareFiles(originals.map(original=>original.relative));
-    const queue=originals.slice(),touched=new Set<string>(),links=new Map<string,string>();
-    const count=Math.max(1,Math.min(option.concurrency||1,queue.length));
-    const outcomes=await Promise.allSettled(Array.from({length:count},async()=>{
-      while(queue.length) {
-        const {target,relative,stat}=queue.shift()!;
-        try {
-          if(stat.type===FileType.SymbolicLink){
-            links.set(relative.split(path.sep).join('/'),typeof stat.target==='string'?stat.target:await target.remoteFs.readlink(target.remotePath));
-            continue;
-          }
-          const local=path.join(this.repoRoot,relative);
-          await this.repository.files.ensureDir(path.dirname(local));
-          await new TransferTask({fsPath:target.remotePath,fileSystem:target.remoteFs},{fsPath:local,fileSystem:this.repository.files},
-            {fileType:FileType.File,transferDirection:TransferDirection.REMOTE_TO_LOCAL,transferOption:{fallbackMode:stat.mode,mtime:stat.mtime,atime:stat.atime,perserveTargetMode:true}}).run();
-          touched.add(relative.split(path.sep).join('/'));
-        } catch(error) {throw new Error('Upload stopped: unable to back up '+target.relPath+'. '+(target.remoteFs.supportsCompleteDirectoryListing===false?'FTP could not back up the identified destination. Check server read permissions or use SFTP for safely creating a new destination. ':'')+error.message);}
+    const finishFiles=this.repository.beginFileBatch();
+    try {
+      await this.repository.initialize();
+      await this.repository.prepareFiles(originals.map(original=>original.relative));
+      const queue=originals.slice(),touched=new Set<string>(),links=new Map<string,string>();
+      const count=Math.max(1,Math.min(option.concurrency||1,queue.length));
+      const outcomes=await Promise.allSettled(Array.from({length:count},async()=>{
+        while(queue.length) {
+          const {target,relative,stat}=queue.shift()!;
+          try {
+            if(stat.type===FileType.SymbolicLink){
+              links.set(relative.split(path.sep).join('/'),typeof stat.target==='string'?stat.target:await target.remoteFs.readlink(target.remotePath));
+              continue;
+            }
+            const local=path.join(this.repoRoot,relative);
+            await this.repository.files.ensureDir(path.dirname(local));
+            await new TransferTask({fsPath:target.remotePath,fileSystem:target.remoteFs},{fsPath:local,fileSystem:this.repository.files},
+              {fileType:FileType.File,transferDirection:TransferDirection.REMOTE_TO_LOCAL,transferOption:{fallbackMode:stat.mode,mtime:stat.mtime,atime:stat.atime,perserveTargetMode:true}}).run();
+            touched.add(relative.split(path.sep).join('/'));
+          } catch(error) {throw new Error('Upload stopped: unable to back up '+target.relPath+'. '+(target.remoteFs.supportsCompleteDirectoryListing===false?'FTP could not back up the identified destination. Check server read permissions or use SFTP for safely creating a new destination. ':'')+error.message);}
+        }
+      }));
+      const failed=outcomes.find(result=>result.status==='rejected');
+      if(failed&&failed.status==='rejected')throw failed.reason;
+      if(!touched.size&&!links.size) return;
+      await this.repository.add(touched);
+      for(const [file,target] of links)await this.repository.stageLink(file,target);
+      const matrix=await this.repository.status(touched);
+      if(links.size||matrix.some(([,head,work,stage])=>head!==1||work!==1||stage!==1)){
+        const oid=await this.repository.commit(option.message||`before upload ${new Date().toISOString()}`,{name:'vscode-sftp mirror',email:'sftp@localhost'});
+        logger.info(`mirror: committed ${touched.size+links.size} file(s) (${oid.slice(0,7)})`);
       }
-    }));
-    const failed=outcomes.find(result=>result.status==='rejected');
-    if(failed&&failed.status==='rejected')throw failed.reason;
-    if(!touched.size&&!links.size) return;
-    for(const file of touched) await this.repository.add(file);
-    for(const [file,target] of links)await this.repository.stageLink(file,target);
-    const matrix=await this.repository.status(touched);
-    if(links.size||matrix.some(([,head,work,stage])=>head!==1||work!==1||stage!==1)){
-      const oid=await this.repository.commit(option.message||`before upload ${new Date().toISOString()}`,{name:'vscode-sftp mirror',email:'sftp@localhost'});
-      logger.info(`mirror: committed ${touched.size+links.size} file(s) (${oid.slice(0,7)})`);
-    }
-    await this.repository.verify(touched,links);
+      await this.repository.verify(touched,links);
+    } finally {await finishFiles();}
   }
 }
 const instances=new Map<string,MirrorService>();

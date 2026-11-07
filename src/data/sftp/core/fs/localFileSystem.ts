@@ -9,7 +9,7 @@ import {trackLocalChanges, rememberLocalState} from '../../local-events';
 import FileSystem, { FileEntry, FileStats, FileOption } from './fileSystem';
 
 export default class LocalFileSystem extends FileSystem {
-  constructor(pathResolver: any, private root?: string) {
+  constructor(pathResolver: any, private root?: string, private protectStaging = protectWindowsStagingFile) {
     super(pathResolver);
   }
 
@@ -120,7 +120,7 @@ export default class LocalFileSystem extends FileSystem {
       try {if((await fse.lstat(destination)).isSymbolicLink()) destination='';}
       catch(error) {if(error.code!=='ENOENT')throw error;}
     }
-    if (process.platform === "win32") await protectWindowsStagingFile(path, destination);
+    if (process.platform === "win32") await this.protectStaging(path, destination);
     else if (typeof mode === 'number' && fd !== undefined) {
       await fse.fchmod(fd, mode);
       const actual=await fse.fstat(fd);

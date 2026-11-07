@@ -1520,3 +1520,45 @@ test('structured TLS failures produce actionable redacted security diagnostics',
  const {connectionFailure}=require('../src/logic/sftp/diagnostics');const error=connectionFailure(Object.assign(new Error('Unable to secure connection(s)'),{code:'FTP_TLS_NEGOTIATION_FAILED',securityFailure:true}),{protocol:'ftp',host:'fixture',port:21,password:'not-for-diagnostics'});
  assert.match(error.message,/TLS certificate verification or negotiation failed/);assert.equal(error.securityFailure,true);assert.equal(error.code,'FTP_TLS_NEGOTIATION_FAILED');assert.doesNotMatch(error.message,/not-for-diagnostics/);
 });
+
+test('Windows backup ACL batch handles concurrent Unicode paths, failure and closure',{skip:process.platform!=='win32'},async t=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-acl-batch-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));const worker=engine.createWindowsStagingBatch();t.after(()=>worker.close());
+ const files=Array.from({length:8},(_,n)=>path.join(root,"quoted ' 中文 $(); "+n+'.txt'));for(const file of files)fs.writeFileSync(file,'private backup');
+ await Promise.all(files.map(file=>worker.protect(file,path.join(root,'absent'))));
+ await assert.rejects(worker.protect(path.join(root,'missing'),''),error=>{assert.match(error.message,/ACL verification failed/);assert.equal(error.code,'ENOENT');return true;});await worker.protect(files[0],'');
+ const script='$ErrorActionPreference="Stop"; foreach($file in ($env:DEVKIT_ACL_TEST_FILES | ConvertFrom-Json)){ $acl=[System.IO.File]::GetAccessControl($file); if(-not $acl.AreAccessRulesProtected){throw "ACL not protected"}; foreach($rule in $acl.GetAccessRules($true,$true,[System.Security.Principal.SecurityIdentifier])){if($rule.IdentityReference.Value -notin @([System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value,"S-1-5-18")){throw "Unexpected principal"}} }';
+ const checked=spawnSync('powershell.exe',['-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(script,'utf16le').toString('base64')],{windowsHide:true,encoding:'utf8',env:{...process.env,DEVKIT_ACL_TEST_FILES:JSON.stringify(files)}});assert.equal(checked.status,0,checked.stderr);
+ await worker.close();await worker.close();await assert.rejects(worker.protect(files[0],''),/closed/);
+});
+test('Windows backup ACL batch rejects pending work when closed',{skip:process.platform!=='win32'},async()=>{
+ const worker=engine.createWindowsStagingBatch(),pending=assert.rejects(worker.protect('C:/missing-acl-batch-file',''),/closed with pending/);await worker.close();await pending;
+});
+
+test('batched backups retain every ignored original and same-size server hotfix',async t=>{
+ const {local,remote,session}=fixture(t),git=require('isomorphic-git');const backup=engine.defaultBackupPath(session.service.workspace,session.service.baseDir,session.config,session.service.profile);t.after(()=>fs.rmSync(backup,{recursive:true,force:true}));
+ for(const base of [local,remote])fs.mkdirSync(path.join(base,'batch'));for(let n=0;n<12;n++){fs.writeFileSync(path.join(local,'batch',n+'.txt'),'upload '+n);fs.writeFileSync(path.join(remote,'batch',n+'.txt'),'remote '+n);}
+ await engine.operate(session,'upload','batch');let history=await git.log({fs,dir:backup});for(let n=0;n<12;n++)assert.equal(Buffer.from((await git.readBlob({fs,dir:backup,oid:history[0].oid,filepath:'batch/'+n+'.txt'})).blob).toString(),'remote '+n);
+ fs.writeFileSync(path.join(backup,'.gitignore'),'batch/**\n');fs.writeFileSync(path.join(remote,'batch','0.txt'),'hotfix 0');await engine.operate(session,'upload','batch');history=await git.log({fs,dir:backup});assert.equal(history.length,2);assert.equal(Buffer.from((await git.readBlob({fs,dir:backup,oid:history[0].oid,filepath:'batch/0.txt'})).blob).toString(),'hotfix 0');
+});
+
+test('Windows backup ACL worker failure rejects pending and future files',{skip:process.platform!=='win32'},async()=>{
+ const cp=require('node:child_process'),original=cp.spawn;let spawned=0;cp.spawn=(...args)=>{const child=original(...args);spawned++;queueMicrotask(()=>child.kill());return child;};const worker=engine.createWindowsStagingBatch();
+ try{await assert.rejects(worker.protect('C:/missing-acl-worker-file',''),/worker.*(?:exited|input failed|start)/i);await assert.rejects(worker.protect('C:/another-missing-file',''),/worker/i);assert.equal(spawned,1);}finally{cp.spawn=original;await worker.close();}
+});
+
+test('malformed ACL worker output fails the batch instead of authorizing a file',async()=>{
+ const cp=require('node:child_process'),{EventEmitter}=require('node:events'),{PassThrough}=require('node:stream'),original=cp.spawn;const child=new EventEmitter();child.stdin=new PassThrough();child.stdout=new PassThrough();child.stderr=new PassThrough();child.kill=()=>{queueMicrotask(()=>child.emit('close',1));return true;};cp.spawn=()=>child;const worker=engine.createWindowsStagingBatch();
+ try{const pending=assert.rejects(worker.protect('fixture',''),/Invalid staging ACL worker response/);child.stdout.write('not-json\n');await pending;await assert.rejects(worker.protect('fixture',''),/Invalid/);}finally{cp.spawn=original;await worker.close();}
+});
+
+test('ACL worker pipe failures reject pending files without crashing',async()=>{
+ const cp=require('node:child_process'),{EventEmitter}=require('node:events'),{PassThrough}=require('node:stream'),original=cp.spawn;
+ for(const pipe of ['stdout','stderr']){const child=new EventEmitter();child.stdin=new PassThrough();child.stdout=new PassThrough();child.stderr=new PassThrough();child.kill=()=>{queueMicrotask(()=>child.emit('close',1));return true;};cp.spawn=()=>child;const worker=engine.createWindowsStagingBatch();try{const pending=assert.rejects(worker.protect('fixture',''),/worker.*(?:output|pipe) failed/);child[pipe].emit('error',new Error('fixture broken pipe'));await pending;}finally{cp.spawn=original;await worker.close();}}
+});
+
+test('backup ACL worker crash stops upload and the next batch can recover',{skip:process.platform!=='win32'},async t=>{
+ const {local,remote,session}=fixture(t),cp=require('node:child_process'),original=cp.spawn;const backup=engine.defaultBackupPath(session.service.workspace,session.service.baseDir,session.config,session.service.profile);t.after(()=>fs.rmSync(backup,{recursive:true,force:true}));
+ fs.writeFileSync(path.join(local,'worker.txt'),'new content');fs.writeFileSync(path.join(remote,'worker.txt'),'original content');cp.spawn=(...args)=>{const child=original(...args);queueMicrotask(()=>child.kill());return child;};
+ try{await assert.rejects(engine.operate(session,'upload','worker.txt'),/worker/i);assert.equal(fs.readFileSync(path.join(remote,'worker.txt'),'utf8'),'original content');}finally{cp.spawn=original;}
+ await engine.operate(session,'upload','worker.txt');assert.equal(fs.readFileSync(path.join(remote,'worker.txt'),'utf8'),'new content');const git=require('isomorphic-git'),oid=await git.resolveRef({fs,dir:backup,ref:'HEAD'});assert.equal(Buffer.from((await git.readBlob({fs,dir:backup,oid,filepath:'worker.txt'})).blob).toString(),'original content');
+});

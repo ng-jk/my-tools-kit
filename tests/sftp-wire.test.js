@@ -6,21 +6,23 @@ const os=require('node:os');
 const path=require('node:path');
 const crypto=require('node:crypto');
 const {Server,utils}=require('ssh2');
-const engine=require('../build/sftp/engine');
-test('SFTP wire: password authentication, list, upload, temp rename, download and delete', {timeout:30000}, async t=>{
+const engine=require(process.env.DEVKIT_BENCHMARK_ENGINE||'../build/sftp/engine');
+test('SFTP wire: password authentication, list, upload, temp rename, download and delete', {timeout:process.env.DEVKIT_SFTP_BENCHMARK_OUTPUT?180000:30000}, async t=>{
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-ssh-'));
   const local=path.join(root,'local'),remote=path.join(root,'remote');fs.mkdirSync(local);fs.mkdirSync(remote);
   const hostKey=crypto.generateKeyPairSync('rsa',{modulusLength:2048}).privateKey.export({type:'pkcs1',format:'pem'});
   let replaceOnClose=false,replacedFolder=false,renamesAfterRace=0;let authentications=0,honorOpen=true,allowChmod=true;const modes=new Map([['/',0o755]]),writeModes=[];let pathChmods=0;
+  const requestCounts={};
   const clients=new Set();const {STATUS_CODE,OPEN_MODE}=utils.sftp;
   const server=new Server({hostKeys:[hostKey]},client=>{
     clients.add(client);client.on('close',()=>clients.delete(client));client.on('error',()=>{});
     client.on('authentication',ctx=>{authentications++;return ctx.method==='password' && ctx.username==='fixture' && ctx.password==='test-password'?ctx.accept():ctx.reject();});
     client.on('ready',()=>client.on('session',accept=>accept().on('sftp',accept=>{
       const sftp=accept(),handles=new Map();let id=0;
+      const on=sftp.on.bind(sftp);sftp.on=(name,handler)=>on(name,(...args)=>{requestCounts[name]=(requestCounts[name]||0)+1;handler(...args);});
       const resolve=p=>{const target=path.resolve(remote,'.'+p);if(!target.startsWith(remote+path.sep)&&target!==remote)throw new Error('outside fixture');return target;};
       const attrs=(s,p)=>({mode:p==='/race'&&replacedFolder?0o120755:(s.mode & ~0o777)|(modes.get(p)??(s.mode & 0o777)),size:s.size,uid:0,gid:0,atime:Math.floor(s.atimeMs/1000),mtime:Math.floor(s.mtimeMs/1000)});
-      const guard=fn=>(request,...args)=>{try{fn(request,...args);}catch(e){sftp.status(request,e.code==='ENOENT'?STATUS_CODE.NO_SUCH_FILE:STATUS_CODE.FAILURE,e.message);}};
+      const guard=fn=>(request,...args)=>{const run=()=>{try{fn(request,...args);}catch(e){sftp.status(request,e.code==='ENOENT'?STATUS_CODE.NO_SUCH_FILE:STATUS_CODE.FAILURE,e.message);}};if(process.env.DEVKIT_SFTP_BENCHMARK_OUTPUT)setTimeout(run,3);else run();};
       const handle=value=>{const h=Buffer.alloc(4);h.writeUInt32BE(++id);handles.set(h.toString('hex'),value);return h;};
       for(const name of ['STAT','LSTAT'])sftp.on(name,guard((req,p)=>sftp.attrs(req,attrs(fs.statSync(resolve(p)),p))));
       sftp.on('REALPATH',guard((req,p)=>sftp.name(req,[{filename:p,longname:p,attrs:{}}])));
@@ -48,6 +50,12 @@ test('SFTP wire: password authentication, list, upload, temp rename, download an
   try {await assert.rejects(engine.operate(bad,'list'),/verification|host key/i);assert.equal(authentications,0);} finally {bad.service.dispose();}
   fs.writeFileSync(path.join(local,'wire.txt'),'over SSH');
   await engine.operate(session,'upload','wire.txt');assert.equal(fs.readFileSync(path.join(remote,'wire.txt'),'utf8'),'over SSH');assert.equal(modes.get('/wire.txt'),0o755);
+  if(process.env.DEVKIT_SFTP_BENCHMARK_OUTPUT){
+    const count=Number(process.env.DEVKIT_BENCHMARK_FILES||6);assert.ok(Number.isInteger(count)&&count>=1&&count<=48,'Benchmark file count must be 1–48');
+    const directory=path.join(local,'perf','a','b');fs.mkdirSync(directory,{recursive:true});for(let n=0;n<count;n++)fs.writeFileSync(path.join(directory,'file'+n+'.txt'),'benchmark '+n);
+    const metrics=[];for(const phase of ['new','existing']){const before={...requestCounts},start=performance.now();await engine.operate(session,'upload','perf');const byCommand=Object.fromEntries(Object.entries(requestCounts).map(([key,value])=>[key,value-(before[key]||0)]).filter(([,value])=>value));metrics.push({phase,files:count,elapsedMs:Math.round(performance.now()-start),commands:Object.values(byCommand).reduce((a,b)=>a+b,0),byCommand});for(let n=0;n<count;n++)assert.equal(fs.readFileSync(path.join(remote,'perf','a','b','file'+n+'.txt'),'utf8'),'benchmark '+n);}
+    fs.writeFileSync(process.env.DEVKIT_SFTP_BENCHMARK_OUTPUT,JSON.stringify({latencyPerReplyMs:3,depth:3,metrics},null,2));return;
+  }
   const peer=engine.createSession(local,{host:'127.0.0.1',port:server.address().port,username:'fixture',password:'test-password',remotePath:'/',useTempFile:true,hostFingerprint:engine.fingerprint(utils.parseKey(hostKey).getPublicSSH())});
   const originalFs=await session.service.getRemoteFileSystem(session.config);
   const peerFs=await peer.service.getRemoteFileSystem(peer.config);

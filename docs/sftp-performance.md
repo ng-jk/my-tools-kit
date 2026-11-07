@@ -30,3 +30,24 @@ For a serial/parallel comparison with the same 0.7.15 engine, set DEVKIT_BENCHMA
 ## Large batch reliability (0.7.18)
 
 Compared against current upstream HEAD ef4d3ca3e6fd2c0c24e05079d3dcf6093d633ce8: upstream caches one connection per configuration, serializes FTP and multiplexes SFTP requests over one SSH session. The toolkit now defaults to one FTP connection too. Optional extra logins fall back to accepted sessions; certificate failures still stop the batch. Dropped FTP control connections reject pending requests instead of losing callbacks, and the scheduler stops queued transfers after failure. Login and passive-data establishment have independent 30-second and 60-second defaults. There is no total batch deadline or automatic replay of writes.
+
+## 0.7.20 backup and staging optimization (2026-11-08)
+
+One fixed-code Windows ACL worker now handles repository preparation and all staged backup files in a batch. Every file still receives its ACL establishment and verification; JSON paths are data, not executable code. Git stages the touched file list in one index transaction, including ignored originals, and committed-byte verification reuses a per-verification object cache. Replacement validates an identical staging/destination ancestor chain once at that boundary, with fresh checks still performed after payload and descriptor close. No directory validation is cached across mutations.
+
+| Protocol / workload | 0.7.19 | 0.7.20 | Elapsed reduction | Requests before → after |
+| --- | ---: | ---: | ---: | ---: |
+| FTP / 6 files / new | 6.676s | 6.100s | 8.6% | 423 → 387 |
+| FTP / 6 files / existing | 9.518s | 6.905s | 27.5% | 344 → 308 |
+| SFTP / 6 files / new | 1.126s | 0.915s | 18.7% | 162 → 138 |
+| SFTP / 6 files / existing | 3.853s | 4.885s | -26.8% | 185 → 161 |
+| FTP / 24 files / new | 25.014s | 22.734s | 9.1% | 1575 → 1431 |
+| FTP / 24 files / existing | 35.342s | 21.379s | 39.5% | 1352 → 1208 |
+| SFTP / 24 files / new | 2.543s | 2.131s | 16.2% | 576 → 480 |
+| SFTP / 24 files / existing | 9.317s | 3.668s | 60.6% | 707 → 611 |
+
+Figures are medians of three runs per condition. Both protocols used 3 ms added fixture delay and verified payload bytes. FTP used one connection, SFTP used four concurrent transfers. Overwrite timings include downloading remote originals and verifying their Git backup. Windows startup/disk timing varies: the six-file SFTP overwrite series was slower despite fewer requests; the 24-file medians improved. Raw samples and method: [0.7.20 benchmark data](benchmarks/0.7.20.json).
+
+The headless upstream FTP reference measured new: 1.128s, existing: 2.282s. This is faster than the toolkit. The reference uses upstream transfer/FTP/mirror logic with UI hooks stubbed, normalized legacy import interoperability, current local dependencies, temporary-file uploads and mirror enabled. The harness checks expected backup bytes; it is not an installed upstream UI benchmark. The toolkit additionally verifies private staging permissions, directory types, recoverable replacement and fail-closed backups. Equal production speed is not established.
+
+To reproduce the upstream reference, run `node scripts/benchmark-upstream-sftp.js`, set `DEVKIT_BENCHMARK_ENGINE` to the generated absolute `dist/upstream-benchmark-engine.js` path and run the FTP benchmark above. For SFTP use `DEVKIT_SFTP_BENCHMARK_OUTPUT` and `node --test --test-name-pattern="SFTP wire: password" tests/sftp-wire.test.js`. `DEVKIT_BENCHMARK_FILES=24` selects the larger workload (1–48 supported). Clear benchmark environment variables after use.

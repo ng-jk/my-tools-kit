@@ -19,3 +19,5 @@ src/**/sftp/**
 vendor/sftp/README.md
 vendor/sftp/package.json
 .vscode/sftp.json
+
+scripts/benchmark-upstream-sftp.js

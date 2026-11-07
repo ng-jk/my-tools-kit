@@ -391,3 +391,5 @@ SFTP uses its existing `"concurrency": 4` setting over one SSH connection. VS Co
 [Remote permission policy](https://github.com/ng-jk/my-tools-kit/blob/developement/docs/remote-permission-policy.md): transfers trust authenticated server access; ancestor modes and owners do not block them. Existing modes are not automatically changed.
 
 FTP login timeout (`connectTimeout`, default 30000 ms) and passive data connection timeout (`dataTimeout`, default 60000 ms) are separate and configurable per profile. Neither limits total batch duration. A lost connection fails pending operations promptly and stops starting queued files; interrupted writes are never replayed automatically.
+
+Automatic upload backups save and verify remote originals before replacement. If a backup fails, the upload stops and reports the problem. After an overwrite, use the backup location shown in the SFTP output to recover earlier server content. Optimized batch handling requires no configuration change.

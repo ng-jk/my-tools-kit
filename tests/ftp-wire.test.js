@@ -133,14 +133,15 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
   const cancelledPromptly=async(promise,cancel,label,budget=1000)=>{let timer;const start=performance.now();cancel();try{await assert.rejects(Promise.race([promise,new Promise((_resolve,reject)=>{timer=setTimeout(()=>reject(new Error('FTP fixture deadline exceeded')),Math.max(3000,budget+1000));})]),/cancel|abort/i);}finally{clearTimeout(timer);}assert.ok(performance.now()-start<budget,label+' exceeded its bounded abort/cleanup allowance');};
   const session=engine.createSession(root,{protocol:'ftp',host:'127.0.0.1',port:server.address().port,username:'fixture',password:'fixture',remotePath:'/',...(process.env.DEVKIT_BENCHMARK_OUTPUT?{ftpConnections:Number(process.env.DEVKIT_BENCHMARK_CONNECTIONS||3)}:{})});
   t.after(async()=>{session.service.dispose();for(const socket of sockets)socket.destroy();for(const data of servers)if(data.listening)data.close();await new Promise(resolve=>server.close(resolve));fs.rmSync(root,{recursive:true,force:true});});
-  await engine.operate(session,'upload','local.txt');assert.equal(files.get('/local.txt').toString(),'ftp payload','explicit not-found permits creating a new FTP file');assert.equal(modes.get('/local.txt'),0o755,'new FTP file defaults to 755');
+  await engine.operate(session,'upload','local.txt');assert.equal(files.get('/local.txt').toString(),'ftp payload','explicit not-found permits creating a new FTP file');if(!(process.env.DEVKIT_BENCHMARK_OUTPUT&&engine.benchmarkSource==='upstream'))assert.equal(modes.get('/local.txt'),0o755,'new FTP file defaults to 755');
   if(process.env.DEVKIT_BENCHMARK_OUTPUT){
-    const directory=path.join(root,'perf','a','b');fs.mkdirSync(directory,{recursive:true});for(let n=0;n<6;n++)fs.writeFileSync(path.join(directory,'file'+n+'.txt'),'benchmark '+n);
+    const count=Number(process.env.DEVKIT_BENCHMARK_FILES||6);assert.ok(Number.isInteger(count)&&count>=1&&count<=48,'Benchmark file count must be 1–48');
+    const directory=path.join(root,'perf','a','b');fs.mkdirSync(directory,{recursive:true});for(let n=0;n<count;n++)fs.writeFileSync(path.join(directory,'file'+n+'.txt'),'benchmark '+n);
     const metrics=[];
     for(const phase of ['new','existing']){
       const before=commands.length,start=performance.now();await engine.operate(session,'upload','perf');
-      const selected=commands.slice(before);metrics.push({phase,files:6,elapsedMs:Math.round(performance.now()-start),commands:selected.length,byCommand:selected.reduce((a,c)=>(a[c]=(a[c]||0)+1,a),{})});
-      for(let n=0;n<6;n++)assert.equal(files.get('/perf/a/b/file'+n+'.txt').toString(),'benchmark '+n);
+      const selected=commands.slice(before);metrics.push({phase,files:count,elapsedMs:Math.round(performance.now()-start),commands:selected.length,byCommand:selected.reduce((a,c)=>(a[c]=(a[c]||0)+1,a),{})});
+      for(let n=0;n<count;n++)assert.equal(files.get('/perf/a/b/file'+n+'.txt').toString(),'benchmark '+n);
     }
     fs.writeFileSync(process.env.DEVKIT_BENCHMARK_OUTPUT,JSON.stringify({latencyPerReplyMs:3,depth:3,metrics},null,2));
     return;

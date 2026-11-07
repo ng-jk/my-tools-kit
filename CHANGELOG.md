@@ -1,3 +1,10 @@
+# 0.7.20 — 2026-11-08
+
+- Reuse one Windows ACL worker per automatic backup batch while retaining repository and per-file ACL verification.
+- Stage backup files in one Git index update and reuse object caches while verifying committed originals.
+- Avoid checking identical staging/destination parent chains twice at the same replacement boundary; keep fresh checks after payload and close.
+- Add repeatable FTP/SFTP performance fixtures, an upstream data/logic comparison harness, and Unicode/concurrent-worker/backup regression tests.
+
 # 0.7.19 — 2026-11-05
 
 - Classify FTP AUTH/PBSZ/PROT negotiation failures as structured security errors so optional connection fallback cannot conceal them.

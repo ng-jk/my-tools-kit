@@ -1,16 +1,23 @@
 import * as fs from 'fs';
-import {protectWindowsTree} from './windows-directory-permissions';
+import {protectWindowsTree,protectWindowsStagingFile,createWindowsStagingBatch} from './windows-directory-permissions';
 import * as fse from 'fs-extra';
 import * as path from 'path';
 import * as git from 'isomorphic-git';
 import {LocalFileSystem} from './core/fs';
 export class MirrorRepository {
   readonly files: LocalFileSystem;
-  constructor(readonly root: string) { this.files = new LocalFileSystem(path,root); }
+  private protectStaging=protectWindowsStagingFile;
+  private protectTree=protectWindowsTree;
+  constructor(readonly root: string) { this.files = new LocalFileSystem(path,root,(file,destination)=>this.protectStaging(file,destination)); }
+  beginFileBatch() {
+    if(process.platform!=='win32')return async()=>{};
+    const worker=createWindowsStagingBatch();this.protectStaging=worker.protect;this.protectTree=worker.protectTree;
+    return async()=>{this.protectStaging=protectWindowsStagingFile;this.protectTree=protectWindowsTree;await worker.close();};
+  }
   async initialize() {
     await fse.ensureDir(this.root);
     if ((await fse.lstat(this.root)).isSymbolicLink()) throw new Error('Mirror root must not be a link');
-    if (process.platform === 'win32') await protectWindowsTree(this.root);
+    if (process.platform === 'win32') await this.protectTree(this.root);
     else {
       await fse.chmod(this.root,0o700);
       if (((await fse.lstat(this.root)).mode & 0o777) !== 0o700) throw new Error('Cannot establish private mirror permissions');
@@ -57,16 +64,17 @@ export class MirrorRepository {
     const oid=await git.writeBlob({fs,dir:this.root,blob:Buffer.from(target,'utf8')});
     await git.updateIndex({fs,dir:this.root,filepath,oid,mode:0o120000,add:true});
   }
-  add(filepath: string) { return git.add({fs,dir:this.root,filepath,force:true}); }
+  add(files: Set<string>) { return files.size ? git.add({fs,dir:this.root,filepath:[...files],force:true,parallel:false}) : Promise.resolve(); }
   async verify(files:Set<string>,links:Map<string,string>) {
+    const cache={};
     const oid=await git.resolveRef({fs,dir:this.root,ref:'HEAD'});
     for(const file of [...files,...links.keys()]){
       const expected=links.has(file)?Buffer.from(links.get(file)!,'utf8'):await fse.readFile(path.join(this.root,file));
-      const saved=await git.readBlob({fs,dir:this.root,oid,filepath:file});
+      const saved=await git.readBlob({fs,dir:this.root,oid,filepath:file,cache});
       if(!Buffer.from(saved.blob).equals(expected))throw new Error('Backup commit verification failed: '+file);
       if(links.has(file)){
         const parent=path.posix.dirname(file);
-        const tree=await git.readTree({fs,dir:this.root,oid,...(parent==='.'?{}:{filepath:parent})});
+        const tree=await git.readTree({fs,dir:this.root,oid,cache,...(parent==='.'?{}:{filepath:parent})});
         if(tree.tree.find(entry=>entry.path===path.posix.basename(file))?.mode!=='120000')throw new Error('Backup link mode verification failed: '+file);
       }
     }
