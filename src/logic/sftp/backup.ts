@@ -38,7 +38,9 @@ export async function backupBeforeUpload(
   }
 
   await getMirrorService(repoRoot).backupBatch(targets, {
-    concurrency: ctx.config.concurrency,
+    concurrency: ctx.config.backgroundConcurrency ?? 4,
+    check: ctx.fileService.cancellationCheck?.(),
+    onCancellation: ctx.fileService.onCancellation?.bind(ctx.fileService),
   });
   logger.info('Upload backup saved in '+repoRoot);
 }

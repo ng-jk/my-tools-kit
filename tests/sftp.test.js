@@ -1047,7 +1047,7 @@ test('FTP omitted originals require typed metadata and unreadable originals stop
  await engine.operate(session,'upload','.htaccess');assert.equal(fs.readFileSync(path.join(backup,'.htaccess'),'utf8'),'hidden original');
  assert.equal(fs.readFileSync(destination,'utf8'),'replacement');
  remoteFs.get=async file=>{if(path.resolve(file)===destination)throw Object.assign(new Error('550 unavailable'),{code:550});return get(file);};
- fs.writeFileSync(path.join(local,'.htaccess'),'must not replace');await assert.rejects(engine.operate(session,'upload','.htaccess'),/FTP could not back up the identified destination/);
+ fs.writeFileSync(path.join(local,'.htaccess'),'must not replace');await assert.rejects(engine.operate(session,'upload','.htaccess'),/550 unavailable/);
  assert.equal(fs.readFileSync(destination,'utf8'),'replacement');
 });
 
@@ -1561,4 +1561,54 @@ test('backup ACL worker crash stops upload and the next batch can recover',{skip
  fs.writeFileSync(path.join(local,'worker.txt'),'new content');fs.writeFileSync(path.join(remote,'worker.txt'),'original content');cp.spawn=(...args)=>{const child=original(...args);queueMicrotask(()=>child.kill());return child;};
  try{await assert.rejects(engine.operate(session,'upload','worker.txt'),/worker/i);assert.equal(fs.readFileSync(path.join(remote,'worker.txt'),'utf8'),'original content');}finally{cp.spawn=original;}
  await engine.operate(session,'upload','worker.txt');assert.equal(fs.readFileSync(path.join(remote,'worker.txt'),'utf8'),'new content');const git=require('isomorphic-git'),oid=await git.resolveRef({fs,dir:backup,ref:'HEAD'});assert.equal(Buffer.from((await git.readBlob({fs,dir:backup,oid,filepath:'worker.txt'})).blob).toString(),'original content');
+});
+
+test('background concurrency is independent from the single FTP wire setting',()=>{
+ const session=engine.createSession(os.tmpdir(),{protocol:'ftp',host:'fixture',username:'fixture',remotePath:'/',profiles:{serial:{backgroundConcurrency:1},busy:{backgroundConcurrency:8}}});
+ try{assert.equal(session.config.concurrency,1);assert.equal(session.config.ftpConnections,1);assert.equal(session.config.backgroundConcurrency,4);assert.equal(session.service.getConfig('serial').backgroundConcurrency,1);assert.equal(session.service.getConfig('busy').backgroundConcurrency,8);}finally{session.service.dispose();}
+ for(const value of [0,9,1.5])assert.throws(()=>engine.createSession(os.tmpdir(),{host:'fixture',username:'fixture',backgroundConcurrency:value}),/backgroundConcurrency/);
+});
+test('backup local preparation overlaps remote setup without writing unprotected bytes',{timeout:10000},async t=>{
+ const {Readable}=require('node:stream'),root=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-local-overlap-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ let releasePermission,releaseNetwork,localStarted,networkStarted;const localReady=new Promise(resolve=>localStarted=resolve),networkReady=new Promise(resolve=>networkStarted=resolve),permissionGate=new Promise(resolve=>releasePermission=resolve),networkGate=new Promise(resolve=>releaseNetwork=resolve);t.after(()=>{releasePermission();releaseNetwork();});
+ const local=new engine.LocalFileSystem(path,root),prepare=local.prepareStagedFile.bind(local);local.prepareStagedFile=async(...args)=>{localStarted();await permissionGate;await prepare(...args);};
+ const remote={get:async()=>{networkStarted();await networkGate;return Readable.from('original bytes');}};
+ const task=new engine.TransferTask({fsPath:'/remote',fileSystem:remote},{fsPath:path.join(root,'saved'),fileSystem:local},{fileType:engine.FileType.File,transferDirection:engine.TransferDirection.REMOTE_TO_LOCAL,transferOption:{fallbackMode:0o600,overlapLocalPreparation:true}}),running=task.run();running.catch(()=>{});
+ await Promise.all([localReady,networkReady]);releaseNetwork();await new Promise(resolve=>setImmediate(resolve));const staged=fs.readdirSync(root).find(name=>name.includes('.devkit-'));assert.ok(staged);assert.equal(fs.statSync(path.join(root,staged)).size,0);assert.equal(fs.existsSync(path.join(root,'saved')),false);
+ releasePermission();await running;assert.equal(fs.readFileSync(path.join(root,'saved'),'utf8'),'original bytes');
+});
+test('failed parallel source setup drains local preparation before cleanup',{timeout:10000},async t=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-overlap-failure-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));let release,started;const gate=new Promise(resolve=>release=resolve),ready=new Promise(resolve=>started=resolve);t.after(()=>release());
+ const local=new engine.LocalFileSystem(path,root),prepare=local.prepareStagedFile.bind(local);let prepared=false;local.prepareStagedFile=async(...args)=>{started();await gate;await prepare(...args);prepared=true;};
+ const task=new engine.TransferTask({fsPath:'/remote',fileSystem:{get:async()=>{throw new Error('remote read failed');}}},{fsPath:path.join(root,'saved'),fileSystem:local},{fileType:engine.FileType.File,transferDirection:engine.TransferDirection.REMOTE_TO_LOCAL,transferOption:{fallbackMode:0o600,overlapLocalPreparation:true}});let settled=false;const result=task.run().finally(()=>{settled=true;});result.catch(()=>{});await ready;assert.equal(settled,false);release();await assert.rejects(result,/remote read failed/);assert.equal(prepared,true);assert.deepEqual(fs.readdirSync(root),[]);
+});
+test('local backup initialization overlaps remaining remote inspection and drains on failure',{timeout:10000},async t=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-init-overlap-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));let signal,release;const started=new Promise(resolve=>signal=resolve),gate=new Promise(resolve=>release=resolve);t.after(()=>release());let finished=false,closed=false;
+ const mirror=new engine.MirrorService(path.join(root,'backup'));mirror.repository.beginFileBatch=()=>async()=>{assert.equal(finished,true);closed=true;};mirror.repository.initialize=async()=>{signal();await gate;finished=true;};
+ const remote={lstat:async name=>{if(name==='/a')return {type:engine.FileType.File,mode:0o600};await started;throw new Error('permission denied for b');}};const result=mirror.backupBatch(['a','b'].map(name=>({relPath:name,remotePath:'/'+name,remoteFs:remote})),{concurrency:2});result.catch(()=>{});await started;await new Promise(resolve=>setImmediate(resolve));assert.equal(closed,false);release();await assert.rejects(result,/permission denied for b/);assert.equal(closed,true);
+});
+
+test('serial-wire upload overlaps later reads with pending local backup close',{timeout:15000},async t=>{
+ const {local,remote,session}=fixture(t);session.config.concurrency=1;session.config.backgroundConcurrency=4;
+ for(const name of ['a.txt','b.txt']){fs.writeFileSync(path.join(local,name),'new '+name);fs.writeFileSync(path.join(remote,name),'old '+name);}
+ const remoteFs=await session.service.getRemoteFileSystem(session.config),get=remoteFs.get.bind(remoteFs);let wire=Promise.resolve(),secondStarted,closeStarted,releaseClose;const second=new Promise(resolve=>secondStarted=resolve),closing=new Promise(resolve=>closeStarted=resolve),closeGate=new Promise(resolve=>releaseClose=resolve);
+ remoteFs.get=async file=>{const previous=wire;let release;wire=new Promise(resolve=>release=resolve);await previous;try{const stream=await get(file);stream.once('end',release);stream.once('error',release);if(path.basename(file)==='b.txt')secondStarted();return stream;}catch(error){release();throw error;}};
+ const original=engine.MirrorService.prototype.backupBatch;engine.MirrorService.prototype.backupBatch=function(...args){const files=this.repository.files,open=files.open.bind(files),close=files.close.bind(files),names=new Map();files.open=async(...values)=>{const fd=await open(...values);names.set(fd,values[0]);return fd;};files.close=async fd=>{if(path.basename(names.get(fd)||'').startsWith('a.txt.devkit-')){closeStarted();await closeGate;}return close(fd);};return original.apply(this,args).finally(()=>{files.open=open;files.close=close;});};
+ let running,timer;try{running=engine.operate(session,'upload');running.catch(()=>{});await Promise.race([Promise.all([second,closing]),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('local backup close blocked the next remote read')),8000);})]);assert.equal(fs.readFileSync(path.join(remote,'a.txt'),'utf8'),'old a.txt','remote overwrite waits for the full verified backup');releaseClose();await running;assert.equal(fs.readFileSync(path.join(remote,'b.txt'),'utf8'),'new b.txt');}finally{clearTimeout(timer);releaseClose();if(running)await running.catch(()=>{});engine.MirrorService.prototype.backupBatch=original;remoteFs.get=get;}
+});
+
+test('Git background jobs preserve mutation barriers and drain active work on failure',async()=>{
+ const events=[];let release,active=0,peak=0;const gate=new Promise(resolve=>release=resolve);const plan=[{kind:'rename',oldPath:'old',path:'new'},...['a','b','c','d'].map(path=>({kind:'upload',path})),{kind:'delete',path:'removed'}];
+ const running=engine.executeGitTransfers(plan,{rename:async()=>events.push('rename'),delete:async()=>events.push('delete'),upload:async file=>{events.push(file);active++;peak=Math.max(peak,active);if(file==='a'){await gate;active--;throw new Error('backup failed');}await gate;active--;}},2);running.catch(()=>{});await new Promise(resolve=>setImmediate(resolve));assert.deepEqual(events,['rename','a','b']);assert.equal(peak,2);release();await assert.rejects(running,/backup failed/);assert.equal(active,0);assert.deepEqual(events,['rename','a','b']);
+ const ordered=[];await engine.executeGitTransfers([{kind:'upload',path:'a'},{kind:'delete',path:'old'},{kind:'upload',path:'b'}],{upload:async name=>ordered.push('upload '+name),rename:async()=>{},delete:async()=>ordered.push('delete')},4);assert.deepEqual(ordered,['upload a','delete','upload b']);
+});
+
+test('a falsy Git upload rejection still stops queued jobs and deletions',async()=>{
+ const events=[];let rejected=false;try{await engine.executeGitTransfers([...['a','b','c','d'].map(path=>({kind:'upload',path})),{kind:'delete',path:'old'}],{upload:async file=>{events.push(file);if(file==='a')throw undefined;await new Promise(resolve=>setImmediate(resolve));},rename:async()=>{},delete:async()=>events.push('delete')},2);}catch(error){rejected=true;assert.equal(error,undefined);}assert.equal(rejected,true);assert.deepEqual(events,['a','b']);
+});
+
+test('a server withholding the cancelled FTP response cannot strand the wire',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});const {PassThrough}=require('node:stream'),stream=new PassThrough(),emit=stream.emit.bind(stream);stream.emit=(event,...args)=>['error','end','close'].includes(event)?true:emit(event,...args);let destroyed=0;
+ const ftp={get:(_file,callback)=>callback(null,stream),destroy:()=>{destroyed++;emit('error',new Error('fixture connection reset'));}},remote=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>ftp}}),controller=new AbortController();
+ const received=await remote.get('/file',{signal:controller.signal});controller.abort();await new Promise(resolve=>setImmediate(resolve));const drained=assert.rejects(remote.drainRead(received),/reset|cancel/i);t.mock.timers.tick(5000);await drained;assert.equal(destroyed,1);
 });

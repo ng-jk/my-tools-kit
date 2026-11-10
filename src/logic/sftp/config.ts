@@ -55,6 +55,7 @@ const configScheme = {
     autoDelete: Joi.boolean(),
   },
   concurrency: Joi.number().integer(),
+  backgroundConcurrency: Joi.number().integer().min(1).max(8),
   ftpConnections: Joi.number().integer().min(1).max(8),
   ftpStagingPath: Joi.string().regex(/^\/[^\r\n\0]*$/),
 
@@ -91,6 +92,7 @@ const defaultConfig = {
   // },
   concurrency: 4,
   ftpConnections: 1,
+  backgroundConcurrency: 4,
   // limitOpenFilesOnRemote: false
 
   mirror: {

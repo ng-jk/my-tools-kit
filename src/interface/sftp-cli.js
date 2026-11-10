@@ -70,7 +70,7 @@ paths and JSON output here. Transfer, profile and sync logic is shared.`);
         if (plan.some(operation=>operation.kind==='delete') && !flags.yes) throw new Error('Git changes include remote deletions; inspect changes and pass --yes');
         const relative = file => path.relative(session.service.baseDir,file);
         const run = (action,file,extra={}) => { if(cancelled) throw new Error('Transfer cancelled'); return operate(session,action,relative(file),{...flags,batch:true,...extra}); };
-        await executeGitTransfers(plan,{upload:file=>run('upload',file),delete:file=>run('delete',file),rename:(from,to)=>run('rename',from,{to:relative(to)})});
+        await executeGitTransfers(plan,{upload:file=>run('upload',file),delete:file=>run('delete',file),rename:(from,to)=>run('rename',from,{to:relative(to)})},session.config.backgroundConcurrency??4);
         results.push({profile:session.profile,operations:plan});
       } else if (action === 'watch') {
         if (profiles.length !== 1) throw new Error('Watch requires one profile');

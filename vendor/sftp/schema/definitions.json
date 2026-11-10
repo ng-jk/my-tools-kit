@@ -357,6 +357,13 @@
         "type": "string",
         "pattern": "^/[^\\r\\n\\u0000]*$",
         "description": "Existing FTP temporary-upload directory on the same filesystem as the destination; defaults to the login directory. Existing ancestor modes/owners do not block uploads. Each upload creates and verifies a 0700 temporary subdirectory."
+      },
+      "backgroundConcurrency": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 8,
+        "default": 4,
+        "description": "Background backup/local preparation jobs (1\u20138). Independent of FTP connection count; FTP wire commands and data transfers remain serialized per connection. Originals must be verified before overwrites."
       }
     }
   },

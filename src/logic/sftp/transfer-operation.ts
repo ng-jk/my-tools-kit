@@ -45,6 +45,7 @@ export async function executeTransfer(service: any, config: any, local: string, 
     if (key === filesystemIdentity) return identity;
     const value = Reflect.get(target, key);
     if (typeof value !== 'function') return value;
+    if(key==='drainRead')return value.bind(target); // cleanup must survive cancellation
     return (...args: any[]) => { if (planning) checkCancelled(); return value.apply(target, args); };
   }});
   try {
@@ -85,7 +86,9 @@ export async function executeTransfer(service: any, config: any, local: string, 
         const lease=await pool.acquire();return {...lease,fs:guard(lease.fs,(remoteFs as any)[filesystemIdentity])};
       });
     }
-    scheduler = service.createTransferScheduler(connectionPool?.size||config.concurrency);
+    // FTP commands/data remain serialized by each adapter's wire queue.
+    // Permit bounded local preparation and completion work around that queue.
+    scheduler = service.createTransferScheduler(connectionPool?.size||(config.protocol==='ftp'?(config.backgroundConcurrency??4):config.concurrency));
     tasks.forEach(task => scheduler.add(task));
     await scheduler.run();
     checkCancelled();

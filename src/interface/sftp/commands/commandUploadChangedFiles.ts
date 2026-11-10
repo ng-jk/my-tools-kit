@@ -84,7 +84,7 @@ async function handleCommand(hint: any) {
     upload: file => uploadFile(selected(file)),
     rename: (from,to) => renameRemote(selected(to),{originPath:from}),
     delete: file => removeRemote(selected(file)),
-  });
+  }, Math.min(8,...Array.from(contexts.values(),({ctx})=>ctx.config.backgroundConcurrency??4)));
   logger.log('------ Upload Changed Files Result ------');
   plan.forEach(operation => logger.log(`${operation.kind}: ${operation.path}`));
 }

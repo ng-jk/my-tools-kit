@@ -1,3 +1,13 @@
+# 0.7.21 — 2026-11-10
+
+- Separate background backup/preparation concurrency from the single FTP wire lane; default to four bounded background jobs without extra FTP logins.
+- Overlap local backup ACL/staging preparation with remote reads and initialize the private backup repository while remaining metadata is inspected.
+- Hold the FTP download queue lease through data completion and final protocol response, preventing concurrent chores from stealing a passive socket.
+- Apply bounded background scheduling to Git Upload Changed Files in both VS Code and CLI, preserving rename/delete barriers.
+- Report local backup failures without incorrectly blaming FTP server permissions.
+- Cancel queued background reads and drain the active FTP response before cleanup.
+- Keep the verified-backup barrier before overwrites and drain background work before failure cleanup.
+
 # 0.7.20 — 2026-11-08
 
 - Reuse one Windows ACL worker per automatic backup batch while retaining repository and per-file ACL verification.

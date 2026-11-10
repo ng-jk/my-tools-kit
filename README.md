@@ -393,3 +393,5 @@ SFTP uses its existing `"concurrency": 4` setting over one SSH connection. VS Co
 FTP login timeout (`connectTimeout`, default 30000 ms) and passive data connection timeout (`dataTimeout`, default 60000 ms) are separate and configurable per profile. Neither limits total batch duration. A lost connection fails pending operations promptly and stops starting queued files; interrupted writes are never replayed automatically.
 
 Automatic upload backups save and verify remote originals before replacement. If a backup fails, the upload stops and reports the problem. After an overwrite, use the backup location shown in the SFTP output to recover earlier server content. Optimized batch handling requires no configuration change.
+
+For a single FTP connection, `"backgroundConcurrency": 4` allows local backup writes, permissions and preparation jobs to overlap while FTP commands/data transfers remain serialized. Set it from 1 to 8 independently in each context/profile; `ftpConnections` still controls the number of FTP connections. New uploads still wait for verified backups. Git commit/verification must finish before originals are overwritten.

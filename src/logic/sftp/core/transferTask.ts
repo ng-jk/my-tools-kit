@@ -30,6 +30,7 @@ export interface TransferOption {
   filePerm?: number;
   dirPerm?: number;
   ftpStagingPath?: string;
+  overlapLocalPreparation?: boolean;
   fallbackMode?: number;
   perserveTargetMode: boolean;
   useTempFile?: boolean;
@@ -45,6 +46,7 @@ export default class TransferTask implements Task {
   private readonly _transferDirection: TransferDirection;
   private readonly _TransferOption: TransferOption;
   private _handle: Readable;
+  private readCancellation=new AbortController();
   private _cancelled: boolean;
   private _connectionPool?:{original:FileSystem;acquire:()=>Promise<{fs:FileSystem;release:()=>void}>};
   private _delegated?:TransferTask;
@@ -133,6 +135,7 @@ export default class TransferTask implements Task {
 
   cancel() {
     this._cancelled = true;
+    this.readCancellation.abort();
     this._delegated?.cancel();
     if (this._handle && !this._handle.destroyed) FileSystem.abortReadableStream(this._handle);
   }
@@ -151,28 +154,42 @@ export default class TransferTask implements Task {
     let fd: any;
     let stagedConsumed=false;
     let finishMetadata:(()=>void)|undefined;
+    let primaryFailed=false;
     let sourceError: Error | undefined;
     const rememberError = (error: Error) => { sourceError = error; };
     try {
       if (this._cancelled) throw new Error('Transfer cancelled');
-      this._handle = await srcFs.get(this._srcFsPath);
-      this._handle.pause();
-      this._handle.on('error', rememberError);
-      // Reuse FTP listings only during this file's read-only preflight. End
-      // the snapshot before any staged-file permissions or payload mutations.
-      finishMetadata=(targetFs as any).beginMetadataReadScope?.();
-      if (mode === undefined) {
-        try { const stat = await targetFs.lstat(target); mode = stat.type === FileType.File ? stat.mode : newMode; }
-        catch (error) { if (error.code !== 'ENOENT' && error.code !== 2) throw error; mode = newMode; }
-      }
-      if(this._transferDirection===TransferDirection.LOCAL_TO_REMOTE) mode=uploadMode(mode,filePerm);
-      if (sourceError) throw sourceError;
-      if (this._cancelled) throw new Error('Transfer cancelled');
-      if(targetFs instanceof RemoteFileSystem)await assertRemoteParentDirectories(targetFs,target);
-      const ftpStagingRoot=targetFs instanceof FTPFileSystem?await prepareFtpStaging(targetFs,this._TransferOption.ftpStagingPath):undefined;
-      fd = await targetFs.open(staged, 'wx', mode);
-      finishMetadata?.();finishMetadata=undefined;
-      await targetFs.prepareStagedFile?.(staged, target, mode, fd);
+      let ftpStagingRoot:string|undefined;
+      const receive=async()=>{
+        this._handle = await srcFs.get(this._srcFsPath,srcFs instanceof FTPFileSystem?{signal:this.readCancellation.signal}:undefined);
+        this._handle.pause();
+        this._handle.on('error', rememberError);
+        if(this._cancelled&&!this._handle.destroyed)FileSystem.abortReadableStream(this._handle);
+      };
+      const prepare=async()=>{
+        // Reuse FTP listings only during this file's read-only preflight. End
+        // the snapshot before any staged-file permissions or payload mutations.
+        finishMetadata=(targetFs as any).beginMetadataReadScope?.();
+        if (mode === undefined) {
+          try { const stat = await targetFs.lstat(target); mode = stat.type === FileType.File ? stat.mode : newMode; }
+          catch (error) { if (error.code !== 'ENOENT' && error.code !== 2) throw error; mode = newMode; }
+        }
+        if(this._transferDirection===TransferDirection.LOCAL_TO_REMOTE) mode=uploadMode(mode,filePerm);
+        if (sourceError) throw sourceError;
+        if (this._cancelled) throw new Error('Transfer cancelled');
+        if(targetFs instanceof RemoteFileSystem)await assertRemoteParentDirectories(targetFs,target);
+        ftpStagingRoot=targetFs instanceof FTPFileSystem?await prepareFtpStaging(targetFs,this._TransferOption.ftpStagingPath):undefined;
+        fd = await targetFs.open(staged, 'wx', mode);
+        finishMetadata?.();finishMetadata=undefined;
+        await targetFs.prepareStagedFile?.(staged, target, mode, fd);
+      };
+      if(this._TransferOption.overlapLocalPreparation&&this._transferDirection===TransferDirection.REMOTE_TO_LOCAL&&!(targetFs instanceof RemoteFileSystem)){
+        // Only local empty staging/ACL work overlaps a remote read. No backup
+        // bytes are written until preparation passes; settle both before cleanup.
+        const outcomes=await Promise.allSettled([prepare(),receive()]);
+        const failed=outcomes.find(outcome=>outcome.status==='rejected');
+        if(failed&&failed.status==='rejected')throw failed.reason;
+      }else{await receive();await prepare();}
       if (sourceError) throw sourceError;
       this.checkCancelled();
       await targetFs.put(this._handle, staged, {mode, fd, autoClose:false,ftpStagingRoot,beforeReplace:targetFs instanceof RemoteFileSystem?()=>assertRemoteParentDirectories(targetFs,staged):undefined});
@@ -186,14 +203,20 @@ export default class TransferTask implements Task {
       }
       await targetFs.close(fd); fd = undefined;
       await replaceStaged(targetFs, staged, target, openSsh, this.checkCancelled);stagedConsumed=true;
-    } finally {
+    } catch(error){primaryFailed=true;throw error;} finally {
       finishMetadata?.();
-      if (this._handle) { this._handle.destroy(); this._handle.removeListener('error', rememberError); }
+      let drainFailure:Error|undefined;
+      if(this._handle){
+        this._handle.destroy();
+        try{await (srcFs as any).drainRead?.(this._handle);}catch(error){drainFailure=error;}
+        this._handle.removeListener('error',rememberError);
+      }
       if (fd !== undefined) await targetFs.close(fd).catch(error => logger.warn(error.message));
       if(!stagedConsumed){
         // Never follow a newly substituted ancestor during failure cleanup.
         try{if(targetFs instanceof RemoteFileSystem)await assertRemoteParentDirectories(targetFs,staged);await targetFs.unlink(staged);}catch{}
       }
+      if(drainFailure&&!primaryFailed)throw drainFailure;
     }
   }
 }

@@ -24,6 +24,7 @@ export enum FileType {
 }
 
 export interface FileOption {
+  signal?: AbortSignal;
   flags?: string;
   encoding?: string;
   mode?: number;

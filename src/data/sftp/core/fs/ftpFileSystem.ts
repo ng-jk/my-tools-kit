@@ -39,6 +39,7 @@ export default class FTPFileSystem extends RemoteFileSystem {
   supportsCompleteDirectoryListing = false;
   private _supportMFMT: boolean = true;
   private metadataReaders=0;
+  private readCompletions=new WeakMap<Readable,Promise<void>>();
   private metadata=new Map<string,Promise<any[]>>();
   // Scoped to planning/backup only; every mutation invalidates the snapshot.
   beginMetadataReadScope() {
@@ -286,7 +287,7 @@ export default class FTPFileSystem extends RemoteFileSystem {
   }
 
   async get(path: string, _option?: FileOption): Promise<Readable> {
-    const stream = await this.atomicGet(path);
+    const stream = await this.atomicGet(path,_option?.signal);
 
     if (!stream) {
       throw new Error('create ReadStream failed');
@@ -490,19 +491,44 @@ export default class FTPFileSystem extends RemoteFileSystem {
     return this.queue.add(task);
   }
 
-  private async atomicGet(path: string): Promise<Readable> {
-    const task = () =>
-      new Promise<Readable>((resolve, reject) => {
-        this.ftp.get(path, (err: any, stream: Readable) => {
-          if (err) {
-            return reject(err);
-          }
+  async drainRead(stream:Readable):Promise<void>{await this.readCompletions.get(stream);}
 
-          resolve(stream);
+  private async atomicGet(path:string,signal?:AbortSignal):Promise<Readable> {
+    // Return the stream early, but retain the single wire lane through the
+    // final FTP response/MODE reset. Draining is also required after abort.
+    let completed:()=>void,failed:(error:Error)=>void;
+    let cancelTimer:ReturnType<typeof setTimeout>|undefined;
+    const completion=new Promise<void>((resolve,reject)=>{completed=resolve;failed=reject;});completion.catch(()=>{});
+    return new Promise<Readable>((resolve,reject)=>{
+      const queued=this.queue.add(()=>new Promise<void>((done,fail)=>{
+        if(signal?.aborted){fail(new Error('FTP download cancelled before starting'));return;}
+        let current:Readable|undefined;
+        const abort=()=>{
+          // This job owns the only data lane. A server that never finishes an
+          // aborted response must not strand every queued background job.
+          if(!cancelTimer)cancelTimer=setTimeout(()=>{
+            logger.warn('FTP cancelled read did not finish; closing its connection before releasing queued work.');
+            try{this.ftp.destroy();}finally{fail(new Error('FTP cancelled read response timed out; connection closed'));}
+          },5000);
+          if(current&&!current.destroyed)RemoteFileSystem.abortReadableStream(current);
+        };
+        signal?.addEventListener('abort',abort,{once:true});
+        this.ftp.get(path,(error:any,stream:Readable)=>{
+          if(error||!stream){signal?.removeEventListener('abort',abort);const failure=error||new Error('FTP download cancelled before its data stream opened');fail(failure);return;}
+          current=stream;this.readCompletions.set(stream,completion);
+          let settled=false;
+          const finish=(failure?:Error)=>{
+            if(settled)return;settled=true;signal?.removeEventListener('abort',abort);
+            stream.removeListener('end',end);stream.removeListener('error',fault);stream.removeListener('close',close);
+            if(failure)fail(failure);else done();
+          };
+          const end=()=>finish(),fault=(failure:Error)=>finish(failure),close=()=>finish(new Error('FTP download closed before completion'));
+          stream.once('end',end);stream.once('error',fault);stream.once('close',close);
+          resolve(stream);if(signal?.aborted)abort();
         });
-      });
-
-    return this.queue.add(task);
+      }));
+      queued.then(()=>{clearTimeout(cancelTimer);completed();},error=>{clearTimeout(cancelTimer);failed(error);reject(error);});
+    });
   }
 
   private async atomicPut(input:Readable,path:string,checkSource:()=>void):Promise<void> {

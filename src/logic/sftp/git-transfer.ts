@@ -18,16 +18,31 @@ export function planGitTransfers(changes: GitChange[], context: (path: string) =
 }
 export async function executeGitTransfers(plan: GitOperation[], adapter: {
   upload(path: string): Promise<unknown>; rename(from: string, to: string): Promise<unknown>; delete(path: string): Promise<unknown>;
-}) {
-  for (const operation of plan) {
-    if (operation.kind === 'upload') await adapter.upload(operation.path);
-    else {
+}, backgroundConcurrency=1) {
+  if(!Number.isInteger(backgroundConcurrency)||backgroundConcurrency<1||backgroundConcurrency>8)throw new Error('Background concurrency must be between 1 and 8');
+  let index=0;
+  while(index<plan.length){
+    const operation=plan[index];
+    if(operation.kind==='upload'){
+      const uploads:GitOperation[]=[];
+      while(index<plan.length&&plan[index].kind==='upload')uploads.push(plan[index++]);
+      let next=0,stopped=false;
+      // Overlap independent file chores. Each adapter retains its existing
+      // verified-backup barrier and per-connection wire serialization. Never
+      // start pending renames/deletions after an upload failure.
+      const outcomes=await Promise.allSettled(Array.from({length:Math.min(backgroundConcurrency,uploads.length)},async()=>{
+        while(next<uploads.length&&!stopped){const selected=uploads[next++];try{await adapter.upload(selected.path);}catch(error){stopped=true;throw error;}}
+      }));
+      const failed=outcomes.find(outcome=>outcome.status==='rejected');
+      if(failed&&failed.status==='rejected')throw failed.reason;
+    }else{
+      index++;
       try {
-        if (operation.kind === 'rename') await adapter.rename(operation.oldPath!,operation.path);
+        if(operation.kind==='rename')await adapter.rename(operation.oldPath!,operation.path);
         else await adapter.delete(operation.path);
-      } catch (error) {
-        if (operation.kind === 'rename' && !error.missingRenameSource) throw error;
-        if (error.code !== 'ENOENT' && error.code !== 2) throw error;
+      }catch(error){
+        if(operation.kind==='rename'&&!error.missingRenameSource)throw error;
+        if(error.code!=='ENOENT'&&error.code!==2)throw error;
       }
     }
   }

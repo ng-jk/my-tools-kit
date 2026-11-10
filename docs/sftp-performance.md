@@ -51,3 +51,28 @@ Figures are medians of three runs per condition. Both protocols used 3 ms added 
 The headless upstream FTP reference measured new: 1.128s, existing: 2.282s. This is faster than the toolkit. The reference uses upstream transfer/FTP/mirror logic with UI hooks stubbed, normalized legacy import interoperability, current local dependencies, temporary-file uploads and mirror enabled. The harness checks expected backup bytes; it is not an installed upstream UI benchmark. The toolkit additionally verifies private staging permissions, directory types, recoverable replacement and fail-closed backups. Equal production speed is not established.
 
 To reproduce the upstream reference, run `node scripts/benchmark-upstream-sftp.js`, set `DEVKIT_BENCHMARK_ENGINE` to the generated absolute `dist/upstream-benchmark-engine.js` path and run the FTP benchmark above. For SFTP use `DEVKIT_SFTP_BENCHMARK_OUTPUT` and `node --test --test-name-pattern="SFTP wire: password" tests/sftp-wire.test.js`. `DEVKIT_BENCHMARK_FILES=24` selects the larger workload (1–48 supported). Clear benchmark environment variables after use.
+
+## 0.7.21: overlap chores, keep one FTP connection (2026-11-10)
+
+`backgroundConcurrency` (default 4, allowed 1–8 per context/profile) is independent of the FTP wire setting. The former FTP `concurrency=1` remains the wire policy; it no longer forces all local backup work to be sequential. With `ftpConnections=1`, bounded file preparation/completion jobs can run while the adapter serializes FTP commands and data operations. Explicit multi-connection pools retain their configured transfer concurrency.
+
+The private backup repository initializes while remaining remote metadata is inspected. Local empty staging and ACL preparation overlaps remote read setup; a subsequent remote read can run while the previous local backup is being closed. An FTP download retains its queue lease through data EOF and the final protocol response/MODE reset, so a queued job cannot steal its passive socket. All background work is drained before cleanup, and all originals must be committed and verified before any overwrite. Remote permission commands cannot execute simultaneously on one FTP lane; dependent Git finalization also cannot be moved ahead of completed backup files.
+
+| Protocol / workload | 0.7.20 | 0.7.21 | Elapsed reduction | Requests before → after |
+| --- | ---: | ---: | ---: | ---: |
+| FTP / 6 files / new | 6.139s | 5.555s | 9.5% | 387 → 351 |
+| FTP / 6 files / existing | 5.729s | 5.135s | 10.4% | 308 → 272 |
+| FTP / 24 files / new | 22.716s | 20.358s | 10.4% | 1431 → 1281 |
+| FTP / 24 files / existing | 20.375s | 17.810s | 12.6% | 1208 → 1058 |
+| SFTP / 6 files / new | 0.965s | 0.975s | -1.0% | 138 → 138 |
+| SFTP / 6 files / existing | 1.806s | 1.711s | 5.3% | 161 → 161 |
+| SFTP / 24 files / new | 2.155s | 2.136s | 0.9% | 480 → 480 |
+| SFTP / 24 files / existing | 3.548s | 3.552s | -0.1% | 611 → 611 |
+
+Six-file values are medians of three paired runs; 24-file values are one paired run. These are local fixture measurements with automatic backups, not production guarantees or an upstream parity claim. [Raw samples and concurrency proofs](benchmarks/0.7.21.json).
+
+Git Upload Changed Files in both VS Code and the CLI uses the same bounded background scheduling for consecutive upload operations. Rename/delete operations remain barriers; failures drain active work and stop pending mutations. Each file retains its own verified-backup requirement. No extra FTP connection is opened by these jobs.
+
+Cancellation now reaches active backup jobs as well as foreground transfers. Queued FTP reads check their own abort signal before starting; active streams drain their final protocol response before cleanup or connection disposal. This does not abort another context’s data socket on the shared connection.
+
+If a server withholds the final response to a cancelled read, a five-second cancellation-drain deadline closes that connection before releasing the lane. Normal reads have no new total-duration deadline, and writes are never replayed automatically.

@@ -67,12 +67,12 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-ftp-'));
   fs.writeFileSync(path.join(root,'local.txt'),'ftp payload');
   let referentReads=0;const linkTargets=new Map([['/.hidden-link','/outside/private']]);
-  const files=new Map([['/nul',Buffer.from('valid remote sibling')],['/.hidden.txt',Buffer.from('hidden original')],['/.hidden-link',Buffer.from('link placeholder')]]),modes=new Map(),directories=new Set(),payloadParents=[],commands=[],sockets=new Set(),servers=new Set();let replaceAfterStore=false;const renameTargets=[];let attackStaging=false,attackAttempts=0,attackDenied=0;const storeTargets=[];let rootFactsSupported=true;let heldLogins=0,holdPeerLogin=false;let controlCount=0,activeControls=0,extraLimit=Infinity,storeDelay=0,activeStores=0,peakStores=0;let legacyIsolation=false;let permissionsSupported=true,permissionsHonored=true,filePermissionsHonored=true,failStore=false,probeMode='mlst',probeDenied='',probeAmbiguous='',rejectHidden=false;const omitted=new Set(),mlstReferentTypes=new Map();
+  const files=new Map([['/nul',Buffer.from('valid remote sibling')],['/.hidden.txt',Buffer.from('hidden original')],['/.hidden-link',Buffer.from('link placeholder')]]),modes=new Map(),directories=new Set(),payloadParents=[],commands=[],sockets=new Set(),servers=new Set();let replaceAfterStore=false;const renameTargets=[];let attackStaging=false,attackAttempts=0,attackDenied=0;const storeTargets=[];let rootFactsSupported=true;let heldLogins=0,holdPeerLogin=false;let retrStarted=0;let controlCount=0,activeControls=0,extraLimit=Infinity,storeDelay=0,activeStores=0,peakStores=0;let legacyIsolation=false;let permissionsSupported=true,permissionsHonored=true,filePermissionsHonored=true,failStore=false,probeMode='mlst',probeDenied='',probeAmbiguous='',rejectHidden=false;const omitted=new Set(),mlstReferentTypes=new Map();
   const rights=mode=>[6,3,0].map(shift=>[4,2,1].map((bit,index)=>((mode>>shift)&bit)?'rwx'[index]:'-').join('')).join('');
   const server=net.createServer(socket=>{
     controlCount++;activeControls++;socket.on('close',()=>activeControls--);if(controlCount>extraLimit){socket.end('421 Too many sessions\r\n');return;}
     sockets.add(socket);socket.on('close',()=>sockets.delete(socket));socket.on('error',()=>{});
-    const reply=message=>{if(process.env.DEVKIT_BENCHMARK_OUTPUT)setTimeout(()=>{if(!socket.destroyed)socket.write(message+'\r\n');},3);else socket.write(message+'\r\n');};let pending='',dataSocket,renameFrom;
+    const reply=message=>{if(process.env.DEVKIT_BENCHMARK_OUTPUT)setTimeout(()=>{if(!socket.destroyed)socket.write(message+'\r\n');},3);else socket.write(message+'\r\n');};let pending='',dataSocket,renameFrom,activeData=0;const beginData=()=>{assert.equal(activeData,0,'FTP data operations must not overlap on one connection');activeData++;};const endData=()=>{activeData--;};
     reply('220 Fixture ready');
     socket.on('data',chunk=>{
       pending+=chunk.toString();let end;
@@ -98,19 +98,20 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
           else reply('213-Status\r\n '+(directories.has(arg)?'d':linkTargets.has(arg)?'l':'-')+rights(modes.get(arg)||0o644)+' 1 user group '+(files.get(arg)?.length||0)+' Jan 01 2026 '+arg+(linkTargets.has(arg)?' -> '+linkTargets.get(arg):'')+'\r\n213 End');
         }
         else if(cmd==='PASV'){
+          assert.equal(activeData,0,'PASV must wait for the current data operation');
           const data=net.createServer(s=>{dataSocket=s;sockets.add(s);s.on('error',()=>{});s.on('close',()=>sockets.delete(s));data.close();});servers.add(data);
           data.listen(0,'127.0.0.1',()=>{const port=data.address().port;reply('227 Entering Passive Mode (127,0,0,1,'+Math.floor(port/256)+','+(port%256)+')');});
         }else if(cmd==='APPE'||cmd==='REST'){
           reply('550 Append/Restart not permitted, try again');dataSocket?.destroy();
         }else if(cmd==='STOR'){
-          storeTargets.push(arg);if(attackStaging){attackAttempts++;const parent=path.posix.dirname(path.posix.dirname(arg));if((modes.get(parent)||0o755)&0o022){linkTargets.set(path.posix.dirname(arg),'/public-victim');}else attackDenied++;}
-          reply('150 Receiving');activeStores++;peakStores=Math.max(peakStores,activeStores);const transferSocket=dataSocket,chunks=[];transferSocket.on('data',b=>chunks.push(b));transferSocket.on('end',()=>{setTimeout(()=>{const body=Buffer.concat(chunks);if(replaceAfterStore){replaceAfterStore=false;directories.delete('/race');files.set('/race',Buffer.from('link'));linkTargets.set('/race','/outside');}payloadParents.push(modes.get(path.posix.dirname(arg)));const actual=linkTargets.has(path.posix.dirname(arg))?linkTargets.get(path.posix.dirname(arg))+'/payload':arg;files.set(actual,body);modes.set(actual,0o644);activeStores--;transferSocket.end();reply(failStore?'451 Simulated transfer failure':'226 Done');},storeDelay);});transferSocket.resume();
+          beginData();storeTargets.push(arg);if(attackStaging){attackAttempts++;const parent=path.posix.dirname(path.posix.dirname(arg));if((modes.get(parent)||0o755)&0o022){linkTargets.set(path.posix.dirname(arg),'/public-victim');}else attackDenied++;}
+          reply('150 Receiving');activeStores++;peakStores=Math.max(peakStores,activeStores);const transferSocket=dataSocket,chunks=[];transferSocket.on('data',b=>chunks.push(b));transferSocket.on('end',()=>{setTimeout(()=>{const body=Buffer.concat(chunks);if(replaceAfterStore){replaceAfterStore=false;directories.delete('/race');files.set('/race',Buffer.from('link'));linkTargets.set('/race','/outside');}payloadParents.push(modes.get(path.posix.dirname(arg)));const actual=linkTargets.has(path.posix.dirname(arg))?linkTargets.get(path.posix.dirname(arg))+'/payload':arg;files.set(actual,body);modes.set(actual,0o644);activeStores--;endData();transferSocket.end();reply(failStore?'451 Simulated transfer failure':'226 Done');},storeDelay);});transferSocket.resume();
         }else if(cmd==='RETR'){
-          if(linkTargets.has(arg)){referentReads++;reply('550 Symlink must not be dereferenced');dataSocket.destroy();}else if(!files.has(arg)){reply('550 Missing');dataSocket.destroy();}else{reply('150 Sending');dataSocket.end(files.get(arg),()=>reply('226 Done'));}
+          if(linkTargets.has(arg)){referentReads++;reply('550 Symlink must not be dereferenced');dataSocket.destroy();}else if(!files.has(arg)){reply('550 Missing');dataSocket.destroy();}else{beginData();retrStarted++;reply('150 Sending');dataSocket.end(files.get(arg),()=>{endData();reply('226 Done');});}
         }else if(cmd==='LIST'){
           if(rejectHidden&&arg.startsWith('-al ')){reply('550 Hidden listing not supported');dataSocket.destroy();continue;}
-          reply('150 Listing');let names=[...files.keys(),...directories].filter(name=>!omitted.has(name));const target=arg.replace(/^-al\s*/, '');if(!arg.startsWith('-al '))names=names.filter(name=>!path.posix.basename(name).startsWith('.'));names=names.filter(name=>path.posix.dirname(name)===(target||'/'));
-          const self=legacyIsolation&&target==='/'?'drwxr-xr-x 1 user group 0 Jan 01 2026 .\r\n':'';const listing=self+names.map(name=>(directories.has(name)?'d':linkTargets.has(name)?'l':'-')+(directories.has(name)?rights(modes.get(name)||0o644).replace(/^(.{5})x/, '$1s'):rights(modes.get(name)||0o644))+' 1 user group '+(files.get(name)?.length||0)+' Jan 01 2026 '+path.posix.basename(name)+(linkTargets.has(name)?' -> '+linkTargets.get(name):'')+'\r\n').join('');dataSocket.end(listing,()=>reply('226 Done'));
+          beginData();reply('150 Listing');let names=[...files.keys(),...directories].filter(name=>!omitted.has(name));const target=arg.replace(/^-al\s*/, '');if(!arg.startsWith('-al '))names=names.filter(name=>!path.posix.basename(name).startsWith('.'));names=names.filter(name=>path.posix.dirname(name)===(target||'/'));
+          const self=legacyIsolation&&target==='/'?'drwxr-xr-x 1 user group 0 Jan 01 2026 .\r\n':'';const listing=self+names.map(name=>(directories.has(name)?'d':linkTargets.has(name)?'l':'-')+(directories.has(name)?rights(modes.get(name)||0o644).replace(/^(.{5})x/, '$1s'):rights(modes.get(name)||0o644))+' 1 user group '+(files.get(name)?.length||0)+' Jan 01 2026 '+path.posix.basename(name)+(linkTargets.has(name)?' -> '+linkTargets.get(name):'')+'\r\n').join('');dataSocket.end(listing,()=>{endData();reply('226 Done');});
         }else if(cmd==='MKD'){
           if(Buffer.byteLength(path.posix.basename(arg))>255)reply('550 Filename too long');else if(files.has(arg)||directories.has(arg))reply('550 Already exists');else{directories.add(arg);modes.set(arg,0o755);reply('257 Directory created');}
         }else if(cmd==='RMD'){
@@ -160,6 +161,9 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
   const batchConnections=controlCount;extraLimit=controlCount;await engine.operate(session,'upload','many');extraLimit=Infinity;assert.equal(controlCount,batchConnections);for(let n=0;n<48;n++)assert.equal(files.get('/many/file'+n).toString(),'batch '+n);
   fs.rmSync(path.join(root,'many'),{recursive:true});for(let n=0;n<48;n++){files.delete('/many/file'+n);modes.delete('/many/file'+n);}directories.delete('/many');modes.delete('/many');
   session.config.ftpConnections=3;
+  const primaryBackground=await session.service.getRemoteFileSystem(session.config),backgroundControls=controlCount;
+  const serialBackground=engine.createSession(root,{protocol:'ftp',host:'127.0.0.1',port:server.address().port,username:'fixture',password:'fixture',remotePath:'/',backgroundConcurrency:1});
+  try{assert.equal(await serialBackground.service.getRemoteFileSystem(serialBackground.config),primaryBackground,'background settings do not create another connection');assert.equal(controlCount,backgroundControls);}finally{serialBackground.service.dispose();}
   console.log('FTP fixture: parallel upload');
   fs.mkdirSync(path.join(root,'parallel'));for(let n=0;n<4;n++)fs.writeFileSync(path.join(root,'parallel','file'+n+'.txt'),'parallel '+n);
   storeDelay=100;peakStores=0;const connectionsBefore=controlCount;
@@ -169,6 +173,22 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
   session.config.ftpConnections=1;peakStores=0;const serialConnections=controlCount,serialCommands=commands.length;
   await engine.operate(session,'upload','parallel');assert.equal(peakStores,1);assert.equal(controlCount,serialConnections);
   const overwrite=commands.slice(serialCommands);assert.ok(overwrite.lastIndexOf('RETR')<overwrite.indexOf('STOR'),'all original backups finish before the first overwrite');
+  console.log('FTP fixture: Git chores share one wire');
+  const gitControlCount=controlCount;let gitActive=0,gitPeak=0;peakStores=0;
+  await engine.executeGitTransfers(Array.from({length:4},(_,n)=>({kind:'upload',path:'parallel/file'+n+'.txt'})),{upload:async file=>{gitActive++;gitPeak=Math.max(gitPeak,gitActive);try{return await engine.operate(session,'upload',file);}finally{gitActive--;}},rename:async()=>{throw new Error('unexpected rename');},delete:async()=>{throw new Error('unexpected delete');}},4);
+  assert.equal(gitPeak,4);assert.equal(peakStores,1);assert.equal(controlCount,gitControlCount,'concurrent Git chores must not open more FTP connections');
+  console.log('FTP fixture: local background failure drains the wire');
+  const backupMethod=engine.MirrorService.prototype.backupBatch,beforeLocalFailure=storeTargets.length,originalContents=new Map(Array.from({length:4},(_,n)=>['/parallel/file'+n+'.txt',files.get('/parallel/file'+n+'.txt').toString()]));
+  engine.MirrorService.prototype.backupBatch=function(...args){const local=this.repository.files,prepare=local.prepareStagedFile.bind(local);let failed=false;local.prepareStagedFile=async(...values)=>{if(!failed){failed=true;throw Object.assign(new Error('local backup permission fixture'),{code:'EACCES'});}return prepare(...values);};return backupMethod.apply(this,args).finally(()=>{local.prepareStagedFile=prepare;});};
+  try{await assert.rejects(engine.operate(session,'upload','parallel'),error=>{assert.match(error.message,/local backup permission fixture/);assert.doesNotMatch(error.message,/Check server read permissions/);assert.equal(error.code,'EACCES');return true;});}finally{engine.MirrorService.prototype.backupBatch=backupMethod;}
+  assert.equal(storeTargets.length,beforeLocalFailure);for(const [name,content]of originalContents)assert.equal(files.get(name).toString(),content);const afterLocalFailureControls=controlCount;await engine.operate(session,'upload','parallel');assert.equal(controlCount,afterLocalFailureControls,'the same connection remains usable after local backup failure');
+  console.log('FTP fixture: cancel queued background reads');
+  const cancellationContents=new Map(Array.from({length:4},(_,n)=>['/parallel/file'+n+'.txt',files.get('/parallel/file'+n+'.txt')]));
+  for(const [name]of cancellationContents)files.set(name,Buffer.alloc(4*1024*1024,65));
+  const beforeBackgroundRead=retrStarted,beforeBackgroundStore=storeTargets.length,backgroundControlsBefore=controlCount;
+  const backupCancellation=engine.operate(session,'upload','parallel');await waitUntil(()=>retrStarted>beforeBackgroundRead,'background backup read reached');await cancelledPromptly(backupCancellation,()=>session.service.cancelTransferTasks(),'background backup cancellation',5000);
+  const readsAfterCancellation=retrStarted;await new Promise(resolve=>setTimeout(resolve,50));assert.equal(retrStarted,readsAfterCancellation,'no queued read starts after cancellation has drained');assert.equal(storeTargets.length,beforeBackgroundStore);assert.equal(controlCount,backgroundControlsBefore);
+  for(const [name,content]of cancellationContents){assert.equal(files.get(name).length,4*1024*1024);files.set(name,content);}await engine.operate(session,'upload','parallel');assert.equal(controlCount,backgroundControlsBefore,'cancellation retains a usable primary connection');
   console.log('FTP fixture: partial setup failure');
   session.config.ftpConnections=3;extraLimit=controlCount+1;const stores=commands.filter(c=>c==='STOR').length;
   await engine.operate(session,'upload','parallel');assert.equal(commands.filter(c=>c==='STOR').length,stores+4,'healthy connections finish the batch despite one rejected extra login');extraLimit=Infinity;
