@@ -1,6 +1,7 @@
 ## 0.7.22
 
 - Fix FTP file comparisons when a directory listing contains an unrelated drive-qualified or otherwise unsafe name. Exact lookups validate the selected name and reject ambiguous matches, while full listings retain strict validation.
+- Limit the comparison picker to files, reject non-file targets before downloading, and make remote comparisons cancellable.
 
 # 0.7.21 — 2026-11-10
 

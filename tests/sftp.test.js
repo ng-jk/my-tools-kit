@@ -1124,6 +1124,13 @@ test('FTP direct metadata distinguishes explicit absence, unsafe replies and typ
  assert.equal(replies.length,0);assert.ok(calls.some(command=>command.startsWith('STAT ')));
 });
 
+test('diff preflight rejects directory targets before downloading', async()=>{
+ const {requireDiffFile}=require('../src/logic/sftp/diagnostics');
+ for(const side of ['local','remote']){
+  await assert.rejects(requireDiffFile({lstat:async()=>({type:engine.FileType.Directory})},'/folder',side,engine.FileType.File),/select a regular/);
+ }
+});
+
 test('FTP exact file lookup tolerates unsafe siblings while full listings reject them', async()=>{
  const file={name:'index.php',type:'-',size:42,date:new Date()};
  const unsafe={...file,name:'C:\\Paradigmsales',type:'d'};

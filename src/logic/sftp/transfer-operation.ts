@@ -28,13 +28,18 @@ async function assertLocalAncestors(fs:any,target:string,root:string) {
 const active = new Set<() => void>();
 export function cancelActiveTransfers() { cancelPendingOperations(); for (const cancel of [...active]) cancel(); }
 
+export function registerActiveTransfer(cancel: () => void) {
+  active.add(cancel);
+  return () => active.delete(cancel);
+}
+
 export async function executeTransfer(service: any, config: any, local: string, remote: string, down: boolean, options: any, synchronize = false) {
   const checkCancelled = service.cancellationCheck();
   const releaseResources=service.retainTransferResources?.();
   const setupCancellation=new AbortController();
   const removeCancellationListener=service.onCancellation?.(()=>setupCancellation.abort());
   const cancel = () => {setupCancellation.abort();service.cancelTransferTasks();};
-  active.add(cancel);
+  const unregister = registerActiveTransfer(cancel);
   const directoryScope = new DirectoryPermissionScope();
   let scheduler: any;
   let connectionPool:Awaited<ReturnType<typeof createTransferConnections>>|undefined;
@@ -99,7 +104,7 @@ export async function executeTransfer(service: any, config: any, local: string, 
   } finally {
     removeCancellationListener?.();
     finishMetadata?.();
-    scheduler?.stop();connectionPool?.close(); active.delete(cancel);
+    scheduler?.stop();connectionPool?.close(); unregister();
     try{await directoryScope.finish();}finally{try{releaseUpload?.();}finally{releaseResources?.();}}
   }
 }

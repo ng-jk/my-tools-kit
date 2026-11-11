@@ -19,8 +19,12 @@ function connectionFailure(error, config) {
   if(securityFailure)result.securityFailure=true;
   return result;
 }
-async function requireDiffFile(fs, file, side) {
-  try { return await fs.lstat(file); }
+async function requireDiffFile(fs, file, side, regularFileType) {
+  try {
+    const entry = await fs.lstat(file);
+    if (entry.type !== regularFileType) throw new Error('Diff: select a regular '+side+' file: '+file);
+    return entry;
+  }
   catch(error) {
     if(error.code==='ENOENT'||error.code===2) throw Object.assign(new Error(`Diff: file not found ${side==='local'?'locally':'on server'}: ${file}`),{code:error.code});
     if(['EACCES','EPERM',3,550].includes(error.code)) throw Object.assign(new Error(`Diff: cannot access ${side} file (permission denied or server path unavailable): ${file}`),{code:error.code});

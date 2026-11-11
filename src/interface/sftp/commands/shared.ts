@@ -146,6 +146,12 @@ export async function uriFromExplorerContextOrEditorContext(item?: any, items?: 
     openLabel: 'Select SFTP target'});
 }
 
+export async function selectDiffFile(item?: any, items?: any): Promise<undefined | Uri | Uri[]> {
+  if (item || getActiveDocumentUri()) return uriFromExplorerContextOrEditorContext(item, items);
+  return window.showOpenDialog({canSelectFiles: true, canSelectFolders: false, canSelectMany: false,
+    openLabel: 'Select file to compare'});
+}
+
 export async function selectRemoteTarget(item?: any, items?: any): Promise<undefined | Uri | Uri[]> {
   if (item || getActiveDocumentUri()) return uriFromExplorerContextOrEditorContext(item, items);
   return selectFileFromAll();
