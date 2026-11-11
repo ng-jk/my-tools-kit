@@ -150,8 +150,6 @@ export async function selectDiffFile(item?: any, items?: any): Promise<undefined
   if ((item && typeof item.scheme === 'string' && typeof item.fsPath === 'string') || item?.resource?.uri) {
     return uriFromExplorerContextOrEditorContext(item, items);
   }
-  const active = getActiveDocumentUri();
-  if (active && (active.scheme === 'file' || active.scheme === 'devkit-sftp')) return active;
   return window.showOpenDialog({canSelectFiles: true, canSelectFolders: false, canSelectMany: false,
     openLabel: 'Select file to compare'});
 }

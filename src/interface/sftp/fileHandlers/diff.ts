@@ -1,6 +1,6 @@
 // Adapted from ng-jk/vscode-sftp (MIT); see THIRD-PARTY-NOTICES.md.
 import * as path from 'path';
-import { ProgressLocation, TabInputTextDiff, Uri, window } from 'vscode';
+import { ProgressLocation, Uri, window } from 'vscode';
 import { diffFiles } from '../host';
 import { downloadDiffFile } from '../../../logic/sftp/diff-download';
 import createFileHandler from './createFileHandler';
@@ -33,7 +33,10 @@ export const diff = createFileHandler({
     });
     if (result) {
       const uri = Uri.file(result.file).toString();
-      const usesSnapshot = (input: unknown) => input instanceof TabInputTextDiff && input.original.toString() === uri;
+      const usesSnapshot = (input: unknown) => {
+        const tab = input as {original?: Uri; modified?: Uri; uri?: Uri} | undefined;
+        return [tab?.original, tab?.modified, tab?.uri].some(value => value?.toString() === uri);
+      };
       const tabs = window.tabGroups.onDidChangeTabs(event => {
         if (event.closed.some(tab => usesSnapshot(tab.input)) &&
           !window.tabGroups.all.some(group => group.tabs.some(tab => usesSnapshot(tab.input)))) void dispose();

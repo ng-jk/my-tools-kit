@@ -1164,8 +1164,17 @@ test('diff hands off a complete snapshot and cancels an active read', async t=>{
  const snapshot=await engine.downloadDiffFile(service,{},'/local.txt','/remote.txt',new AbortController().signal);
  t.after(()=>snapshot.dispose());
  assert.equal(fs.readFileSync(snapshot.file,'utf8'),'version');
+ if(process.platform==='win32'){
+  const command="$ErrorActionPreference = 'Stop'; if (-not [System.IO.Directory]::GetAccessControl($env:DEVKIT_TEST_DIFF_DIRECTORY).AreAccessRulesProtected) { exit 1 }; exit 42";
+  const acl=spawnSync('powershell.exe',['-NoProfile','-NonInteractive','-EncodedCommand',
+    Buffer.from(command,'utf16le').toString('base64')],
+    {encoding:'utf8',env:{...process.env,DEVKIT_TEST_DIFF_DIRECTORY:path.dirname(snapshot.file)}});
+  assert.equal(acl.status,42,acl.stderr);
+ }else{
+  assert.equal(fs.statSync(path.dirname(snapshot.file)).mode&0o777,0o700);
+ }
  await snapshot.dispose();
- assert.equal(fs.existsSync(snapshot.file),false);
+ assert.equal(fs.existsSync(path.dirname(snapshot.file)),false);
 
  let releaseCancelledRead;
  const cancelledReadReleased=new Promise(resolve=>{releaseCancelledRead=resolve;});

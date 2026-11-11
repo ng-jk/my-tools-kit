@@ -18,6 +18,7 @@ async function runIsolationCheck(vscode,connections,inspect) {
     `Workspace: ${connection.workspace}`,`Context: ${connection.context}`,
     'Remote root: '+report.root,report.message,'Jail verification: '+report.jail,
     'This advisory does not block uploads. Transfers use authenticated server permissions.',
+    'Remote path changes trust anyone who can replace a parent directory on the server.',
     'No files or server settings were changed.',
     'Setup and no-admin guidance: https://github.com/ng-jk/my-tools-kit/blob/developement/docs/server-isolation.md'
   ].join('\n\n')});
