@@ -127,6 +127,7 @@ export default class FTPClient extends RemoteClient {
               host: option.host,
               port: option.port,
               path: undefined,
+              session: undefined, // Control connections must verify a fresh handshake.
               servername: isIP(option.host) ? undefined : option.host,
               rejectUnauthorized: true,
               checkServerIdentity: (_name, certificate) => checkServerIdentity(option.host, certificate),

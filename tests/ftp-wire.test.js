@@ -85,7 +85,7 @@ test('implicit FTPS keeps authentication and passive data in verified TLS',{time
   await new Promise(resolve=>proxy.listen(0,'127.0.0.1',resolve));
   t.after(async()=>{for(const session of sessions)session.service.dispose();for(const socket of sockets)socket.destroy();for(const server of servers)if(server.listening)await new Promise(resolve=>server.close(resolve));fs.rmSync(root,{recursive:true,force:true});});
   const make=(secureOptions,password='TEST_ONLY_FTPS_PASSWORD')=>{const session=engine.createSession(root,{protocol:'ftp',secure:'implicit',secureOptions,host:'127.0.0.1',port:proxy.address().port,username:'TEST_ONLY_FTPS_USER',password,remotePath:'/',connectTimeout:3000});sessions.push(session);return session;};
-  const good=make({ca:[cert,wrong]});
+  const good=make({ca:[cert,wrong],session:{ignored:true}});
   const remote=await good.service.getRemoteFileSystem(good.config);
   const entries=await remote.list('/');assert.ok(entries.some(item=>item.name==='secure.txt'));
   assert.ok(commands.includes('PBSZ 0'));assert.ok(commands.includes('PROT P'));assert.ok(commands.includes('PASS TEST_ONLY_FTPS_PASSWORD'));assert.ok(tlsDataConnections>0);
