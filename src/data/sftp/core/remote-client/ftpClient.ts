@@ -1,5 +1,7 @@
 // Adapted from ng-jk/vscode-sftp (MIT); see THIRD-PARTY-NOTICES.md.
 import Client from 'ftp';
+import { isIP } from 'net';
+import { checkServerIdentity } from 'tls';
 import RemoteClient, { ConnectOption } from './remoteClient';
 
 // The upstream FTP dependency drops outstanding callbacks in _reset. Reject
@@ -120,7 +122,15 @@ export default class FTPClient extends RemoteClient {
           pasvTimeout: dataTimeout,
           ...option,
           ...(option.secure ? {
-            secureOptions: {...option.secureOptions, rejectUnauthorized: true},
+            secureOptions: {
+              ...option.secureOptions,
+              host: option.host,
+              port: option.port,
+              path: undefined,
+              servername: isIP(option.host) ? undefined : option.host,
+              rejectUnauthorized: true,
+              checkServerIdentity: (_name, certificate) => checkServerIdentity(option.host, certificate),
+            },
           } : {}),
           connTimeout: connectTimeout,
           user: username,

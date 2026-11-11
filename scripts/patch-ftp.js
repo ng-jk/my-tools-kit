@@ -28,7 +28,7 @@ function patchFtp(source) {
   if(secure) {
     options.session=self._socket.getSession();
     // Verify the configured control host, not an address supplied by PASV.
-    var identity=options.servername || self.options.host;
+    var identity=self.options.host;
     options.checkServerIdentity=function(_,cert){return tls.checkServerIdentity(identity,cert);};
     if(!require('net').isIP(identity))options.servername=identity;
     else delete options.servername;

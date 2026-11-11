@@ -380,20 +380,8 @@
       },
       "secureOptions": {
         "type": "object",
-        "description": "Options to be passed to tls.connect(). Default: (none)",
+        "description": "TLS options such as a trusted CA. The connection endpoint and certificate identity come from the FTP host and port.",
         "properties": {
-          "host": {
-            "type": "string",
-            "description": "Host the client should connect to, defaults to 'localhost'."
-          },
-          "port": {
-            "type": "number",
-            "description": "Port the client should connect to."
-          },
-          "path": {
-            "type": "string",
-            "description": "Creates unix socket connection to path. If this option is specified, host and port are ignored."
-          },
           "rejectUnauthorized": {
             "const": true,
             "description": "FTPS always verifies the server certificate. Supply a trusted CA for private certificates."
@@ -411,10 +399,6 @@
             "items": {
               "type": "string"
             }
-          },
-          "servername": {
-            "type": "string",
-            "description": "Server name for the SNI (Server Name Indication) TLS extension."
           },
           "minDHSize": {
             "type": "number",

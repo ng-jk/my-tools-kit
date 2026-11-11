@@ -8,6 +8,43 @@ const path=require('node:path');
 const engine=require(process.env.DEVKIT_BENCHMARK_ENGINE||'../build/sftp/engine');
 const tls=require('node:tls');
 
+test('explicit FTPS verifies the configured host before sending credentials',{timeout:10000},async t=>{
+  const fixture=name=>fs.readFileSync(path.join(__dirname,'fixtures','ftps',name));
+  const cert=fixture('test-only-wrong-host-cert.pem');
+  const secureContext=tls.createSecureContext({key:fixture('test-only-key.pem'),cert});
+  const commands=[],sockets=new Set();
+  const server=net.createServer(socket=>{
+    sockets.add(socket);
+    socket.on('error',()=>{});
+    socket.write('220 FTP ready\r\n');
+    socket.once('data',chunk=>{
+      commands.push(chunk.toString().trim());
+      socket.write('234 Start TLS\r\n');
+      const secure=new tls.TLSSocket(socket,{isServer:true,secureContext});
+      sockets.add(secure);
+      secure.on('error',()=>{});
+      secure.on('data',data=>{
+        commands.push(...data.toString().trim().split(/\r?\n/));
+        if(data.toString().startsWith('USER'))secure.write('530 Rejected\r\n');
+        else secure.write('200 OK\r\n');
+      });
+    });
+  });
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  const session=engine.createSession(os.tmpdir(),{
+    protocol:'ftp',secure:true,host:'127.0.0.1',port:server.address().port,username:'fixture',
+    password:'test-only',remotePath:'/',connectTimeout:3000,
+    secureOptions:{ca:cert,host:'wrong.invalid',servername:'wrong.invalid',rejectUnauthorized:false},
+  });
+  t.after(async()=>{
+    session.service.dispose();
+    for(const socket of sockets)socket.destroy();
+    await new Promise(resolve=>server.close(resolve));
+  });
+  await assert.rejects(session.service.getRemoteFileSystem(session.config),/certificate|hostname|altnames|IP/i);
+  assert.deepEqual(commands,['AUTH TLS']);
+});
+
 test('implicit FTPS keeps authentication and passive data in verified TLS',{timeout:20000},async t=>{
   const fixture=name=>fs.readFileSync(path.join(__dirname,'fixtures','ftps',name));
   const key=fixture('test-only-key.pem'),cert=fixture('test-only-cert.pem'),wrong=fixture('test-only-wrong-host-cert.pem');
