@@ -125,20 +125,24 @@ export default class FTPFileSystem extends RemoteFileSystem {
 
     const parentPath = this.pathResolver.dirname(path);
     const nameIdentity = this.pathResolver.basename(path);
-    let stats:FileEntry[];
-    try{stats=await this.list(parentPath);}catch(error){if(Number(error.code)===550)return this.probePath(path);throw error;}
+    assertEntryName(nameIdentity);
+    const findEntry = async (showHiddenFiles = false) => {
+      // An exact lookup only uses the requested entry. Full listings still
+      // validate every name before recursive operations can use them.
+      const matches = (await this.readListing(parentPath, showHiddenFiles))
+        .filter(entry => entry.name === nameIdentity);
+      if (matches.length > 1) throw new Error('FTP listing contains duplicate entries for ' + JSON.stringify(nameIdentity));
+      return matches.length === 1 ? this.toFileEntry(path, matches[0]) : undefined;
+    };
 
-    let fileStat = stats.find(ns => ns.name === nameIdentity);
-    if(!fileStat){
-      try{fileStat=(await this.list(parentPath,{showHiddenFiles:true})).find(entry=>entry.name===nameIdentity);}
-      catch(error){if(![500,501,502,504,550].includes(Number(error.code)))throw error;}
-    }
-
+    let fileStat: FileEntry | undefined;
+    try { fileStat = await findEntry(); }
+    catch (error) { if (Number(error.code) === 550) return this.probePath(path); throw error; }
     if (!fileStat) {
-      return this.probePath(path);
+      try { fileStat = await findEntry(true); }
+      catch (error) { if (![500,501,502,504,550].includes(Number(error.code))) throw error; }
     }
-
-    return fileStat;
+    return fileStat ?? this.probePath(path);
   }
 
   async getLoginDirectory():Promise<string>{
@@ -420,10 +424,7 @@ export default class FTPFileSystem extends RemoteFileSystem {
     }
   }
 
-  async list(
-    dir: string,
-    { showHiddenFiles = false } = {}
-  ): Promise<FileEntry[]> {
+  private async readListing(dir: string, showHiddenFiles: boolean): Promise<any[]> {
     // -al flag only get partially support
     const key=(showHiddenFiles?'-al ':'')+this.pathResolver.normalize(dir);
     let pending=this.metadataReaders?this.metadata.get(key):undefined;
@@ -433,6 +434,14 @@ export default class FTPFileSystem extends RemoteFileSystem {
       throw new Error('FTP listing contains unparseable entries; refusing an incomplete directory snapshot');
     }
 
+    return stats;
+  }
+
+  async list(
+    dir: string,
+    { showHiddenFiles = false } = {}
+  ): Promise<FileEntry[]> {
+    const stats = await this.readListing(dir, showHiddenFiles);
     return (
       stats
         .filter(item => item.name && item.name !== '.' && item.name !== '..')

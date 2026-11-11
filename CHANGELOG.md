@@ -1,3 +1,7 @@
+## 0.7.22
+
+- Fix FTP file comparisons when a directory listing contains an unrelated drive-qualified or otherwise unsafe name. Exact lookups validate the selected name and reject ambiguous matches, while full listings retain strict validation.
+
 # 0.7.21 — 2026-11-10
 
 - Separate background backup/preparation concurrency from the single FTP wire lane; default to four bounded background jobs without extra FTP logins.

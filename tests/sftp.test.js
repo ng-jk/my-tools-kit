@@ -1124,6 +1124,19 @@ test('FTP direct metadata distinguishes explicit absence, unsafe replies and typ
  assert.equal(replies.length,0);assert.ok(calls.some(command=>command.startsWith('STAT ')));
 });
 
+test('FTP exact file lookup tolerates unsafe siblings while full listings reject them', async()=>{
+ const file={name:'index.php',type:'-',size:42,date:new Date()};
+ const unsafe={...file,name:'C:\\Paradigmsales',type:'d'};
+ const entries=[unsafe,file];
+ const ftp={list:(_name,cb)=>cb(null,entries),_send:(_command,cb)=>cb(null,'OK')};
+ const adapter=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>ftp}});
+ assert.equal((await adapter.lstat('/index.php')).size,42);
+ await assert.rejects(adapter.list('/'),/Unsafe remote directory entry name/);
+ await assert.rejects(adapter.lstat('/'+unsafe.name),/Unsafe remote directory entry name/);
+ entries.push(file);
+ await assert.rejects(adapter.lstat('/index.php'),/duplicate entries/);
+});
+
 test('FTP hidden-list rejection still runs conservative direct path probes',async()=>{
  const calls=[],ftp={list:(name,cb)=>{calls.push(name);name.startsWith('-al ')?cb(Object.assign(new Error('hidden listing rejected'),{code:550})):cb(null,[]);},_send:(command,cb)=>{calls.push(command);command==='NOOP'?cb(null,'OK'):cb(Object.assign(new Error('No such file or directory'),{code:550}));}};
  const adapter=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>ftp}});
