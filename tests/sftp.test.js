@@ -1124,6 +1124,29 @@ test('FTP direct metadata distinguishes explicit absence, unsafe replies and typ
  assert.equal(replies.length,0);assert.ok(calls.some(command=>command.startsWith('STAT ')));
 });
 
+test('diff cancellation returns during connection setup and prevents a remote lookup', async()=>{
+ const controller=new AbortController();
+ let connect, started, released;
+ const connecting=new Promise(resolve=>{connect=resolve;});
+ const entered=new Promise(resolve=>{started=resolve;});
+ const cleanup=new Promise(resolve=>{released=resolve;});
+ let inspected=0;
+ const service={
+  cancellationCheck:()=>()=>{},
+  retainTransferResources:()=>released,
+  onCancellation:()=>()=>{},
+  getLocalFileSystem:()=>({lstat:async()=>({type:engine.FileType.File})}),
+  getRemoteFileSystem:()=>{started();return connecting;},
+ };
+ const diff=engine.downloadDiffFile(service,{},'/local.txt','/remote.txt',controller.signal);
+ await entered;
+ controller.abort();
+ assert.equal(await diff,undefined);
+ connect({lstat:async()=>{inspected++;}});
+ await cleanup;
+ assert.equal(inspected,0);
+});
+
 test('diff preflight rejects directory targets before downloading', async()=>{
  const {requireDiffFile}=require('../src/logic/sftp/diagnostics');
  for(const side of ['local','remote']){

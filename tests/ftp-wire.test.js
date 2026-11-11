@@ -59,6 +59,9 @@ test('implicit FTPS keeps authentication and passive data in verified TLS',{time
   finally{peer?.end();engine.configurePorts({password:async()=>{throw new Error('Supply authentication in config');}});}
   const before=commands.length;const untrusted=make({});
   await assert.rejects(untrusted.service.getRemoteFileSystem(untrusted.config),/certificate|self.signed|verify/i);assert.equal(commands.length,before,'invalid control certificate sends no credentials');
+  const verificationOverride=make({rejectUnauthorized:false});
+  await assert.rejects(verificationOverride.service.getRemoteFileSystem(verificationOverride.config),/certificate|self.signed|verify/i);
+  assert.equal(commands.length,before,'FTPS rejects an untrusted certificate even with the old override');
   wrongData=true;const lists=commands.filter(line=>line.startsWith('LIST')).length;
   await assert.rejects(remote.list('/'),/certificate|hostname|altnames|IP/i);
   assert.equal(commands.filter(line=>line.startsWith('LIST')).length,lists,'invalid data certificate rejects before sending a transfer command');

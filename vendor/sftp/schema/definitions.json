@@ -395,8 +395,8 @@
             "description": "Creates unix socket connection to path. If this option is specified, host and port are ignored."
           },
           "rejectUnauthorized": {
-            "type": "boolean",
-            "description": "If true, the server certificate is verified against the list of supplied CAs. An 'error' event is emitted if verification fails; err.code contains the OpenSSL error code. Defaults to true."
+            "const": true,
+            "description": "FTPS always verifies the server certificate. Supply a trusted CA for private certificates."
           },
           "NPNProtocols": {
             "type": "array",

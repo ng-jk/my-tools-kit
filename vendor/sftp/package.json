@@ -423,7 +423,7 @@
         },
         {
           "command": "sftp.diff",
-          "when": "false"
+          "when": "devkit.sftp.enabled"
         },
         {
           "command": "sftp.delete.remote",

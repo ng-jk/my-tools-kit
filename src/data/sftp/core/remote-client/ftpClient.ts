@@ -119,6 +119,9 @@ export default class FTPClient extends RemoteClient {
           // keepalive: 1000 * 1800, // 30 mins
           pasvTimeout: dataTimeout,
           ...option,
+          ...(option.secure ? {
+            secureOptions: {...option.secureOptions, rejectUnauthorized: true},
+          } : {}),
           connTimeout: connectTimeout,
           user: username,
         });
