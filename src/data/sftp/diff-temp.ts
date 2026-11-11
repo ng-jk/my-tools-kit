@@ -3,6 +3,8 @@ import * as path from 'path';
 import * as tmp from 'tmp';
 import { EXTENSION_NAME } from './constants';
 
+tmp.setGracefulCleanup();
+
 export async function createDiffTemp(localPath: string) {
   const file = await new Promise<string>((resolve, reject) => {
     tmp.file({prefix: EXTENSION_NAME+'-', postfix: path.extname(localPath), discardDescriptor: true},

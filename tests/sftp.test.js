@@ -1147,6 +1147,41 @@ test('diff cancellation returns during connection setup and prevents a remote lo
  assert.equal(inspected,0);
 });
 
+test('diff hands off a complete snapshot and cancels an active read', async t=>{
+ const {PassThrough,Readable}=require('node:stream');
+ let startRead, releaseResources;
+ const started=new Promise(resolve=>{startRead=resolve;});
+ const released=new Promise(resolve=>{releaseResources=resolve;});
+ const stat=async()=>({type:engine.FileType.File,size:7});
+ const remote={lstat:stat,get:async()=>Readable.from([Buffer.from('version')])};
+ const service={
+  cancellationCheck:()=>()=>{},
+  retainTransferResources:()=>releaseResources,
+  onCancellation:()=>()=>{},
+  getLocalFileSystem:()=>({lstat:stat}),
+  getRemoteFileSystem:async()=>remote,
+ };
+ const snapshot=await engine.downloadDiffFile(service,{},'/local.txt','/remote.txt',new AbortController().signal);
+ t.after(()=>snapshot.dispose());
+ assert.equal(fs.readFileSync(snapshot.file,'utf8'),'version');
+ await snapshot.dispose();
+ assert.equal(fs.existsSync(snapshot.file),false);
+
+ let releaseCancelledRead;
+ const cancelledReadReleased=new Promise(resolve=>{releaseCancelledRead=resolve;});
+ service.retainTransferResources=()=>releaseCancelledRead;
+ const stream=new PassThrough();
+ remote.get=async()=>{startRead();return stream;};
+ const controller=new AbortController();
+ const comparison=engine.downloadDiffFile(service,{},'/local.txt','/remote.txt',controller.signal);
+ await started;
+ controller.abort();
+ assert.equal(await comparison,undefined);
+ await cancelledReadReleased;
+ assert.equal(stream.destroyed,true);
+ await released;
+});
+
 test('diff preflight rejects directory targets before downloading', async()=>{
  const {requireDiffFile}=require('../src/logic/sftp/diagnostics');
  for(const side of ['local','remote']){

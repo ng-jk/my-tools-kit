@@ -13,6 +13,7 @@ import { tryLoadConfigs } from './modules/config';
 import { getAllFileService, createFileServices, disposeFileService } from './modules/serviceManager/index';
 import { getWorkspaceFolders, setContextValue } from './host';
 import RemoteExplorer from './modules/remoteExplorer/index';
+import { disposeDiffSnapshots } from './fileHandlers/diff';
 
 async function setupWorkspaceFolder(dir: string) {
   const configs = await tryLoadConfigs(dir);
@@ -72,4 +73,5 @@ export function deactivate() {
   fileActivityMonitor.destory();
   getAllFileService().forEach(disposeFileService);
   app.sftpBarItem.dispose();
+  return disposeDiffSnapshots();
 }

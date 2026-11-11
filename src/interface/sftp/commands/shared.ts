@@ -146,9 +146,10 @@ export async function uriFromExplorerContextOrEditorContext(item?: any, items?: 
     openLabel: 'Select SFTP target'});
 }
 
-export async function selectDiffFile(item?: any): Promise<undefined | Uri | Uri[]> {
-  if (item && typeof item.scheme === 'string' && typeof item.fsPath === 'string') return item;
-  if (item?.resource?.uri) return item.resource.uri;
+export async function selectDiffFile(item?: any, items?: any): Promise<undefined | Uri | Uri[]> {
+  if ((item && typeof item.scheme === 'string' && typeof item.fsPath === 'string') || item?.resource?.uri) {
+    return uriFromExplorerContextOrEditorContext(item, items);
+  }
   const active = getActiveDocumentUri();
   if (active && (active.scheme === 'file' || active.scheme === 'devkit-sftp')) return active;
   return window.showOpenDialog({canSelectFiles: true, canSelectFolders: false, canSelectMany: false,
