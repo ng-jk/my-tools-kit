@@ -2,10 +2,10 @@ import {VerifiedRemoteAbsence} from '../../data/sftp/core/fs/fileSystem';
 // Adapted from ng-jk/vscode-sftp (MIT); see THIRD-PARTY-NOTICES.md.
 import * as path from 'path';
 import {MirrorRepository} from '../../data/sftp/mirror-repository';
-import {FileSystem,FileType} from '../../data/sftp/core/fs';
+import {FileSystem,FileType,FileStats} from '../../data/sftp/core/fs';
 import {logger} from '../../data/sftp/ports';
 import TransferTask,{TransferDirection} from './core/transferTask';
-export interface MirrorTarget {relPath:string;remotePath:string;remoteFs:FileSystem;}
+export interface MirrorTarget {relPath:string;remotePath:string;remoteFs:FileSystem;onInspected?:(stat:FileStats|undefined)=>void;}
 export default class MirrorService {
   private chain: Promise<void> = Promise.resolve();
   private repository: MirrorRepository;
@@ -66,6 +66,7 @@ export default class MirrorService {
       if(preparationFailure)throw preparationFailure;
       const inspectionFailure=inspections.find(result=>result.status==='rejected');
       if(inspectionFailure&&inspectionFailure.status==='rejected')throw inspectionFailure.reason;
+      targets.forEach((target,index) => target.onInspected?.(inspected[index]?.stat));
       const originals=inspected.filter((item):item is {target:MirrorTarget;relative:string;stat:any}=>item!==undefined);
       if(!originals.length)return;
       await initialization;check();

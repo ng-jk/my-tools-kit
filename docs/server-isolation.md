@@ -55,7 +55,7 @@ local_root=/srv/devkit/account
 
 Account exception lists and per-user overrides can change these settings; the administrator must verify the effective login root, including failed local_root changes, and that the account cannot reach outside the intended jail. Do not enable writable-chroot exceptions as a substitute for a protected root. Retain the host's verified TLS configuration for FTPS. [vsftpd reference](https://manpages.debian.org/testing/vsftpd/vsftpd.conf.5.en.html), [Ubuntu FTP server guide](https://ubuntu.com/server/docs/how-to/networking/ftp/).
 
-Toolkit profile: protocol ftp, remotePath /project, ftpStagingPath /staging. FTP staging and project must share a filesystem so rename works. The optional advisory can use MLST UNIX.mode/UNIX.uid facts or a Unix LIST root self entry. Transfers do not require those root ownership facts. Private staging needs MKD/RMD, 0700 mode changes and verification. Existing destination directory modes are not changed by the client.
+Toolkit profile: protocol ftp, remotePath /project, ftpStagingPath /staging. FTP staging and project must share a filesystem so rename works. The optional advisory can use MLST UNIX.mode/UNIX.uid facts or a Unix LIST root self entry. Transfers do not require those root ownership facts. Transfers use a temporary file and apply requested modes without readback verification. Existing destination directory modes are not changed by the client.
 
 ## What is tested
 

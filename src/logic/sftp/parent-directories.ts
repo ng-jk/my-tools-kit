@@ -1,14 +1,20 @@
 import {FileType, FileStats} from '../../data/sftp/core/fs/fileSystem';
+export const remoteParentDirectoryCache = Symbol('remoteParentDirectoryCache');
 export interface ParentDirectories {pathResolver:{dirname(path:string):string};lstat(path:string):Promise<FileStats>;createMutationMetadataReader?(): (path:string)=>Promise<FileStats>;}
 // Uploads trust the authenticated server namespace, as requested by the owner.
 // Keep directory/type checks; permission/owner audits are advisory only.
 export async function assertRemoteParentDirectories(fs:ParentDirectories,path:string,allowMissing=false):Promise<void>{
   const parents:string[]=[];let current=fs.pathResolver.dirname(path);
   while(true){parents.push(current);const parent=fs.pathResolver.dirname(current);if(current==='/'||parent===current)break;current=parent;}
-  for(const parent of parents.reverse()){
-    let stat;
-    try{stat=await fs.lstat(parent);}catch(error){if(allowMissing&&(error.code==='ENOENT'||error.code===2))continue;throw error;}
+  const ordered = parents.reverse();
+  const cache: Map<string, FileStats> | undefined = (fs as any)[remoteParentDirectoryCache];
+  for(const parent of ordered){
+    // The nearest parent is refreshed at every replacement. Common higher
+    // parents are reused only during this one batch in the trusted namespace.
+    let stat = parent === ordered[ordered.length-1] ? undefined : cache?.get(parent);
+    try{if (!stat) stat=await fs.lstat(parent);}catch(error){if(allowMissing&&(error.code==='ENOENT'||error.code===2))continue;throw error;}
     if(stat.type!==FileType.Directory)throw new Error('Remote ancestor is not a real directory: '+parent+' (type '+(FileType[stat.type]||'Unknown')+').');
+    cache?.set(parent, stat);
   }
 }
 

@@ -1,5 +1,8 @@
 ## 0.7.22
 
+- Reuse backup inspection metadata for transfer modes and batch common ancestor types. Keep a fresh immediate-parent check before replacement.
+- Use direct FTP rename replacement when supported, with recoverable fallback for servers that reject overwriting rename.
+
 - Remove added remote file/directory permission readback checks from FTP/SFTP uploads and use conventional FTP temporary-file uploads beside the destination.
 - Batch Git changed-file uploads by context so automatic backup preparation, Git commit and verification run once per group.
 - Fix reviewer child-process startup on Windows by dropping an inherited desktop-launch marker while retaining its read-only sandbox and approval policy.

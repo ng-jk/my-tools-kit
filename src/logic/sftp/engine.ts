@@ -4,6 +4,7 @@ import * as path from 'path';
 import { FileService, FileType, TransferDirection, fileOperations } from './core';
 import { transfer, sync } from './fileHandlers/transfer/transfer';
 import {executeTransfer} from './transfer-operation';
+export {remoteParentDirectoryCache} from './parent-directories';
 export {downloadDiffFile} from './diff-download';
 export {uploadBatch} from './transfer-operation';
 export {cancelActiveTransfers} from './transfer-operation';

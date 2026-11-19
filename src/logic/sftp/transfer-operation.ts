@@ -2,7 +2,7 @@ import {RemoteFileSystem} from '../../data/sftp/core/fs';
 import {logger} from '../../data/sftp/ports';
 import {createTransferConnections} from './transfer-connections';
 import {connectionFailure} from './diagnostics';
-import {assertRemoteParentDirectories} from './parent-directories';
+import {assertRemoteParentDirectories, remoteParentDirectoryCache} from './parent-directories';
 import {filesystemIdentity} from './core/staged-replacement';
 import {transfer, sync} from './fileHandlers/transfer/transfer';
 import * as path from 'path';
@@ -46,8 +46,10 @@ export async function executeTransfer(service: any, config: any, local: string, 
   let releaseUpload:(()=>void)|undefined;
   let finishMetadata: (()=>void)|undefined;
   let planning = true;
+  const directoryTypes = new Map();
   const guard = (fs: any,identity=fs) => new Proxy(fs, {get(target, key) {
     if (key === filesystemIdentity) return identity;
+    if (key === remoteParentDirectoryCache && target instanceof RemoteFileSystem) return directoryTypes;
     const value = Reflect.get(target, key);
     if (typeof value !== 'function') return value;
     if(key==='drainRead')return value.bind(target); // cleanup must survive cancellation
@@ -112,6 +114,7 @@ export async function executeTransfer(service: any, config: any, local: string, 
   } finally {
     removeCancellationListener?.();
     finishMetadata?.();
+    directoryTypes.clear();
     scheduler?.stop();connectionPool?.close(); unregister();
     try{await directoryScope.finish();}finally{try{releaseUpload?.();}finally{releaseResources?.();}}
   }

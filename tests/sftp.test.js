@@ -104,6 +104,21 @@ function fixture(t, extra={}) {
   return {dir,local,remote,raw,session};
 }
 
+test('batch parent cache reuses common ancestors and refreshes the immediate parent', async t=>{
+ const {remoteParentDirectoryCache}=require('../build/sftp/engine');
+ const reads=[];
+ const remote={
+  pathResolver:path.posix,
+  [remoteParentDirectoryCache]:new Map(),
+  lstat:async name=>{reads.push(name);return {type:engine.FileType.Directory};},
+ };
+ await engine.assertRemoteParentDirectories(remote,'/project/assets/file1');
+ await engine.assertRemoteParentDirectories(remote,'/project/assets/file2');
+ assert.deepEqual(reads,['/','/project','/project/assets','/project/assets']);
+ remote.lstat=async()=>({type:engine.FileType.SymbolicLink});
+ await assert.rejects(engine.assertRemoteParentDirectories(remote,'/project/assets/file3'),/not a real directory/);
+});
+
 test('FTP and SFTP uploads apply modes without remote permission readbacks', async()=>{
  for (const protocol of ['ftp','sftp']) {
   const remote=protocol==='ftp'

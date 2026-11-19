@@ -1,6 +1,6 @@
 import {assertRemoteParentDirectories} from '../parent-directories';
 import {randomUUID} from 'crypto';
-import {FileSystem, FileType, RemoteFileSystem} from '../../../data/sftp/core/fs';
+import {FileSystem, FileType, RemoteFileSystem, FTPFileSystem} from '../../../data/sftp/core/fs';
 export function stagingPath(target: string) { return target + '.devkit-' + randomUUID(); }
 export function isTransferArtifact(value: string) { return /\.devkit-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:\.backup|\.upload)?$/i.test(value); }
 export const filesystemIdentity = Symbol("filesystemIdentity");
@@ -22,6 +22,16 @@ async function replace(fs: FileSystem, staged: string, target: string, atomic: b
   checkCancelled();
   if(fs instanceof RemoteFileSystem){await assertRemoteParentDirectories(fs,staged);if(fs.pathResolver.dirname(staged)!==fs.pathResolver.dirname(target))await assertRemoteParentDirectories(fs,target);}
   if (atomic) { await fs.renameAtomic(staged, target); return; }
+  if (fs instanceof FTPFileSystem) {
+    try {
+      await fs.renameAtomic(staged, target);
+      return;
+    } catch (error) {
+      // Servers that refuse RNTO over an existing file use the recoverable
+      // replacement below. Other failures keep their original diagnostics.
+      if (![550,553].includes(Number(error.code))) throw error;
+    }
+  }
   let existing;
   try { existing = await fs.lstat(target); }
   catch (error) { if (error.code !== 'ENOENT' && error.code !== 2) throw error; }

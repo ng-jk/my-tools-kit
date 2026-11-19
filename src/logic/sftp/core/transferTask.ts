@@ -71,6 +71,10 @@ export default class TransferTask implements Task {
     this.fileType = option.fileType;
   }
 
+  setDestinationMode(mode: number) {
+    this._TransferOption.mode = mode;
+  }
+
   get localFsPath() {
     if (this._transferDirection === TransferDirection.REMOTE_TO_LOCAL) {
       return this._targetFsPath;

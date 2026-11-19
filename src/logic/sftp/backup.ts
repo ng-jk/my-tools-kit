@@ -2,6 +2,7 @@ import * as path from 'path';
 import { TransferTask, TransferDirection, FileType, FileSystem } from './core';
 import { getMirrorService, MirrorTarget } from './mirror';
 import { logger } from '../../data/sftp/ports';
+import {serverCreationMode} from './server-permissions';
 import {defaultBackupPath} from '../../data/sftp/backup-location';
 // True when `child` is the same as or nested under `parent`.
 function isInside(child: string, parent: string): boolean {
@@ -30,6 +31,8 @@ export async function backupBeforeUpload(
       relPath: path.relative(base, t.localFsPath),
       remoteFs,
       remotePath: t.targetFsPath,
+      onInspected: stat => t.setDestinationMode(stat?.type === FileType.File && Number.isInteger(stat.mode)
+        ? stat.mode : serverCreationMode(ctx.config.filePerm, 'filePerm')),
     }));
   for(const target of targets)if(!target.relPath||target.relPath==='..'||target.relPath.startsWith('..'+path.sep)||path.isAbsolute(target.relPath))throw new Error('Backup source escapes the configured local context');
 
