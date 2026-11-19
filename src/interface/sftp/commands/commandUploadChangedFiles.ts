@@ -9,10 +9,21 @@ import { checkCommand } from './abstract/createCommand';
 import logger from '../logger';
 import {uploadBatch} from '../../../logic/sftp/transfer-operation';
 import {confirmBatch} from './confirmBatch';
-import {handleCtxFromUri} from '../fileHandlers/createFileHandler';
+import createFileHandler, {handleCtxFromUri} from '../fileHandlers/createFileHandler';
+import app from '../app';
 import {localEntryExists} from '../../../data/sftp/local-events';
 import {repositoryForGroup} from '../../../logic/sftp/git-selection';
 import {reconcileGitChanges, planGitTransfers, executeGitTransfers, GitChange} from '../../../logic/sftp/git-transfer';
+
+const uploadFileGroup = createFileHandler<{files: string[]}>({
+  name: 'upload changed-file batch',
+  async handle(option) {
+    await uploadBatch(this.fileService, this.config, option.files);
+  },
+  afterHandle() {
+    app.remoteExplorer.refresh();
+  },
+});
 
 export default checkCommand({
   id: COMMAND_UPLOAD_CHANGEDFILES,
@@ -90,7 +101,7 @@ async function handleCommand(hint: any) {
         group.push(file);
         groups.set(ctx.fileService, group);
       }
-      for (const [service, group] of groups) await uploadBatch(service, selected(group[0]).config, group);
+      for (const group of groups.values()) await uploadFileGroup(selected(group[0]), {files: group});
     },
     upload: file => uploadFile(selected(file)),
     rename: (from,to) => renameRemote(selected(to),{originPath:from}),

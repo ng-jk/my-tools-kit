@@ -107,7 +107,7 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-ftp-'));
   fs.writeFileSync(path.join(root,'local.txt'),'ftp payload');
   let referentReads=0;const linkTargets=new Map([['/.hidden-link','/outside/private']]);
-  const files=new Map([['/nul',Buffer.from('valid remote sibling')],['/.hidden.txt',Buffer.from('hidden original')],['/.hidden-link',Buffer.from('link placeholder')]]),modes=new Map(),directories=new Set(),payloadParents=[],commands=[],sockets=new Set(),servers=new Set();let refuseOverwriteOnce=false;let replaceAfterStore=false;const renameTargets=[];let attackStaging=false,attackAttempts=0,attackDenied=0;const storeTargets=[];let rootFactsSupported=true;let heldLogins=0,holdPeerLogin=false;let retrStarted=0;let controlCount=0,activeControls=0,extraLimit=Infinity,storeDelay=0,activeStores=0,peakStores=0;let legacyIsolation=false;let permissionsSupported=true,permissionsHonored=true,filePermissionsHonored=true,failStore=false,probeMode='mlst',probeDenied='',probeAmbiguous='',rejectHidden=false;const omitted=new Set(),mlstReferentTypes=new Map();
+  const files=new Map([['/nul',Buffer.from('valid remote sibling')],['/.hidden.txt',Buffer.from('hidden original')],['/.hidden-link',Buffer.from('link placeholder')]]),modes=new Map(),directories=new Set(),payloadParents=[],commands=[],sockets=new Set(),servers=new Set();let refuseOverwriteOnce=false,failReplacementOnce=false;let replaceAfterStore=false;const renameTargets=[];let attackStaging=false,attackAttempts=0,attackDenied=0;const storeTargets=[];let rootFactsSupported=true;let heldLogins=0,holdPeerLogin=false;let retrStarted=0;let controlCount=0,activeControls=0,extraLimit=Infinity,storeDelay=0,activeStores=0,peakStores=0;let legacyIsolation=false;let permissionsSupported=true,permissionsHonored=true,filePermissionsHonored=true,failStore=false,probeMode='mlst',probeDenied='',probeAmbiguous='',rejectHidden=false;const omitted=new Set(),mlstReferentTypes=new Map();
   const rights=mode=>[6,3,0].map(shift=>[4,2,1].map((bit,index)=>((mode>>shift)&bit)?'rwx'[index]:'-').join('')).join('');
   const server=net.createServer(socket=>{
     controlCount++;activeControls++;socket.on('close',()=>activeControls--);if(controlCount>extraLimit){socket.end('421 Too many sessions\r\n');return;}
@@ -161,7 +161,10 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
         else if(cmd==='MFMT')reply('213 Modified');
         else if(cmd==='SITE'){const match=/^CHMOD ([0-7]+) (.+)$/.exec(arg);if(!permissionsSupported||!match)reply('502 Unsupported');else{if(permissionsHonored&&(!files.has(match[2])||filePermissionsHonored))modes.set(match[2],parseInt(match[1],8));reply('200 Permissions set');}}
         else if(cmd==='RNFR'){renameFrom=arg;reply(arg===probeDenied?'550 Permission denied':arg===probeAmbiguous||probeMode==='unsupported'?'550 File unavailable':files.has(arg)?'350 Rename ready':"550 Sorry, but that file doesn't exist");}
-        else if(cmd==='RNTO'){renameTargets.push(arg);linkTargets.delete(arg);files.set(arg,files.get(renameFrom));files.delete(renameFrom);modes.set(arg,modes.get(renameFrom));modes.delete(renameFrom);reply('250 Renamed');}
+        else if(cmd==='RNTO'){
+          if(refuseOverwriteOnce&&files.has(arg)){refuseOverwriteOnce=false;reply('550 Destination exists');continue;}
+          if(failReplacementOnce&&arg==='/local.txt'&&renameFrom.includes('.devkit-')&&!renameFrom.endsWith('.backup')){failReplacementOnce=false;reply('451 Simulated replacement failure');continue;}
+          renameTargets.push(arg);linkTargets.delete(arg);files.set(arg,files.get(renameFrom));files.delete(renameFrom);modes.set(arg,modes.get(renameFrom));modes.delete(renameFrom);reply('250 Renamed');}
         else if(cmd==='DELE'){files.delete(arg);modes.delete(arg);reply('250 Deleted');}
         else if(cmd==='ABOR')reply('225 Aborted');
         else if(cmd==='QUIT'){reply('221 Bye');socket.end();}
@@ -272,6 +275,12 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
   files.set('/metadata450-existing.txt',Buffer.from('preserve original'));omitted.add('/metadata450-existing.txt');fs.writeFileSync(path.join(root,'metadata450-existing.txt'),'must not overwrite');const before450=payloadParents.length;await assert.rejects(engine.operate(session,'upload','metadata450-existing.txt'),/confirms.*exists/);assert.equal(files.get('/metadata450-existing.txt').toString(),'preserve original');assert.equal(payloadParents.length,before450);omitted.clear();probeMode='mlst';
   files.set('/local.txt',Buffer.from('previous payload'));refuseOverwriteOnce=true;
   await engine.operate(session,'upload','local.txt');assert.equal(files.get('/local.txt').toString(),'ftp payload');
+  assert.equal(refuseOverwriteOnce,false,'the server exercised RNTO overwrite-refusal fallback');
+  files.set('/local.txt',Buffer.from('original before failed replace'));refuseOverwriteOnce=true;failReplacementOnce=true;
+  await assert.rejects(engine.operate(session,'upload','local.txt'),/Simulated replacement failure/);
+  assert.equal(files.get('/local.txt').toString(),'original before failed replace','fallback restores the original if final replacement fails');
+  assert.equal(refuseOverwriteOnce,false);assert.equal(failReplacementOnce,false);
+  await engine.operate(session,'upload','local.txt');
   const backup=engine.defaultBackupPath(session.service.workspace,session.service.baseDir,session.config,session.service.profile);
   t.after(()=>fs.rmSync(backup,{recursive:true,force:true}));
   rejectHidden=true;fs.writeFileSync(path.join(root,'hidden-list-new.txt'),'new despite LIST -al rejection');await engine.operate(session,'upload','hidden-list-new.txt');assert.equal(files.get('/hidden-list-new.txt').toString(),'new despite LIST -al rejection');

@@ -1,5 +1,7 @@
 ## 0.7.22
 
+- Recheck cancellation before FTP rename replacement and retain one progress/refresh lifecycle per SCM upload batch.
+
 - Reuse backup inspection metadata for transfer modes and batch common ancestor types. Keep a fresh immediate-parent check before replacement.
 - Use direct FTP rename replacement when supported, with recoverable fallback for servers that reject overwriting rename.
 

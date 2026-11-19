@@ -21,6 +21,7 @@ export async function replaceStaged(fs: FileSystem, staged: string, target: stri
 async function replace(fs: FileSystem, staged: string, target: string, atomic: boolean, checkCancelled: () => void) {
   checkCancelled();
   if(fs instanceof RemoteFileSystem){await assertRemoteParentDirectories(fs,staged);if(fs.pathResolver.dirname(staged)!==fs.pathResolver.dirname(target))await assertRemoteParentDirectories(fs,target);}
+  checkCancelled();
   if (atomic) { await fs.renameAtomic(staged, target); return; }
   if (fs instanceof FTPFileSystem) {
     try {

@@ -127,7 +127,9 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     assert.equal(fs.readFileSync(path.join(dir,'remote','new.txt'),'utf8'),'renamed locally');
     repository.state.indexChanges=[{status:0,uri:URI.file(path.join(root,'ui.txt'))}];
     fs.writeFileSync(path.join(root,'ui.txt'),'changed upload has completed');
+    const beforeChangedBatch=statusTexts.length;
     await commands.get('devkit.sftp.upload.changedFiles')();
+    assert.ok(statusTexts.slice(beforeChangedBatch).some(text=>text.includes('operation(s) running')),'SCM batch reports ongoing work through the shared file handler');
     assert.equal(fs.readFileSync(path.join(dir,'remote','ui.txt'),'utf8'),'changed upload has completed');
     const nestedRepository={rootUri:URI.file(path.join(root,'nested')),ui:{selected:false},state:{indexChanges:[{status:0,uri:URI.file(path.join(root,'nested','ui.txt'))}],workingTreeChanges:[]}};
     repositories.push(nestedRepository);

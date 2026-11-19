@@ -104,6 +104,28 @@ function fixture(t, extra={}) {
   return {dir,local,remote,raw,session};
 }
 
+test('FTP cancellation during final parent inspection prevents replacement',async()=>{
+ const remote=new engine.FTPFileSystem(path.posix,{client:{}});
+ let task,parents=0,renames=0;
+ remote.lstat=async name=>{
+  if(name==='/'){
+   if(++parents===2)task.cancel();
+   return {type:engine.FileType.Directory};
+  }
+  throw Object.assign(new Error('missing'),{code:'ENOENT'});
+ };
+ remote.put=async input=>{for await(const _chunk of input){}};
+ remote.renameAtomic=async()=>{renames++;};
+ remote.unlink=async()=>{};
+ task=new engine.TransferTask(
+  {fsPath:'/source',fileSystem:{get:async()=>require('node:stream').Readable.from(['payload'])}},
+  {fsPath:'/target',fileSystem:remote},
+  {fileType:engine.FileType.File,transferDirection:engine.TransferDirection.LOCAL_TO_REMOTE,transferOption:{mode:0o600}},
+ );
+ await assert.rejects(task.run(),/cancel/i);
+ assert.equal(renames,0);
+});
+
 test('batch parent cache reuses common ancestors and refreshes the immediate parent', async t=>{
  const {remoteParentDirectoryCache}=require('../build/sftp/engine');
  const reads=[];
