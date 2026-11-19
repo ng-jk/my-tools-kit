@@ -1,6 +1,6 @@
 import {assertRemoteParentDirectories} from './parent-directories';
 import {serverCreationMode} from './server-permissions';
-import {FileSystem, FileType, RemoteFileSystem} from '../../data/sftp/core/fs';
+import {FileSystem, FileType, RemoteFileSystem, FTPFileSystem} from '../../data/sftp/core/fs';
 import {filesystemIdentity} from './core/staged-replacement';
 const locks = new WeakMap<object, Map<string, Promise<void>>>();
 export async function ensureTransferDirectory(source: FileSystem, target: FileSystem, from: string, to: string, override?: number, scope?: DirectoryPermissionScope, ancestor = false, newMode?: number) {
@@ -44,8 +44,16 @@ async function ensure(source: FileSystem, target: FileSystem, from: string, to: 
   // Inferred modes must retain owner search without widening group/other access.
   // Explicit dirPerm remains exact, including intentionally restrictive modes.
   if (override === undefined) mode = (mode & 0o777) | 0o100;
-  if(verificationOnly && (mode&0o300)!==0o300)throw new Error('New server directory mode must permit owner write/search during upload; use 755 or 700. No read-only finalization through remote pathnames is supported.');
+  if (verificationOnly && !(target instanceof RemoteFileSystem) && (mode & 0o300) !== 0o300) {
+    throw new Error('New server directory mode must permit owner write/search during upload');
+  }
   await target.mkdir(to, verificationOnly ? mode : mode|0o700);
+  if (target instanceof RemoteFileSystem) {
+    const entry = await target.lstat(to);
+    if (entry.type !== FileType.Directory) throw new Error('Directory creation is incomplete at '+to+': destination is not a real directory');
+    if (target instanceof FTPFileSystem) await target.chmod(to, mode);
+    return;
+  }
   try {
     if (scope) await scope.establish(target, to, mode, verificationOnly);
     else await (verificationOnly ? target.verifyDirectoryMode(to,mode) : target.establishDirectoryMode(to, mode));
@@ -60,7 +68,8 @@ const leases = new WeakMap<object, Map<string, DirectoryLease>>();
 export class DirectoryPermissionScope {
   private held = new Set<DirectoryLease>();
   async establish(fs: FileSystem, path: string, mode?: number, verificationOnly=false) {
-    if(verificationOnly || fs instanceof RemoteFileSystem){
+    if (fs instanceof RemoteFileSystem) return;
+    if(verificationOnly){
       if(mode!==undefined)await fs.verifyDirectoryMode(path,mode);
       return;
     }

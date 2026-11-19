@@ -49,8 +49,7 @@ export default abstract class RemoteFileSystem extends FileSystem {
   }
 
   async establishDirectoryMode(path:string,mode:number):Promise<void>{
-    // Remote paths cannot bind chmod to a non-following directory identity.
-    await this.verifyDirectoryMode(path,mode);
+    await this.chmod(path, mode);
   }
 
 

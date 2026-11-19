@@ -1,3 +1,7 @@
+## Current upload policy
+
+FTP/SFTP uploads apply modes like the original extension, without extra remote permission readback verification. FTP stages a sibling temporary file. Git changed-file uploads prepare and verify one backup batch per connection context. Local backup ACLs and byte verification remain required. The measurements below describe earlier versions and their earlier permission policy.
+
 # FTP/SFTP transfer performance
 
 The comparison uses ng-jk/vscode-sftp commit `ef4d3ca3e6fd2c0c24e05079d3dcf6093d633ce8`, the upstream revision recorded in `vendor/sftp/provenance.json`. The before/after wire benchmark compares this toolkit 0.7.13 (`b6edb011b2896f70e2f00a3ad3a3ac43fdeccfc0`) with 0.7.14; it does not claim a measured speedup over the upstream extension.

@@ -17,6 +17,7 @@ export function planGitTransfers(changes: GitChange[], context: (path: string) =
   return [...renames, ...Array.from(uploads, path => ({kind:'upload' as const,path})), ...Array.from(deletes, path => ({kind:'delete' as const,path}))];
 }
 export async function executeGitTransfers(plan: GitOperation[], adapter: {
+  uploadBatch?(paths: string[]): Promise<unknown>;
   upload(path: string): Promise<unknown>; rename(from: string, to: string): Promise<unknown>; delete(path: string): Promise<unknown>;
 }, backgroundConcurrency=1) {
   if(!Number.isInteger(backgroundConcurrency)||backgroundConcurrency<1||backgroundConcurrency>8)throw new Error('Background concurrency must be between 1 and 8');
@@ -26,6 +27,10 @@ export async function executeGitTransfers(plan: GitOperation[], adapter: {
     if(operation.kind==='upload'){
       const uploads:GitOperation[]=[];
       while(index<plan.length&&plan[index].kind==='upload')uploads.push(plan[index++]);
+      if (adapter.uploadBatch) {
+        await adapter.uploadBatch(uploads.map(upload => upload.path));
+        continue;
+      }
       let next=0,stopped=false;
       // Overlap independent file chores. Each adapter retains its existing
       // verified-backup barrier and per-connection wire serialization. Never

@@ -2,7 +2,7 @@
 const {readConfiguration,ensureConfiguration}=require('../data/sftp-config');
 const {watchLocalDirectory,runSsh}=require('../data/sftp-terminal');
 const path = require('node:path');
-const { createSession, operate, configurePorts, sshArguments, watchPolicy, findGitRoot, getCommitChangedFiles, getUncommittedChangedFiles, getUncommittedTransfers, planGitTransfers, executeGitTransfers, isOwnLocalChange, localEntryExists, initialContexts, contextNames, normalizeConfigurations } = require('../../build/sftp/engine');
+const { createSession, operate, configurePorts, sshArguments, watchPolicy, findGitRoot, getCommitChangedFiles, getUncommittedChangedFiles, getUncommittedTransfers, planGitTransfers, executeGitTransfers, uploadBatch, isOwnLocalChange, localEntryExists, initialContexts, contextNames, normalizeConfigurations } = require('../../build/sftp/engine');
 async function main(args) {
   if (!args.length || args.includes('--help')) {
     console.log(`devkit sftp <action> <workspace> [relative-path] [options]
@@ -70,7 +70,7 @@ paths and JSON output here. Transfer, profile and sync logic is shared.`);
         if (plan.some(operation=>operation.kind==='delete') && !flags.yes) throw new Error('Git changes include remote deletions; inspect changes and pass --yes');
         const relative = file => path.relative(session.service.baseDir,file);
         const run = (action,file,extra={}) => { if(cancelled) throw new Error('Transfer cancelled'); return operate(session,action,relative(file),{...flags,batch:true,...extra}); };
-        await executeGitTransfers(plan,{upload:file=>run('upload',file),delete:file=>run('delete',file),rename:(from,to)=>run('rename',from,{to:relative(to)})},session.config.backgroundConcurrency??4);
+        await executeGitTransfers(plan,{uploadBatch:files=>uploadBatch(session.service,session.config,files,{ignore:flags.force?null:session.config.ignore}),upload:file=>run('upload',file),delete:file=>run('delete',file),rename:(from,to)=>run('rename',from,{to:relative(to)})},session.config.backgroundConcurrency??4);
         results.push({profile:session.profile,operations:plan});
       } else if (action === 'watch') {
         if (profiles.length !== 1) throw new Error('Watch requires one profile');

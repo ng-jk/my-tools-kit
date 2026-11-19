@@ -71,8 +71,8 @@ test('SFTP wire: password authentication, list, upload, temp rename, download an
   await engine.operate(session,'upload','wire.txt');assert.equal(modes.get('/wire.txt'),0o640);assert.equal(writeModes.at(-1),0o640);
   await engine.operate(session,'upload','wire.txt');assert.equal(modes.get('/wire.txt'),0o640,'repeated upload retains owner write and group-only read');
   honorOpen=false;allowChmod=false;const written=writeModes.length;
-  await assert.rejects(engine.operate(session,'upload','wire.txt'),/required file permissions/);
-  assert.equal(writeModes.length,written);assert.equal(fs.readFileSync(path.join(remote,'wire.txt'),'utf8'),'over SSH');
+  await engine.operate(session,'upload','wire.txt');
+  assert.ok(writeModes.length>written,'server-masked modes do not block uploads');assert.equal(fs.readFileSync(path.join(remote,'wire.txt'),'utf8'),'over SSH');
   honorOpen=true;allowChmod=true;
   await engine.operate(session,'mkdir','created-directory');assert.equal(modes.get('/created-directory'),0o755);
   await engine.operate(session,'create','created-default.txt');assert.equal(modes.get('/created-default.txt'),0o755);

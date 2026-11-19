@@ -14,7 +14,7 @@ Omit unused context/profile options. Exit 0 means the metadata advisory passed; 
 
 ## When you cannot edit the server
 
-No administrator setup is required by the client. Upload normally with your existing context/profile. Existing directory permissions are unchanged; dirPerm controls newly created directories. The server can still reject writes or report missing/unreadable files, which remain actual operation errors. FTP's temporary-upload directory must support creation of a new 0700 subdirectory and final mode verification. An absolute ftpStagingPath can select another existing temporary-upload root on the same filesystem.
+No administrator setup is required by the client. Upload normally with your existing context/profile. Existing directory permissions are unchanged; dirPerm controls newly created directories. The server can still reject writes or report missing/unreadable files, which remain actual operation errors. FTP stages temporary files beside each destination and applies configured modes without readback verification. Account access and creation permissions come from the server.
 
 ## Trust and optional hardening
 

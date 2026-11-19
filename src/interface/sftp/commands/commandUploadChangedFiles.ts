@@ -7,6 +7,7 @@ import { uploadFile, renameRemote, removeRemote } from '../fileHandlers/index';
 import { getGitService, GitAPI, Repository, Status, Change } from '../modules/git/index';
 import { checkCommand } from './abstract/createCommand';
 import logger from '../logger';
+import {uploadBatch} from '../../../logic/sftp/transfer-operation';
 import {confirmBatch} from './confirmBatch';
 import {handleCtxFromUri} from '../fileHandlers/createFileHandler';
 import {localEntryExists} from '../../../data/sftp/local-events';
@@ -81,6 +82,16 @@ async function handleCommand(hint: any) {
   contexts.forEach(({check}) => check());
   const selected = (file: string) => { const {ctx,check}=contexts.get(file)!;check();return ctx; };
   await executeGitTransfers(plan, {
+    uploadBatch: async files => {
+      const groups = new Map<ReturnType<typeof selected>['fileService'], string[]>();
+      for (const file of files) {
+        const ctx = selected(file);
+        const group = groups.get(ctx.fileService) || [];
+        group.push(file);
+        groups.set(ctx.fileService, group);
+      }
+      for (const [service, group] of groups) await uploadBatch(service, selected(group[0]).config, group);
+    },
     upload: file => uploadFile(selected(file)),
     rename: (from,to) => renameRemote(selected(to),{originPath:from}),
     delete: file => removeRemote(selected(file)),

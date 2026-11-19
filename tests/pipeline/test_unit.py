@@ -161,6 +161,12 @@ class RemoteReviewScopeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);output=root/"review.json";prompts=[]
             def run_fixture(*args,**kwargs):
+                import os
+                self.assertIn("--sandbox", args[0])
+                self.assertIn("read-only", args[0])
+                self.assertIn('approval_policy="never"', args[0])
+                if os.name == "nt":
+                    self.assertIsNone(kwargs["environment"]["CODEX_WINDOWS_REGISTERED_CORE"])
                 prompts.append(kwargs["stdin"])
                 output.write_text(json.dumps({"candidate":"a","base":"b","approved":True,"summary":"Isolated fixture","findings":[]}))
                 return {"stdout":""}

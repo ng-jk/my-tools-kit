@@ -1,5 +1,9 @@
 ## 0.7.22
 
+- Remove added remote file/directory permission readback checks from FTP/SFTP uploads and use conventional FTP temporary-file uploads beside the destination.
+- Batch Git changed-file uploads by context so automatic backup preparation, Git commit and verification run once per group.
+- Fix reviewer child-process startup on Windows by dropping an inherited desktop-launch marker while retaining its read-only sandbox and approval policy.
+
 - Fix FTP file comparisons when a directory listing contains an unrelated drive-qualified or otherwise unsafe name. Exact lookups validate the selected name and reject ambiguous matches, while full listings retain strict validation.
 - Limit the comparison picker to files, reject non-file targets before downloading, and make remote comparisons cancellable.
 - Require FTPS certificate verification even when older configurations disable it. Use a trusted CA for private certificates.

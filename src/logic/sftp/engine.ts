@@ -5,6 +5,7 @@ import { FileService, FileType, TransferDirection, fileOperations } from './core
 import { transfer, sync } from './fileHandlers/transfer/transfer';
 import {executeTransfer} from './transfer-operation';
 export {downloadDiffFile} from './diff-download';
+export {uploadBatch} from './transfer-operation';
 export {cancelActiveTransfers} from './transfer-operation';
 import { mergedDefault, validateConfig } from './config';
 import { resolveProfileContext } from './core/profileContext';

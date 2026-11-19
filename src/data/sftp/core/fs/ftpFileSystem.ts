@@ -245,7 +245,7 @@ export default class FTPFileSystem extends RemoteFileSystem {
         if(!metadataUnavailable && ![500,501,502,504,550].includes(Number(error.code)))throw new Error('FTP could not inspect remote path '+path+' ('+command+', code '+(error.code||'unknown')+'). Check the connection and server permissions.');
         diagnostics.push(command+' code '+error.code);continue;
       }
-      if(command==='RNFR')throw new Error('FTP confirms that '+path+' exists, but cannot identify its file type/permissions for backup. Check listing/read permissions. No file was renamed.');
+      if(command==='RNFR')throw new Error('FTP confirms that '+path+' exists, but cannot identify its file type for backup. Check the remote path and server listing format. No file was renamed.');
       const present=command==='MLST'?mlstReportsPresence(reply,path):statReportsPresence(reply,path);
       // MLST/STAT may describe a symlink referent: they establish presence,
       // never the non-following type needed for backup or ancestor traversal.
@@ -257,20 +257,10 @@ export default class FTPFileSystem extends RemoteFileSystem {
 
   async open(path: string, flags: string, mode?: number): Promise<FtpFileHandle> {
     if (!/[wa+]/.test(flags)) return {path,flags,mode};
-    if (flags.includes('x')) {
-      try { await this.lstat(path); throw new Error('FTP staging path already exists'); }
-      catch(error) {if(error.code!=='ENOENT'&&error.code!==2)throw error;}
-    }
     mode = mode === undefined ? 0o600 : mode;
-    // FTP handles are logical; payload creation happens inside a private directory
-    // in put(). STOR can recreate a file with server-default permissions.
+    // FTP handles are logical. STOR creates the temporary file using server
+    // defaults, followed by application of the requested mode.
     return {path,flags,mode,prepared:true};
-  }
-
-  private async verifyMode(path:string,mode:number,type=FileType.File) {
-    const stat=await this.lstat(path);
-    if(stat.type!==type)throw new Error('FTP staging entry has an unexpected file type');
-    if ((stat.mode & 0o777) !== (mode & 0o777)) throw new Error('FTP server did not preserve required file permissions');
   }
 
   close(_fd: FtpFileHandle): Promise<void> {
@@ -306,40 +296,31 @@ export default class FTPFileSystem extends RemoteFileSystem {
   }
 
   async put(input: Readable, path: string, option?: FileOption): Promise<void> {
-    let inputError:Error|undefined;
-    const remember=(error:Error)=>{inputError=error;};
-    const checkSource=()=>{
-      if(inputError)throw inputError;
-      if(input.destroyed&&!input.readableEnded)throw new Error('Source stream closed before transfer completed');
+    let sourceError: Error | undefined;
+    const remember = (error: Error) => { sourceError = error; };
+    const checkSource = () => {
+      if (sourceError) throw sourceError;
+      if (input.destroyed && !input.readableEnded) throw new Error('Source stream closed before transfer completed');
     };
-    if(!option?.ftpStagingRoot)throw new Error('FTP private staging location was not prepared');
-    input.on('error',remember);
-    const directory=this.pathResolver.join(option.ftpStagingRoot,'upload.devkit-'+randomUUID()+'.upload');
-    const payload=this.pathResolver.join(directory,'payload');
-    let created=false,payloadMoved=false;
+    input.on('error', remember);
+    const payload = option?.ftpStagingRoot
+      ? this.pathResolver.join(option.ftpStagingRoot, 'upload.devkit-'+randomUUID())
+      : path;
+    let moved = payload === path;
     try {
       checkSource();
-      const handle=option?.fd as FtpFileHandle|undefined;
-      const prepared=handle?.prepared?handle:await this.open(path,'w',option?.mode);
-      await this.mkdir(directory);created=true;
-      await this.chmod(directory,0o700);await this.verifyMode(directory,0o700,FileType.Directory);
+      await this.atomicPut(input, payload, checkSource);
       checkSource();
-      // No APPE or REST. A verified 0700 temporary parent protects normal
-      // STOR defaults within the trusted namespace; it does not isolate
-      // payloads from malicious writers able to replace its ancestors.
-      await this.atomicPut(input,payload,checkSource);
-      checkSource();
-      await this.chmod(payload,prepared.mode!);await this.verifyMode(payload,prepared.mode!);
+      if (option?.mode !== undefined) await this.chmod(payload, option.mode);
       checkSource();
       await option?.beforeReplace?.();
-      await this.renameAtomic(payload,path);payloadMoved=true;
-    } catch(error) {throw inputError||error;}
-    finally {
-      input.removeListener('error',remember);
-      if(created){
-        try{if(!payloadMoved)await this.unlink(payload);}catch(error){if(error.code!=='ENOENT'&&error.code!==2&&error.code!==550)logger.warn('FTP temporary payload cleanup failed: '+payload);}
-        try{await this.rmdir(directory,false);}catch(error){logger.warn('FTP temporary directory retained after cleanup failure: '+directory);}
+      if (payload !== path) {
+        await this.renameAtomic(payload, path);
+        moved = true;
       }
+    } finally {
+      input.removeListener('error', remember);
+      if (!moved) await this.unlink(payload).catch(error => logger.warn('FTP temporary file cleanup failed: '+error.message));
     }
   }
 

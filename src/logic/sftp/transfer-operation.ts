@@ -33,7 +33,7 @@ export function registerActiveTransfer(cancel: () => void) {
   return () => active.delete(cancel);
 }
 
-export async function executeTransfer(service: any, config: any, local: string, remote: string, down: boolean, options: any, synchronize = false) {
+export async function executeTransfer(service: any, config: any, local: string, remote: string, down: boolean, options: any, synchronize = false, sources?: Array<{local: string; remote: string}>) {
   const checkCancelled = service.cancellationCheck();
   const releaseResources=service.retainTransferResources?.();
   const setupCancellation=new AbortController();
@@ -55,7 +55,7 @@ export async function executeTransfer(service: any, config: any, local: string, 
   }});
   try {
     checkCancelled();
-    if(!down)releaseUpload=await acquireUploadLock(config,remote,checkCancelled);
+    if(!down)releaseUpload=await acquireUploadLock(config,sources ? config.remotePath : remote,checkCancelled);
     const remoteFs = guard(await service.getRemoteFileSystem(config));
     if(!down && remoteFs instanceof RemoteFileSystem)await assertRemoteParentDirectories(remoteFs,remote,true);
     finishMetadata=(remoteFs as any).beginMetadataReadScope?.();
@@ -68,13 +68,21 @@ export async function executeTransfer(service: any, config: any, local: string, 
 
     const tasks: any[] = [];
     const pendingDeletions: Array<() => Promise<void>> = [];
-    const deleted = await (synchronize ? sync : transfer)({
-      directoryScope, pendingDeletions,
-      srcFsPath: down ? remote : local, targetFsPath: down ? local : remote,
-      srcFs: down ? remoteFs : localFs, targetFs: down ? localFs : remoteFs,
-      transferDirection: down ? TransferDirection.REMOTE_TO_LOCAL : TransferDirection.LOCAL_TO_REMOTE,
-      transferOption: {...options,ftpStagingPath:config.ftpStagingPath}, filePerm: config.filePerm, dirPerm: config.dirPerm,
-    }, task => { checkCancelled(); tasks.push(task); });
+    let deleted: unknown;
+    for (const source of sources || [{local, remote}]) {
+      checkCancelled();
+      await assertLocalAncestors(localFs, source.local, service.baseDir);
+      await assertRemoteAncestors(remoteFs, source.remote, config.remotePath, true, true);
+      deleted = await (synchronize ? sync : transfer)({
+        directoryScope, pendingDeletions,
+        srcFsPath: down ? source.remote : source.local,
+        targetFsPath: down ? source.local : source.remote,
+        srcFs: down ? remoteFs : localFs, targetFs: down ? localFs : remoteFs,
+        transferDirection: down ? TransferDirection.REMOTE_TO_LOCAL : TransferDirection.LOCAL_TO_REMOTE,
+        transferOption: {...options, ftpStagingPath:config.ftpStagingPath},
+        filePerm: config.filePerm, dirPerm: config.dirPerm,
+      }, task => { checkCancelled(); tasks.push(task); });
+    }
     checkCancelled();
     if (!down) await backupBeforeUpload({config, fileService: service}, tasks, remoteFs);
     checkCancelled();
@@ -107,4 +115,23 @@ export async function executeTransfer(service: any, config: any, local: string, 
     scheduler?.stop();connectionPool?.close(); unregister();
     try{await directoryScope.finish();}finally{try{releaseUpload?.();}finally{releaseResources?.();}}
   }
+}
+
+
+// Both UI and CLI use this operation for an explicitly selected file batch.
+export async function uploadBatch(service: any, config: any, files: string[], options: any = {}) {
+  if (!files.length) return {passed: true, transferred: 0};
+  const sources = [...new Set(files)].map(file => {
+    const local = path.resolve(file);
+    const relative = path.relative(service.baseDir, local);
+    if (!relative || relative === '..' || relative.startsWith('..'+path.sep) || path.isAbsolute(relative)) {
+      throw new Error('Batch upload source escapes the selected context: '+file);
+    }
+    return {local, remote:path.posix.join(config.remotePath, relative.split(path.sep).join('/'))};
+  });
+  return executeTransfer(service, config, sources[0].local, sources[0].remote, false, {
+    ...options, expectedSourceType:'file', explicitUpload:false,
+    ignore: Object.prototype.hasOwnProperty.call(options, "ignore") ? options.ignore : config.ignore, filePerm:config.filePerm, dirPerm:config.dirPerm,
+    useTempFile:config.useTempFile, openSsh:config.openSsh,
+  }, false, sources);
 }

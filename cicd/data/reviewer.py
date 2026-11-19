@@ -1,5 +1,6 @@
 """Terminal AI reviewer adapters. Missing tools and invalid responses fail closed."""
 import json
+import os
 import sys
 from .process import run
 
@@ -75,7 +76,8 @@ def review(root, candidate, base, provider, output, timeout, ui_ux=False, securi
     if provider == "codex":
         run(["codex", "exec", "--sandbox", "read-only", "--ephemeral", "-c", 'approval_policy="never"',
              "--output-schema", str(schema), "--output-last-message", str(output), "-C", str(root), "-"],
-            root, timeout=timeout, stdin=prompt)
+            root, timeout=timeout, stdin=prompt,
+            environment={"CODEX_WINDOWS_REGISTERED_CORE": None} if os.name == "nt" else None)
         value = json.loads(output.read_text(encoding="utf-8"))
     else:
         result = run(["claude", "-p", "--output-format", "json", "--json-schema", json.dumps(response_schema),

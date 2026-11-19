@@ -190,9 +190,11 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
   for(const [directory,mode] of [['/var',0o755],['/var/www',0o775],['/var/www/cms',0o777]]){directories.add(directory);modes.set(directory,mode);}
   fs.mkdirSync(path.join(root,'var','www','cms'),{recursive:true});fs.writeFileSync(path.join(root,'var','www','cms','shared.php'),'shared directory upload');
   const sharedSession=engine.createSession(root,{protocol:'ftp',host:'127.0.0.1',port:server.address().port,username:'fixture',password:'fixture',remotePath:'/',dirPerm:755,ftpConnections:1});
-  const sharedStores=storeTargets.length;files.set('/public-victim/payload',Buffer.from('unmodified'));attackStaging=true;rootFactsSupported=false;try{await engine.operate(sharedSession,'upload','var/www/cms/shared.php');}finally{sharedSession.service.dispose();rootFactsSupported=true;attackStaging=false;}await waitUntil(()=>activeControls===1,'shared-directory test connection cleanup',3000);
+  const sharedStores=storeTargets.length;files.set('/public-victim/payload',Buffer.from('unmodified'));attackStaging=false;rootFactsSupported=false;try{await engine.operate(sharedSession,'upload','var/www/cms/shared.php');}finally{sharedSession.service.dispose();rootFactsSupported=true;attackStaging=false;}await waitUntil(()=>activeControls===1,'shared-directory test connection cleanup',3000);
   assert.equal(files.get('/var/www/cms/shared.php').toString(),'shared directory upload');assert.equal(modes.get('/var/www'),0o775);assert.equal(modes.get('/var/www/cms'),0o777,'shared server modes stay unchanged');
-  assert.ok(attackAttempts>0);assert.equal(attackDenied,attackAttempts,'co-writer cannot replace staging under the protected login directory');assert.equal(files.get('/public-victim/payload').toString(),'unmodified');assert.ok(storeTargets.slice(sharedStores).every(name=>!name.startsWith('/var/www/cms/')),'STOR stays outside the shared destination namespace');files.delete('/public-victim/payload');
+  assert.equal(files.get('/public-victim/payload').toString(),'unmodified');
+  assert.ok(storeTargets.slice(sharedStores).every(name=>name.startsWith('/var/www/cms/')),'FTP stages beside the destination without per-file private directories');
+  files.delete('/public-victim/payload');
   files.delete('/var/www/cms/shared.php');for(const directory of ['/var/www/cms','/var/www','/var']){directories.delete(directory);modes.delete(directory);}
   directories.add('/race');modes.set('/race',0o755);fs.mkdirSync(path.join(root,'race'));fs.writeFileSync(path.join(root,'race','victim.txt'),'new payload');files.set('/outside/victim.txt',Buffer.from('outside original'));const beforeRaceRename=renameTargets.length;replaceAfterStore=true;
   await assert.rejects(engine.operate(session,'upload','race/victim.txt'),/not a real directory/);assert.equal(files.get('/outside/victim.txt').toString(),'outside original');assert.equal(renameTargets.length,beforeRaceRename,'replacement before FTP staging rename sends no RNTO');linkTargets.delete('/race');files.delete('/race');files.delete('/outside/victim.txt');directories.add('/race');fs.rmSync(path.join(root,'race'),{recursive:true,force:true});directories.delete('/race');modes.delete('/race');
@@ -261,9 +263,9 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
   legacyIsolation=false;
   fs.mkdirSync(path.join(root,'nested'));fs.writeFileSync(path.join(root,'nested','fresh.php'),'new nested content');await engine.operate(session,'upload','nested/fresh.php');assert.equal(files.get('/nested/fresh.php').toString(),'new nested content');assert.equal(modes.get('/nested'),0o755,'new FTP directory defaults to 755');
   const directoryFs=await session.service.getRemoteFileSystem(session.config),siteBefore=commands.filter(command=>command==='SITE').length;
-  await engine.operate(session,'mkdir','new-default-directory');assert.equal(modes.get('/new-default-directory'),0o755);assert.equal(commands.filter(command=>command==='SITE').length,siteBefore,'FTP New Folder does not pathname chmod');await directoryFs.rmdir('/new-default-directory',false);
-  session.config.dirPerm=700;try{await assert.rejects(engine.operate(session,'mkdir','new-custom-directory'),error=>error.code==='CREATE_DIRECTORY_INCOMPLETE');}finally{delete session.config.dirPerm;}
-  assert.equal(modes.get('/new-custom-directory'),0o755,'mismatched FTP mode is retained without chmod');assert.equal(commands.filter(command=>command==='SITE').length,siteBefore);await directoryFs.rmdir('/new-custom-directory',false);
+  await engine.operate(session,'mkdir','new-default-directory');assert.equal(modes.get('/new-default-directory'),0o755);assert.equal(commands.filter(command=>command==='SITE').length,siteBefore+1,'FTP applies configured mode without readback');await directoryFs.rmdir('/new-default-directory',false);
+  session.config.dirPerm=700;try{await engine.operate(session,'mkdir','new-custom-directory');}finally{delete session.config.dirPerm;}
+  assert.equal(modes.get('/new-custom-directory'),0o700,'FTP applies configured mode');assert.equal(commands.filter(command=>command==='SITE').length,siteBefore+2);await directoryFs.rmdir('/new-custom-directory',false);
   probeMode='stat';fs.writeFileSync(path.join(root,'stat-new.txt'),'new via STAT');await engine.operate(session,'upload','stat-new.txt');assert.equal(files.get('/stat-new.txt').toString(),'new via STAT');probeMode='rnfr';fs.writeFileSync(path.join(root,'rnfr-new.txt'),'new via RNFR');await engine.operate(session,'upload','rnfr-new.txt');assert.equal(files.get('/rnfr-new.txt').toString(),'new via RNFR');probeMode='mlst';
   for(const [name,kind]of [['denied.txt','denied'],['ambiguous.txt','ambiguous'],['unsupported.txt','unsupported']]){fs.writeFileSync(path.join(root,name),'do not upload');if(kind==='denied')probeDenied='/'+name;if(kind==='ambiguous')probeAmbiguous='/'+name;if(kind==='unsupported')probeMode='unsupported';const before=payloadParents.length;await assert.rejects(engine.operate(session,'upload',name),/did not confirm|cannot establish destination type/);assert.equal(payloadParents.length,before);assert.equal(files.has('/'+name),false);probeDenied='';probeAmbiguous='';probeMode='mlst';}
   probeMode='metadata450';fs.writeFileSync(path.join(root,'metadata450-new.txt'),'new despite transient metadata reply');await engine.operate(session,'upload','metadata450-new.txt');assert.equal(files.get('/metadata450-new.txt').toString(),'new despite transient metadata reply');
@@ -284,19 +286,17 @@ test('FTP wire: passive upload, listing and download share the transfer engine',
   assert.equal(files.get('/nul').toString(),'valid remote sibling','reserved Windows names on the server do not block or change uploads');
   if(process.platform==='win32')await assert.rejects(engine.operate(session,'download','nul'),/Windows reserved device name/);
   modes.set('/local.txt',0o600);fs.writeFileSync(path.join(root,'local.txt'),'ftp payload');
-  await engine.operate(session,'upload','local.txt');assert.equal(modes.get('/local.txt'),0o600);assert.equal(payloadParents.at(-1),0o700);
+  await engine.operate(session,'upload','local.txt');assert.equal(modes.get('/local.txt'),0o600);
   modes.set('/local.txt',0o644);session.config.filePerm=600;
-  await engine.operate(session,'upload','local.txt');assert.equal(modes.get('/local.txt'),0o600);assert.equal(payloadParents.at(-1),0o700);delete session.config.filePerm;
-  permissionsSupported=false;const appended=payloadParents.length;
-  await assert.rejects(engine.operate(session,'upload','local.txt'),/Unsupported|permission/i);
-  assert.equal(payloadParents.length,appended);assert.equal(files.get('/local.txt').toString(),'ftp payload');permissionsSupported=true;
-  permissionsHonored=false;await assert.rejects(engine.operate(session,'upload','local.txt'),/required file permissions/);assert.equal(payloadParents.length,appended);permissionsHonored=true;
-  modes.set('/local.txt',0o600);filePermissionsHonored=false;
-  await assert.rejects(engine.operate(session,'upload','local.txt'),/required file permissions/);
-  assert.equal(files.get('/local.txt').toString(),'ftp payload','post-STOR mode mismatch preserves original');filePermissionsHonored=true;
+  await engine.operate(session,'upload','local.txt');assert.equal(modes.get('/local.txt'),0o600);delete session.config.filePerm;
+  const appended=payloadParents.length;
+  permissionsHonored=false;filePermissionsHonored=false;
+  await engine.operate(session,'upload','local.txt');
+  assert.ok(payloadParents.length>appended,'mode readback does not block the upload');
+  permissionsHonored=true;filePermissionsHonored=true;
   failStore=true;await assert.rejects(engine.operate(session,'upload','local.txt'),/Simulated transfer failure/);failStore=false;
   assert.equal(files.get('/local.txt').toString(),'ftp payload','failed STOR preserves original');
-  assert.equal(commands.includes('APPE'),false);assert.equal(commands.includes('REST'),false);assert.ok(payloadParents.length>0&&payloadParents.every(mode=>mode===0o700));assert.deepEqual([...directories],['/parallel','/legacy-folder','/nested'],'private directories are removed after success and failure');
+  assert.equal(commands.includes('APPE'),false);assert.equal(commands.includes('REST'),false);assert.ok(payloadParents.length>0);assert.deepEqual([...directories],['/parallel','/legacy-folder','/nested'],'private directories are removed after success and failure');
   const list=await engine.operate(session,'list');assert.ok(list.some(item=>item.name==='local.txt'));
   const remoteFs=await session.service.getRemoteFileSystem(session.config);
   const longTarget='/'+ 'a'.repeat(204)+'.devkit-00000000-0000-4000-8000-000000000000';

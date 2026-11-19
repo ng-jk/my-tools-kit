@@ -104,6 +104,45 @@ function fixture(t, extra={}) {
   return {dir,local,remote,raw,session};
 }
 
+test('FTP and SFTP uploads apply modes without remote permission readbacks', async()=>{
+ for (const protocol of ['ftp','sftp']) {
+  const remote=protocol==='ftp'
+   ?new engine.FTPFileSystem(path.posix,{client:{}})
+   :new engine.SFTPFileSystem(path.posix,{client:{}});
+  const modes=[];let payloads=0;
+  remote.lstat=remote.fstat=remote.verifyDirectoryMode=async()=>{throw new Error('Unexpected permission readback');};
+  remote.chmod=async(_path,mode)=>{modes.push(mode);};
+  remote.fchmod=async(_fd,mode)=>{modes.push(mode);};
+  const write=async input=>{for await(const _chunk of input){}payloads++;};
+  remote.atomicPut=write;remote._put=write;
+  await remote.put(require('node:stream').Readable.from(['payload']),'/target',{mode:0o640,fd:{handle:Buffer.from('h')}});
+  assert.deepEqual(modes,[0o640]);assert.equal(payloads,1);
+ }
+});
+
+test('Git uploads share one backup batch and preserve every remote original', async t=>{
+ const {local,remote,session}=fixture(t);
+ const files=Array.from({length:30},(_,n)=>'file'+n+'.txt');
+ for(const file of files){fs.writeFileSync(path.join(local,file),'new '+file);fs.writeFileSync(path.join(remote,file),'old '+file);}
+ const original=engine.MirrorService.prototype.backupBatch;
+ let batches=0;
+ engine.MirrorService.prototype.backupBatch=function(targets,options){batches++;assert.equal(targets.length,files.length);return original.call(this,targets,options);};
+ t.after(()=>{engine.MirrorService.prototype.backupBatch=original;});
+ const paths=files.map(file=>path.join(local,file));
+ await engine.executeGitTransfers(paths.map(path=>({kind:'upload',path})),{
+  upload:async()=>{throw new Error('Git must use the batch operation');},
+  uploadBatch:files=>engine.uploadBatch(session.service,session.config,files),
+  rename:async()=>{},delete:async()=>{},
+ },4);
+ assert.equal(batches,1);
+ const git=require('isomorphic-git'),backup=engine.defaultBackupPath(session.service.workspace,session.service.baseDir,session.config,session.service.profile);
+ const oid=await git.resolveRef({fs,dir:backup,ref:'HEAD'}),cache={};
+ for(const file of files){
+  assert.equal(fs.readFileSync(path.join(remote,file),'utf8'),'new '+file);
+  assert.equal(Buffer.from((await git.readBlob({fs,dir:backup,oid,filepath:file,cache})).blob).toString(),'old '+file);
+ }
+});
+
 test('typed file transfers reject directories before recursion or destination mutation',async t=>{
   const {local,remote,session}=fixture(t);
   fs.writeFileSync(path.join(local,'keep.txt'),'local');fs.writeFileSync(path.join(remote,'keep.txt'),'remote');
@@ -250,15 +289,15 @@ test('excluded file/directory conflicts do not abort sync',async()=>{
     }
   }
 });
-test('source failure during protocol permission checks rejects instead of hanging',{timeout:1000},async()=>{
+test('source failure during mode application rejects instead of hanging',{timeout:1000},async()=>{
   for(const protocol of ['sftp','ftp']) {
     const stream=new (require('node:stream').Readable)({read(){}});let payloads=0;
     const adapter=protocol==='sftp'?new engine.SFTPFileSystem(path.posix,{client:{}}):new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>({abort:cb=>cb()})}});
     const fail=async()=>{stream.destroy(new Error('source failed during permissions'));await new Promise(setImmediate);};
     if(protocol==='sftp') {adapter.fchmod=fail;adapter.fstat=async()=>({mode:0o600});adapter._put=async()=>{payloads++;};}
-    else {adapter.mkdir=async()=>{};adapter.chmod=async()=>{};adapter.unlink=async()=>{};adapter.rmdir=async()=>{};adapter.verifyMode=fail;adapter.atomicPut=async()=>{payloads++;};}
+    else {adapter.mkdir=async()=>{};adapter.chmod=fail;adapter.atomicPut=async()=>{payloads++;};}
     await assert.rejects(adapter.put(stream,'/target',{mode:0o600,ftpStagingRoot:'/safe',fd:{handle:Buffer.from('h'),path:'/target',prepared:true,mode:0o600}}),/source failed during permissions/);
-    assert.equal(payloads,0);
+    assert.equal(payloads,protocol==='sftp'?0:1);
   }
 });
 test('sync preserves symbolic link identity without reading linked file contents',async()=>{
@@ -1220,7 +1259,7 @@ test('FTP hidden-list rejection still runs conservative direct path probes',asyn
 });
 
 
-test('FTP directory permissions parse special bits and reject unverifiable modes', async()=>{
+test('FTP directory modes parse metadata and apply configuration without permission readback', async()=>{
  const adapter=new engine.FTPFileSystem(path.posix,{client:{}});
  const stat=rights=>adapter.toFileStat({type:'d',rights,size:0,date:new Date()});
  assert.equal(stat({other:'rx',group:'rs',user:'rwx'}).mode,0o755);
@@ -1228,15 +1267,12 @@ test('FTP directory permissions parse special bits and reject unverifiable modes
  assert.equal(stat({user:'rws',group:'rx',other:'rt'}).mode,0o755);
  assert.ok(Number.isNaN(stat(undefined).mode));
  assert.ok(Number.isNaN(stat({user:'rwx',group:'?',other:'rx'}).mode));
- adapter.chmod=async()=>{};
- adapter.lstat=async()=>stat({user:'rwx',group:'rs',other:'rx'});
+ let chmods=0;
+ adapter.chmod=async()=>{chmods++;};
+ adapter.lstat=async()=>{throw new Error('Permission readback must not run');};
  await adapter.establishDirectoryMode('/new-folder',0o755);
- adapter.lstat=async()=>stat(undefined);
- await assert.rejects(adapter.establishDirectoryMode('/new-folder',0o755),/requested 755, server reported unavailable/);
- adapter.lstat=async()=>({...stat({user:'rwx',group:'rx',other:'rx'}),type:engine.FileType.SymbolicLink});
- await assert.rejects(adapter.establishDirectoryMode('/new-folder',0o755),/entry type SymbolicLink/);
- adapter.lstat=async()=>stat({user:'rwx',group:'rx',other:'rx'});
- await assert.rejects(adapter.establishDirectoryMode('/new-folder',0o700),/requested 700, server reported 755/);
+ await adapter.establishDirectoryMode('/new-folder',0o700);
+ assert.equal(chmods,2);
 });
 
 
@@ -1367,11 +1403,11 @@ test('upload and sync reject readonly new server modes before payloads or remote
  }
 });
 
-test('DirectoryPermissionScope verifies remote directories without pathname chmod or restoration',async()=>{
+test('DirectoryPermissionScope does not audit remote directory modes',async()=>{
  const remote=new engine.SFTPFileSystem(path.posix,{client:{}});let mode=0o755,chmods=0;
  remote.lstat=async()=>({type:engine.FileType.Directory,mode});remote.chmod=async()=>{chmods++;};
  const scope=new engine.DirectoryPermissionScope();await scope.establish(remote,'/created',0o755);await scope.finish();assert.equal(chmods,0);
- mode=0o700;await assert.rejects(scope.establish(remote,'/created',0o755),/required directory permissions/);assert.equal(chmods,0);
+ mode=0o700;remote.verifyDirectoryMode=async()=>{throw new Error('Remote permission verification must not run');};await scope.establish(remote,'/created',0o755);assert.equal(chmods,0);
 });
 
 test('upload/sync directory replacement stops before chmod or cleanup',async()=>{
@@ -1450,12 +1486,12 @@ test('service cancellation listeners include disposal and can be unsubscribed',t
 });
 
 
-test('cancelled FTP STOR signals EOF on its own relay before queued ABOR and cleans staging without replacement',{timeout:2000},async()=>{
+test('cancelled FTP STOR signals EOF on its own relay before queued ABOR',{timeout:2000},async()=>{
  const {PassThrough}=require('node:stream'),input=new PassThrough(),events=[],removed=[];let relay;
  const ftp={_pasvSocket:{destroyed:false,end:()=>{throw new Error('unrelated data stream must not be closed');}},put:(stream,_path,cb)=>{relay=stream;stream.on('end',()=>{events.push('EOF');cb(null);});stream.resume();queueMicrotask(()=>input.emit('error',new Error('Transfer cancelled')));},abort:cb=>{assert.equal(relay.writableEnded,true,'this upload EOF is signalled before ABOR is queued');events.push('ABOR');cb(null);}};
  const adapter=new engine.FTPFileSystem(path.posix,{client:{getFsClient:()=>ftp}});
  adapter.mkdir=async()=>{};adapter.chmod=async()=>{};adapter.lstat=async()=>({type:engine.FileType.Directory,mode:0o700});adapter.unlink=async name=>removed.push(name);adapter.rmdir=async name=>removed.push(name);adapter.renameAtomic=async()=>{throw new Error('cancelled payload must not replace its destination');};
- await assert.rejects(adapter.put(input,'/destination',{mode:0o600,ftpStagingRoot:'/safe'}),/Transfer cancelled/);assert.deepEqual(events,['ABOR','EOF']);assert.equal(removed.length,2);assert.ok(removed[0].endsWith('/payload'));
+ await assert.rejects(adapter.put(input,'/destination',{mode:0o600,ftpStagingRoot:'/safe'}),/Transfer cancelled/);assert.deepEqual(events,['ABOR','EOF']);assert.equal(removed.length,1);assert.ok(removed[0].startsWith('/safe/upload.devkit-'));
 });
 
 

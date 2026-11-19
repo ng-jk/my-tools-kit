@@ -1,5 +1,5 @@
 import {assertRemoteParentDirectories} from './parent-directories';
-import {FileSystem,FileType,RemoteFileSystem} from '../../data/sftp/core/fs';
+import {FileSystem,FileType,RemoteFileSystem,FTPFileSystem} from '../../data/sftp/core/fs';
 import * as operations from '../../data/sftp/core/fileBaseOperations';
 
 // Configuration uses octal digits (755), not a JavaScript octal literal value.
@@ -27,7 +27,7 @@ export async function createServerDirectory(fs: FileSystem, path: string, config
     // SFTP supplies the mode in MKDIR itself. FTP uses its server creation
     // policy. Never pathname-chmod a potentially replaced newly created entry.
     await fs.mkdir(target,mode);
-    try {await fs.verifyDirectoryMode(target,mode);}
+    try {if((await fs.lstat(target)).type!==FileType.Directory)throw new Error('Destination is not a real directory');if(fs instanceof FTPFileSystem)await fs.chmod(target,mode);else if(!(fs instanceof RemoteFileSystem))await fs.verifyDirectoryMode(target,mode);}
     catch(error){throw Object.assign(new Error('Directory creation did not finish. An entry may remain at '+target+'. No pathname chmod or cleanup was attempted. Check server creation permissions/umask; inspect and remove the retained entry only if safe before retrying, or choose another name. '+error.message),{code:'CREATE_DIRECTORY_INCOMPLETE',remotePath:target});}
   }
 }

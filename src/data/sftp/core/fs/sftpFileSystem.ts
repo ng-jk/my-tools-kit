@@ -201,26 +201,15 @@ export default class SFTPFileSystem extends RemoteFileSystem {
       const opt = { ...option, handle: fd.handle };
       delete opt.fd;
 
-      if (opt.mode !== undefined) {
-        // Some servers honor OPEN mode but do not implement chmod. Verify the
-        // effective mode in either case before sending any private content.
-        await this.fchmod(fd, opt.mode).catch(() => {});
-        await this.verifyMode(fd, opt.mode);
-      }
+      if (opt.mode !== undefined) await this.fchmod(fd, opt.mode).catch(() => {});
       checkSource();
       await this._put(input, path, opt);
       checkSource();
-      if (opt.mode !== undefined) await this.verifyMode(fd, opt.mode);
       return;
     }
 
     await this._put(input, path, option);
     } finally { input.removeListener('error', remember); }
-  }
-
-  private async verifyMode(fd:SFTPFileDescriptor,mode:number) {
-    const actual=(await this.fstat(fd)).mode;
-    if (typeof actual !== 'number' || (actual & 0o777) !== (mode & 0o777)) throw new Error('SFTP server did not establish required file permissions');
   }
 
   readlink(path: string): Promise<string> {

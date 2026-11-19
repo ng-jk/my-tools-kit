@@ -1,4 +1,3 @@
-import {prepareFtpStaging} from '../ftp-staging';
 import {assertRemoteParentDirectories} from '../parent-directories';
 // Adapted from ng-jk/vscode-sftp (MIT); see THIRD-PARTY-NOTICES.md.
 import { Readable } from 'stream';
@@ -159,7 +158,6 @@ export default class TransferTask implements Task {
     const rememberError = (error: Error) => { sourceError = error; };
     try {
       if (this._cancelled) throw new Error('Transfer cancelled');
-      let ftpStagingRoot:string|undefined;
       const receive=async()=>{
         this._handle = await srcFs.get(this._srcFsPath,srcFs instanceof FTPFileSystem?{signal:this.readCancellation.signal}:undefined);
         this._handle.pause();
@@ -178,7 +176,6 @@ export default class TransferTask implements Task {
         if (sourceError) throw sourceError;
         if (this._cancelled) throw new Error('Transfer cancelled');
         if(targetFs instanceof RemoteFileSystem)await assertRemoteParentDirectories(targetFs,target);
-        ftpStagingRoot=targetFs instanceof FTPFileSystem?await prepareFtpStaging(targetFs,this._TransferOption.ftpStagingPath):undefined;
         fd = await targetFs.open(staged, 'wx', mode);
         finishMetadata?.();finishMetadata=undefined;
         await targetFs.prepareStagedFile?.(staged, target, mode, fd);
@@ -192,7 +189,7 @@ export default class TransferTask implements Task {
       }else{await receive();await prepare();}
       if (sourceError) throw sourceError;
       this.checkCancelled();
-      await targetFs.put(this._handle, staged, {mode, fd, autoClose:false,ftpStagingRoot,beforeReplace:targetFs instanceof RemoteFileSystem?()=>assertRemoteParentDirectories(targetFs,staged):undefined});
+      await targetFs.put(this._handle, staged, {mode, fd, autoClose:false,ftpStagingRoot:this._TransferOption.ftpStagingPath});
       if (sourceError) throw sourceError;
       if (this._cancelled) throw new Error('Transfer cancelled');
       if (atime && mtime) {
