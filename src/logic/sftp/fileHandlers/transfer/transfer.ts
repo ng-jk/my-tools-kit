@@ -474,7 +474,10 @@ export async function transfer(
   const stat = await config.srcFs.lstat(config.srcFsPath);
   if (explicitFile && stat.type !== FileType.File) throw new Error('Explicit upload source must remain a regular file: ' + config.srcFsPath);
   const expected=config.transferOption.expectedSourceType;
-  if (expected && stat.type !== (expected==='file' ? FileType.File : FileType.Directory)) {
+  const matchesExpected = expected === 'leaf'
+    ? stat.type === FileType.File || stat.type === FileType.SymbolicLink
+    : stat.type === (expected === 'file' ? FileType.File : FileType.Directory);
+  if (expected && !matchesExpected) {
     throw new Error(`Transfer source must remain a regular ${expected}: ${config.srcFsPath}`);
   }
   const transferOption = {

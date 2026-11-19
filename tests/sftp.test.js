@@ -180,6 +180,29 @@ test('Git uploads share one backup batch and preserve every remote original', as
  }
 });
 
+test('Git batches preserve mixed regular files and leaf symlink identity',async t=>{
+ const {local,remote,session}=fixture(t);
+ const regular=path.join(local,'regular.txt'),link=path.join(local,'link');
+ fs.writeFileSync(regular,'payload');
+ const source=session.service.getLocalFileSystem(),target=await session.service.getRemoteFileSystem(session.config);
+ const sourceStat=source.lstat.bind(source),sourceRead=source.get.bind(source),targetStat=target.lstat.bind(target),targetRename=target.rename.bind(target);
+ source.lstat=async name=>name===link?{type:engine.FileType.SymbolicLink,mode:0o777,mtime:1,atime:1}:sourceStat(name);
+ source.readlink=async name=>{assert.equal(name,link);return 'regular.txt';};
+ source.get=async(name,...args)=>{assert.notEqual(name,link,'must not read the symlink referent');return sourceRead(name,...args);};
+ const links=new Map();
+ target.symlink=async(value,name)=>{links.set(name,value);};
+ target.lstat=async name=>links.has(name)?{type:engine.FileType.SymbolicLink,mode:0o777}:targetStat(name);
+ target.rename=async(from,to,...args)=>{if(links.has(from)){links.set(to,links.get(from));links.delete(from);}else await targetRename(from,to,...args);};
+ await engine.executeGitTransfers([regular,link].map(path=>({kind:'upload',path})),{
+  upload:async()=>{throw new Error('batch adapter required');},uploadBatch:files=>engine.uploadBatch(session.service,session.config,files),rename:async()=>{},delete:async()=>{}
+ },4);
+ assert.equal(fs.readFileSync(path.join(remote,'regular.txt'),'utf8'),'payload');
+ assert.equal([...links].find(([name])=>path.resolve(name)===path.join(remote,'link'))?.[1],'regular.txt');
+ await assert.rejects(engine.uploadBatch(session.service,session.config,[local]),/escapes/);
+ const directory=path.join(local,'directory');fs.mkdirSync(directory);
+ await assert.rejects(engine.uploadBatch(session.service,session.config,[directory]),/regular leaf/);
+});
+
 test('typed file transfers reject directories before recursion or destination mutation',async t=>{
   const {local,remote,session}=fixture(t);
   fs.writeFileSync(path.join(local,'keep.txt'),'local');fs.writeFileSync(path.join(remote,'keep.txt'),'remote');
@@ -429,6 +452,22 @@ test('changed symlinks are replaced and permission errors fail the transfer',asy
   target.symlink=async()=>{throw Object.assign(new Error('permission denied'),{code:4});};
   await assert.rejects(task().run(),/permission denied/);assert.equal(entries.get('/target'),'new-target');
 });
+test('CLI Git changed and commit batches preserve mixed files and native symlinks',async t=>{
+ const {local,remote,raw}=fixture(t);
+ fs.writeFileSync(path.join(local,'regular.txt'),'payload');
+ try{fs.symlinkSync('regular.txt',path.join(local,'link'),'file');}catch(error){if(error.code==='EPERM'){t.skip('Native file symlinks unavailable in this Windows account; adapter regression runs separately');return;}throw error;}
+ const git=(...args)=>{const result=spawnSync('git',['-c','safe.directory='+local.replaceAll('\\','/'),...args],{cwd:local,encoding:'utf8'});assert.equal(result.status,0,result.stderr);};
+ git('init');git('config','user.name','Fixture');git('config','user.email','fixture@example.test');
+ fs.mkdirSync(path.join(local,'.vscode'));fs.writeFileSync(path.join(local,'.vscode','sftp.json'),JSON.stringify(raw));
+ const cli=(action,...args)=>spawnSync(process.execPath,[path.resolve('cli.js'),'sftp',action,local,...args],{encoding:'utf8',timeout:20000});
+ const changed=cli('upload-changed');assert.equal(changed.status,0,changed.stderr);
+ assert.equal(fs.readlinkSync(path.join(remote,'link')),'regular.txt');assert.equal(fs.readFileSync(path.join(remote,'regular.txt'),'utf8'),'payload');
+ git('add','regular.txt','link');git('commit','-m','mixed');
+ fs.unlinkSync(path.join(remote,'link'));fs.unlinkSync(path.join(remote,'regular.txt'));
+ const committed=cli('upload-commit','--commit','HEAD');assert.equal(committed.status,0,committed.stderr);
+ assert.equal(fs.readlinkSync(path.join(remote,'link')),'regular.txt');assert.equal(fs.readFileSync(path.join(remote,'regular.txt'),'utf8'),'payload');
+});
+
 test('shared Git selection includes root commits and CLI uses the same selection',async t=>{
   const {local,remote,raw}=fixture(t);
   const git=(...args)=>{const result=spawnSync('git',['-c','safe.directory='+local.replaceAll('\\','/'),...args],{cwd:local,encoding:'utf8'});assert.equal(result.status,0,result.stderr);return result.stdout.trim();};

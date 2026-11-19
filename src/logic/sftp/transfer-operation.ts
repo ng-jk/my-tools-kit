@@ -133,7 +133,7 @@ export async function uploadBatch(service: any, config: any, files: string[], op
     return {local, remote:path.posix.join(config.remotePath, relative.split(path.sep).join('/'))};
   });
   return executeTransfer(service, config, sources[0].local, sources[0].remote, false, {
-    ...options, expectedSourceType:'file', explicitUpload:false,
+    ...options, expectedSourceType:'leaf', explicitUpload:false,
     ignore: Object.prototype.hasOwnProperty.call(options, "ignore") ? options.ignore : config.ignore, filePerm:config.filePerm, dirPerm:config.dirPerm,
     useTempFile:config.useTempFile, openSsh:config.openSsh,
   }, false, sources);
