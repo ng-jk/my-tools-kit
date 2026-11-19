@@ -24,11 +24,11 @@ export async function createServerDirectory(fs: FileSystem, path: string, config
   if(fs instanceof RemoteFileSystem)await assertRemoteParentDirectories(fs,fs.pathResolver.join(current,'__creation_parent_check__'));
   if(missing.length>1 && (mode&0o300)!==0o300)throw new Error('Create missing parent folders with owner write/search permission first, then create the final read-only folder. No folders were created.');
   for(const target of missing.reverse()){
-    // SFTP supplies the mode in MKDIR itself. FTP uses its server creation
-    // policy. Never pathname-chmod a potentially replaced newly created entry.
+    // SFTP supplies the mode in MKDIR itself. FTP applies the configured
+    // mode once after checking the created entry type.
     await fs.mkdir(target,mode);
     try {if((await fs.lstat(target)).type!==FileType.Directory)throw new Error('Destination is not a real directory');if(fs instanceof FTPFileSystem)await fs.chmod(target,mode);else if(!(fs instanceof RemoteFileSystem))await fs.verifyDirectoryMode(target,mode);}
-    catch(error){throw Object.assign(new Error('Directory creation did not finish. An entry may remain at '+target+'. No pathname chmod or cleanup was attempted. Check server creation permissions/umask; inspect and remove the retained entry only if safe before retrying, or choose another name. '+error.message),{code:'CREATE_DIRECTORY_INCOMPLETE',remotePath:target});}
+    catch(error){throw Object.assign(new Error('Directory creation did not finish. An entry may remain at '+target+'. Creation, type inspection or configured mode application failed. No cleanup was attempted. Check server creation permissions/umask and chmod support; inspect and remove the retained entry only if safe before retrying, or choose another name. '+error.message),{code:'CREATE_DIRECTORY_INCOMPLETE',remotePath:target});}
   }
 }
 export async function createServerFile(fs:FileSystem,path:string,configured?:number|string):Promise<void>{
