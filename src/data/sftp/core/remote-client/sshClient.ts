@@ -7,6 +7,7 @@ import { FileSystem, RemoteFileSystem, SFTPFileSystem } from '../fs/index';
 import { logger } from '../../ports';
 import CustomError from '../customError';
 import { verifyHostKey } from '../../host-keys';
+import { openSudoSftp } from '../../sudo-sftp';
 
 let MAX_OPEN_FD_NUM = 222;
 
@@ -38,7 +39,7 @@ export default class SSHClient extends RemoteClient {
     connectOption: ConnectOption,
     config: Config
   ): Promise<void> {
-    const { hop, ...option } = connectOption;
+    const { hop, sudo, sftpServerPath, ...option } = connectOption;
 
     let lastOption: ConnectOption = option;
     let fs: FileSystem | RemoteFileSystem = localFs;
@@ -92,7 +93,7 @@ export default class SSHClient extends RemoteClient {
     }
 
     await this._connectSSHClient(this._client, await this.resolveAuthentication({ ...lastOption, sock }, config), config);
-    this.sftp = await this._getSftp(this._client);
+    this.sftp = sudo ? await openSudoSftp(this._client,{...lastOption,sftpServerPath}) : await this._getSftp(this._client);
 
     if (lastOption.limitOpenFilesOnRemote) {
       if (typeof lastOption.limitOpenFilesOnRemote !== 'boolean') {

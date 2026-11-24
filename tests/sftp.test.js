@@ -6,6 +6,16 @@ const os = require('node:os');
 const path = require('node:path');
 const {spawnSync} = require('node:child_process');
 const engine = require('../build/sftp/engine');
+test('sudo is independently resolved per SFTP profile and rejects FTP misuse',t=>{
+ const workspace=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-sudo-config-'));t.after(()=>fs.rmSync(workspace,{recursive:true,force:true}));
+ for(const [name,sudo] of [['normal',false],['elevated',true]]){
+  const session=engine.createSession(workspace,{protocol:'sftp',host:'fixture',username:'fixture',sudo:true,remotePath:'/',profiles:{normal:{sudo:false},elevated:{sudo:true,sftpServerPath:'/usr/lib/openssh/sftp-server'}}},name);
+  t.after(()=>session.service.dispose());assert.equal(session.config.sudo,sudo);if(sudo)assert.equal(session.config.sftpServerPath,'/usr/lib/openssh/sftp-server');
+ }
+ assert.throws(()=>engine.createSession(workspace,{protocol:'ftp',host:'fixture',username:'fixture',sudo:true,remotePath:'/'}),/sudo.*sftp/);
+ assert.throws(()=>engine.createSession(workspace,{protocol:'sftp',host:'fixture',username:'fixture',sudo:'true',remotePath:'/'}),/sudo/);
+});
+
 test('profiles-only connections independently resolve protocol, port, paths and credentials',t=>{
   const workspace=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-profile-settings-'));t.after(()=>fs.rmSync(workspace,{recursive:true,force:true}));
   const raw={name:'Profile fixture',protocol:'ftp',port:21,ignore:['vendor/**'],profiles:{

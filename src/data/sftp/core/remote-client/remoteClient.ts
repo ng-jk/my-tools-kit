@@ -11,6 +11,9 @@ export interface ConnectOption {
   dataTimeout?: number;
   debug(x: string): void;
 
+  sudo?: boolean;
+  sftpServerPath?: string;
+
   // ssh-only
   privateKeyPath?: string;
   privateKey?: string;

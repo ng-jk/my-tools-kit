@@ -74,6 +74,8 @@ interface WatcherConfig {
 }
 
 interface SftpOption {
+  sudo?: boolean;
+  sftpServerPath?: string;
   // sftp
   agent?: string;
   privateKeyPath?: string;

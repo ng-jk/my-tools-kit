@@ -236,3 +236,24 @@ Remote transfer policy (0.7.17): existing folder modes and ownership do not gate
 FTP stages uploads in ordinary unique temporary files; their confidentiality follows server creation permissions and the configured mode request. Existing ancestor ownership/modes are not audited during transfers. Local backup protections, real-directory checks, observed symlink rejection, configured-root boundaries, credentials, SSH host keys and TLS verification remain enabled.
 
 The product trusts the authenticated server namespace and other parties able to change it. It does not provide confinement against malicious remote co-writers: pathname checks can race with server-side changes. Private staging and backups do not turn ordinary FTP/SFTP into an isolation mechanism. [Transfer policy and scope](https://github.com/ng-jk/my-tools-kit/blob/developement/docs/remote-permission-policy.md).
+
+## SFTP with sudo
+
+Version 0.7.23 implements `"sudo": true`. Earlier versions accepted this unknown setting but still used normal-account SFTP, which could produce Permission denied.
+
+Set these fields in the selected SFTP profile/context:
+
+```json
+{
+  "protocol": "sftp",
+  "host": "server.example",
+  "username": "deploy",
+  "remotePath": "/var/www/project",
+  "sudo": true,
+  "sftpServerPath": "/usr/lib/openssh/sftp-server"
+}
+```
+
+Keep your existing authentication and host-key settings. The toolkit connects using `username`, then starts the SFTP server with `sudo -n`. VS Code and `devkit sftp` use that elevated session for browsing, uploads, backups and downloads. Omit `sftpServerPath` to try `/usr/lib/openssh/sftp-server`, `/usr/libexec/openssh/sftp-server` and `/usr/lib/ssh/sftp-server`. Profiles can override `sudo` independently. Set `sudo: false` for ordinary SFTP. FTP does not support sudo. With SSH hops, set sudo on the selected destination profile; it is not implicitly applied to jump hosts.
+
+The server must allow this account to run the selected executable through non-interactive sudo without a password prompt or TTY. An interactive sudo login does not grant this permission to a separate SFTP connection. The toolkit does not edit sudoers, send your SSH password to sudo or fall back to normal-account SFTP. If startup fails, check the executable path and sudo policy with your administrator. Elevated privileges apply to the entire SFTP session; new entries follow the elevated process ownership. Existing mode settings and automatic local backups still apply.

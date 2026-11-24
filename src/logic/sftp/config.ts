@@ -25,6 +25,8 @@ const configScheme = {
   algorithms: Joi.any(),
   sshConfigPath: Joi.string(),
   sshCustomParams: Joi.string(),
+  sudo: Joi.boolean(),
+  sftpServerPath: Joi.string().regex(/^\/[^\r\n\0]+$/).max(4096),
 
   secure: Joi.any().valid(true, false, 'control', 'implicit'),
   secureOptions: nullable(Joi.object()),
@@ -187,6 +189,7 @@ export function normalizeConfigurations(value: any, environment: {[key:string]:s
 }
 
 export function validateConfig(config: any) {
+  if(config.sudo && config.protocol!=='sftp')return Object.assign(new Error('sudo is supported only for protocol sftp'),{details:[{path:'sudo',type:'requires_protocol_sftp'}]});
   const { error } = Joi.validate(config, configScheme, {
     abortEarly: false,
     allowUnknown: true,

@@ -399,3 +399,7 @@ For a single FTP connection, `"backgroundConcurrency": 4` allows local backup wr
 Git **Upload Changed Files** groups files by their selected connection context. Each group prepares and commits its automatic backups once before uploading the files. Failed backup verification stops that group. Rename and delete operations keep their existing ordering. The CLI uses the same batching operation.
 
 Upload batches reuse validated common remote ancestor types within that batch. The immediate destination parent is refreshed before replacement. This follows the selected trust in the server namespace and other server-side writers.
+
+### SFTP sudo connections
+
+Set `"sudo": true` in a profile requiring elevated filesystem access. Optionally set `"sftpServerPath": "/usr/lib/openssh/sftp-server"`. Version 0.7.23 runs the remote SFTP server through `sudo -n` after SSH authentication; VS Code and CLI share this elevated session for browsing, upload, download and backups. The server must permit the executable without a password prompt or TTY. Startup errors explain the prerequisite; there is no ordinary-account fallback. Set `"sudo": false` for the normal account. See [SFTP with sudo](docs/sftp.md#sftp-with-sudo) for configuration, path discovery and ownership behavior.
