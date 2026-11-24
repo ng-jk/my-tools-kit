@@ -1,5 +1,7 @@
 ## 0.7.23
 
+- Record the owner-selected authenticated-server sudo trust contract in bounded pipeline configuration and every required review; retain fail-closed review predicates.
+
 - Implement `sudo: true` using an authenticated non-interactive elevated SFTP server session shared by VS Code and CLI.
 - Add optional `sftpServerPath`, common OpenSSH path discovery, per-profile overrides and actionable sudo startup errors without normal-account fallback.
 - Preserve host-key checks and automatic backups. Do not edit server sudo policy or send SSH passwords to sudo.

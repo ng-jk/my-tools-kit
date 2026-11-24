@@ -306,7 +306,7 @@ class SecurityPromotionTests(PromotionTests):
     def test_trusted_namespace_scope_reaches_every_reviewer_and_high_findings_still_stop_release(self):
         from unittest.mock import patch
         from cicd.data.reviewer import UX_CRITERIA
-        self.pipeline.config.update({"remoteNamespaceTrust":"trusted-server","securityReview":True,"interfaceReview":"ai-ux"})
+        self.pipeline.config.update({"remoteNamespaceTrust":"trusted-server","sshSudoTrust":"authenticated-server","securityReview":True,"interfaceReview":"ai-ux"})
         good={"approved":True,"candidate":"candidate","base":"base","summary":"Isolated review fixture","findings":[]}
         ux={**good,"criteria":{name:{"status":"pass","evidence":["fixture:1"],"rationale":"Isolated adapter fixture"} for name in UX_CRITERIA},"limitations":"No real UI testing claimed"}
         self.pipeline.runner=Mock();self.pipeline.reviewer=Mock(return_value=good);self.pipeline.ux_reviewer=Mock(return_value=ux)
@@ -317,14 +317,23 @@ class SecurityPromotionTests(PromotionTests):
                 result=self.pipeline._gates("candidate","base","deployment")
             self.assertEqual(result["passed"],security is good)
             self.assertEqual(result["remote_namespace_trust"],"trusted-server")
+            self.assertEqual(result["ssh_sudo_trust"],"authenticated-server")
             self.assertEqual(result["gates"]["security_review"],security is good)
             for adapter in [self.pipeline.reviewer,self.pipeline.ux_reviewer,self.pipeline.security_reviewer]:
                 self.assertIn("FTP/SFTP REMOTE PATH MUTATIONS ONLY",adapter.call_args.kwargs["security_scope"])
+                self.assertIn("REQUESTED SSH/SFTP SUDO SESSIONS",adapter.call_args.kwargs["security_scope"])
         self.pipeline.marketplace=Mock()
         self.pipeline._require_security({"candidate":"candidate","base":"base","gates":{"security_scan":True,"security_review":True},"security_scan":{"passed":True,"artifacts":[]},"security_review":good},{"artifacts":[]},"candidate","base")
         with self.assertRaises(ValueError):
             self.pipeline._require_security({"candidate":"candidate","base":"base","gates":{"security_scan":True,"security_review":True},"security_scan":{"passed":True,"artifacts":[]},"security_review":high},{"artifacts":[]},"candidate","base")
         self.pipeline.marketplace.publish.assert_not_called()
+
+    def test_changing_sudo_trust_invalidates_existing_approval_before_push(self):
+        self.uat()
+        self.pipeline.config["sshSudoTrust"]="authenticated-server"
+        with self.assertRaisesRegex(ValueError,"exact commit and configuration"):
+            self.pipeline.publish()
+        self.git.push.assert_not_called()
 
     def test_changing_namespace_scope_invalidates_existing_approval_before_push(self):
         self.uat()

@@ -30,6 +30,7 @@ class Pipeline:
                 "reviewer": self.config["reviewer"], "evidence": str(self.store.root),
                 "interfaceReview": self.config.get("interfaceReview", "human"),
                 "remoteNamespaceTrust": self.config.get("remoteNamespaceTrust", "default"),
+                "sshSudoTrust": self.config.get("sshSudoTrust", "default"),
                 "autoPublishAfterUat": self.config.get("autoPublishAfterUat", False),
                 "marketplace": self.config.get("marketplace"),
                 "flow": "developement -> test -> " + ("AI UI/UX review" if self.config.get("interfaceReview") == "ai-ux" else "human interface UAT") + " -> deployment -> configured Marketplace upload -> main"}
@@ -61,9 +62,10 @@ class Pipeline:
         root = self.store.worktree_path()
         report = {"candidate": sha, "base": base, "configuration": digest(self.config), "stage": stage,
                   "created": datetime.now(timezone.utc).isoformat(), "passed": False, "gates": {}}
-        scope=security_scope(self.config.get("remoteNamespaceTrust", "default"))
+        scope=security_scope(self.config.get("remoteNamespaceTrust", "default"),self.config.get("sshSudoTrust", "default"))
         review_options={"security_scope":scope} if scope else {}
         report["remote_namespace_trust"]=self.config.get("remoteNamespaceTrust", "default")
+        report["ssh_sudo_trust"]=self.config.get("sshSudoTrust", "default")
         self.git.add_worktree(root, sha)
         try:
             if digest(read(root)) != digest(self.config):

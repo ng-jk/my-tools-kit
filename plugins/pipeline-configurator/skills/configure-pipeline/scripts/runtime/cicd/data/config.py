@@ -27,6 +27,8 @@ def read(root):
         raise ValueError("securityReview must be a boolean")
     if value.get("remoteNamespaceTrust", "default") not in ("default", "trusted-server"):
         raise ValueError("remoteNamespaceTrust must be default or trusted-server")
+    if value.get("sshSudoTrust", "default") not in ("default", "authenticated-server"):
+        raise ValueError("sshSudoTrust must be default or authenticated-server")
     artifacts = value.get("artifacts", [])
     if not isinstance(artifacts, list) or any(not isinstance(item, str) or not item or Path(item).is_absolute() or ".." in Path(item).parts for item in artifacts):
         raise ValueError("artifacts must be relative file paths inside the project")

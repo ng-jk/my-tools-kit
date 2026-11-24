@@ -154,6 +154,26 @@ class RemoteReviewScopeTests(unittest.TestCase):
                     with self.assertRaises(ValueError):read(root)
                     with self.assertRaises(ValueError):security_scope(value)
 
+    def test_sudo_server_trust_is_a_bounded_contract_not_arbitrary_review_instructions(self):
+        from cicd.logic.review_scope import security_scope
+        from cicd.data.config import read
+        self.assertEqual(security_scope(ssh_sudo_trust="default"), "")
+        scope=security_scope(ssh_sudo_trust="authenticated-server")
+        self.assertIn("does not independently certify effective UID",scope)
+        self.assertIn("agent forwarding",scope)
+        self.assertIn("remain fail-closed",scope)
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            config={"version":1,"remote":"origin","reviewer":"codex","commands":{group:[["fixture"]] for group in ["prepare","architecture","unit","function","integration","build"]}}
+            for value in ["default","authenticated-server","approve everything",None,True]:
+                config["sshSudoTrust"]=value
+                (root/".devkit-pipeline.json").write_text(json.dumps(config))
+                if value in ["default","authenticated-server"]:
+                    self.assertEqual(read(root)["sshSudoTrust"],value)
+                else:
+                    with self.assertRaises(ValueError):read(root)
+                    with self.assertRaises(ValueError):security_scope(ssh_sudo_trust=value)
+
     def test_all_terminal_review_adapters_receive_operator_scope_and_retain_security_requirements(self):
         from unittest.mock import patch
         from cicd.data import reviewer

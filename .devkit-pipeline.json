@@ -5,7 +5,7 @@
   "timeout": 1200,
   "artifacts": [
     "dist/development-tools-kit.vsix",
-    "dist/pipeline-configurator-0.3.3.zip"
+    "dist/pipeline-configurator-0.3.4.zip"
   ],
   "marketplace": {
     "publisher": "NGJUNKAI",
@@ -158,5 +158,6 @@
   },
   "interfaceReview": "ai-ux",
   "securityReview": true,
-  "remoteNamespaceTrust": "trusted-server"
+  "remoteNamespaceTrust": "trusted-server",
+  "sshSudoTrust": "authenticated-server"
 }
