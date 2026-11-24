@@ -7,6 +7,16 @@ const path=require('node:path');
 const crypto=require('node:crypto');
 const {Server,utils}=require('ssh2');
 const engine=require(process.env.DEVKIT_BENCHMARK_ENGINE||'../build/sftp/engine');
+function readSudoChallenge(sftp,channel,confirm=true){
+ const push=sftp.push.bind(sftp);let waiting=true,pending=Buffer.alloc(0);
+ sftp.push=data=>{
+  if(!waiting||data===null)return push(data);
+  pending=Buffer.concat([pending,data]);const newline=pending.indexOf(10);if(newline<0)return;
+  const token=pending.subarray(0,newline).toString();assert.match(token,/^DEVKIT_SUDO_[a-f0-9]{48}$/);waiting=false;
+  if(confirm)channel.stderr.write('fixture warning\n'+token+'\n');const rest=pending.subarray(newline+1);pending=Buffer.alloc(0);if(rest.length)return push(rest);
+ };
+}
+
 test('SFTP wire: password authentication, list, upload, temp rename, download and delete', {timeout:process.env.DEVKIT_SFTP_BENCHMARK_OUTPUT?180000:30000}, async t=>{
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-ssh-'));
   const local=path.join(root,'local'),remote=path.join(root,'remote');fs.mkdirSync(local);fs.mkdirSync(remote);
@@ -104,17 +114,19 @@ test('Sudo SFTP wire: authenticated exec supports list, upload, backup, download
   const local=path.join(root,'local'),remote=path.join(root,'remote');fs.mkdirSync(local);fs.mkdirSync(remote);
   const hostKey=crypto.generateKeyPairSync('rsa',{modulusLength:2048}).privateKey.export({type:'pkcs1',format:'pem'});
   let replaceOnClose=false,replacedFolder=false,renamesAfterRace=0;let authentications=0,honorOpen=true,allowChmod=true;const modes=new Map([['/',0o755]]),writeModes=[];let pathChmods=0;
-  const requestCounts={};let dropNextStat=false;
+  const requestCounts={};let dropNextStat=false,agentForwardRequests=0;
   const clients=new Set(),elevatedChannels=[];const {STATUS_CODE,OPEN_MODE}=utils.sftp;
   const server=new Server({hostKeys:[hostKey]},client=>{
     clients.add(client);client.on('close',()=>clients.delete(client));client.on('error',()=>{});
     client.on('authentication',ctx=>{authentications++;return ctx.method==='password' && ctx.username==='fixture' && ctx.password==='test-password'?ctx.accept():ctx.reject();});
-    client.on('ready',()=>client.on('session',accept=>accept().on('exec',(accept,reject,info)=>{
-      assert.match(info.command,/^\/bin\/sh -c 'printf DEVKIT_SUDO_[a-f0-9]{48} >&2; exec sudo -n -- \/usr\/lib\/openssh\/sftp-server'$/);
-      const marker=info.command.match(/DEVKIT_SUDO_[a-f0-9]{48}/)[0];
-      const channel=accept();elevatedChannels.push(channel);channel.stderr.write(marker);
+    client.on('ready',()=>client.on('session',accept=>accept().on('auth-agent',accept=>{agentForwardRequests++;accept();}).on('exec',(accept,reject,info)=>{
+      assert.match(info.command,/^sudo -n -- \/bin\/sh -c 'IFS= read -r token;/);
+      assert.ok(info.command.includes('[ "$(id -u)" = 0 ]'));
+      assert.ok(info.command.endsWith("exec /usr/lib/openssh/sftp-server'"));assert.ok(!info.command.includes('DEVKIT_SUDO_'));
+      const channel=accept();elevatedChannels.push(channel);
       const {SFTP}=require('ssh2/lib/protocol/SFTP');
       const sftp=new SFTP(client,{type:channel.type,incoming:channel.incoming,outgoing:channel.outgoing},{server:true});
+      readSudoChallenge(sftp,channel);
       client._chanMgr.update(channel.incoming.id,sftp);
       const handles=new Map();let id=0;
       const on=sftp.on.bind(sftp);sftp.on=(name,handler)=>on(name,(...args)=>{requestCounts[name]=(requestCounts[name]||0)+1;handler(...args);});
@@ -142,9 +154,9 @@ test('Sudo SFTP wire: authenticated exec supports list, upload, backup, download
     })));
   });
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
-  const session=engine.createSession(local,{sudo:true,sftpServerPath:'/usr/lib/openssh/sftp-server',host:'127.0.0.1',port:server.address().port,username:'fixture',password:'test-password',remotePath:'/',useTempFile:true,hostFingerprint:engine.fingerprint(utils.parseKey(hostKey).getPublicSSH())});
+  const session=engine.createSession(local,{sudo:true,agent:'/fixture-agent-do-not-contact',agentForward:true,sftpServerPath:'/usr/lib/openssh/sftp-server',host:'127.0.0.1',port:server.address().port,username:'fixture',password:'test-password',remotePath:'/',useTempFile:true,hostFingerprint:engine.fingerprint(utils.parseKey(hostKey).getPublicSSH())});
   t.after(async()=>{session.service.dispose();for(const client of clients)client.end();await new Promise(resolve=>server.close(resolve));fs.rmSync(root,{recursive:true,force:true});});
-  const bad=engine.createSession(local,{sudo:true,sftpServerPath:'/usr/lib/openssh/sftp-server',host:'127.0.0.1',port:server.address().port,username:'fixture',password:'test-password',remotePath:'/',hostFingerprint:'SHA256:wrong',connectTimeout:1000});
+  const bad=engine.createSession(local,{sudo:true,agent:'/fixture-agent-do-not-contact',agentForward:true,sftpServerPath:'/usr/lib/openssh/sftp-server',host:'127.0.0.1',port:server.address().port,username:'fixture',password:'test-password',remotePath:'/',hostFingerprint:'SHA256:wrong',connectTimeout:1000});
   try {await assert.rejects(engine.operate(bad,'list'),/verification|host key/i);assert.equal(authentications,0);} finally {bad.service.dispose();}
   fs.writeFileSync(path.join(local,'wire.txt'),'over SSH');
   await engine.operate(session,'upload','wire.txt');assert.equal(fs.readFileSync(path.join(remote,'wire.txt'),'utf8'),'over SSH');assert.equal(modes.get('/wire.txt'),0o755);
@@ -154,7 +166,7 @@ test('Sudo SFTP wire: authenticated exec supports list, upload, backup, download
     const metrics=[];for(const phase of ['new','existing']){const before={...requestCounts},start=performance.now();await engine.operate(session,'upload','perf');const byCommand=Object.fromEntries(Object.entries(requestCounts).map(([key,value])=>[key,value-(before[key]||0)]).filter(([,value])=>value));metrics.push({phase,files:count,elapsedMs:Math.round(performance.now()-start),commands:Object.values(byCommand).reduce((a,b)=>a+b,0),byCommand});for(let n=0;n<count;n++)assert.equal(fs.readFileSync(path.join(remote,'perf','a','b','file'+n+'.txt'),'utf8'),'benchmark '+n);}
     fs.writeFileSync(process.env.DEVKIT_SFTP_BENCHMARK_OUTPUT,JSON.stringify({latencyPerReplyMs:3,depth:3,metrics},null,2));return;
   }
-  const peer=engine.createSession(local,{sudo:true,sftpServerPath:'/usr/lib/openssh/sftp-server',host:'127.0.0.1',port:server.address().port,username:'fixture',password:'test-password',remotePath:'/',useTempFile:true,hostFingerprint:engine.fingerprint(utils.parseKey(hostKey).getPublicSSH())});
+  const peer=engine.createSession(local,{sudo:true,agent:'/fixture-agent-do-not-contact',agentForward:true,sftpServerPath:'/usr/lib/openssh/sftp-server',host:'127.0.0.1',port:server.address().port,username:'fixture',password:'test-password',remotePath:'/',useTempFile:true,hostFingerprint:engine.fingerprint(utils.parseKey(hostKey).getPublicSSH())});
   const originalFs=await session.service.getRemoteFileSystem(session.config);
   const peerFs=await peer.service.getRemoteFileSystem(peer.config);
   assert.equal(peerFs,originalFs,'services share the same cached connection');
@@ -201,11 +213,11 @@ test('Sudo SFTP wire: authenticated exec supports list, upload, backup, download
   const ended=new Promise(resolve=>oldRemote.getClient()._client.once('close',resolve));
   dropNextStat=true;
   await assert.rejects(oldRemote.lstat('/'),/No response|closed|end|connection/i);
-  await ended;
   t.diagnostic('Transport closed; checking reconnection');
   const reconnected=await session.service.getRemoteFileSystem(session.config);
   assert.notEqual(reconnected,oldRemote);assert.equal(elevatedChannels.length,beforeReconnect+1);
   assert.equal((await reconnected.lstat('/')).type,engine.FileType.Directory);
+  await ended;assert.equal(agentForwardRequests,0);
 
 });
 
@@ -216,21 +228,20 @@ for(const failure of ['denied','closed','timeout','forced','eof','limits-eof'])t
  const server=new Server({hostKeys:[key]},client=>{
   clients.add(client);client.on('error',()=>{});client.on('close',()=>clients.delete(client));client.on('authentication',ctx=>ctx.method==='password'?ctx.accept():ctx.reject());
   client.on('ready',()=>client.on('session',accept=>accept().on('sftp',(_accept,reject)=>{normal++;reject();}).on('exec',(accept,reject,info)=>{
-   executions++;assert.match(info.command,/exec sudo -n/);
+   executions++;assert.match(info.command,/^sudo -n/);
    if(failure==='denied'){reject();return;}
    const channel=accept();
    if(failure==='limits-eof'){
-    channel.stderr.write(info.command.match(/DEVKIT_SUDO_[a-f0-9]{48}/)[0]);
     const string=value=>{const body=Buffer.from(value),length=Buffer.alloc(4);length.writeUInt32BE(body.length);return Buffer.concat([length,body]);};
-    let pending=Buffer.alloc(0),sent=false;
-    channel.on('data',data=>{pending=Buffer.concat([pending,data]);while(pending.length>=4&&pending.length>=4+pending.readUInt32BE()){
+    let pending=Buffer.alloc(0),sent=false,challenge=false;
+    channel.on('data',data=>{pending=Buffer.concat([pending,data]);if(!challenge){const nl=pending.indexOf(10);if(nl<0)return;const token=pending.subarray(0,nl).toString();assert.match(token,/^DEVKIT_SUDO_[a-f0-9]{48}$/);channel.stderr.write('fixture warning\n'+token+'\n');pending=pending.subarray(nl+1);challenge=true;}while(pending.length>=4&&pending.length>=4+pending.readUInt32BE()){
      const length=pending.readUInt32BE(),packet=pending.subarray(4,4+length);pending=pending.subarray(4+length);
      if(!sent){assert.equal(packet[0],1);sent=true;const body=Buffer.concat([Buffer.from([2,0,0,0,3]),string('limits@openssh.com'),string('1')]),prefix=Buffer.alloc(4);prefix.writeUInt32BE(body.length);channel.write(Buffer.concat([prefix,body]));}
      else{assert.equal(packet[0],200);limits++;channel.end();}
     }});return;
    }
    if(failure==='forced'){
-    const {SFTP}=require('ssh2/lib/protocol/SFTP');const sftp=new SFTP(client,{type:channel.type,incoming:channel.incoming,outgoing:channel.outgoing},{server:true});client._chanMgr.update(channel.incoming.id,sftp);sftp.once('ready',()=>negotiated++);return;
+    const {SFTP}=require('ssh2/lib/protocol/SFTP');const sftp=new SFTP(client,{type:channel.type,incoming:channel.incoming,outgoing:channel.outgoing},{server:true});channel.stderr.write(info.command);readSudoChallenge(sftp,channel,false);client._chanMgr.update(channel.incoming.id,sftp);sftp.once('ready',()=>negotiated++);return;
    }
    if(failure==='eof'){channel.end();return;}
    if(failure==='closed'){channel.stderr.write('untrusted remote text');channel.exit(1);channel.end();}

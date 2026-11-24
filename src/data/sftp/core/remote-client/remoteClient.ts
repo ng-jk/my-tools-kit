@@ -74,6 +74,7 @@ export default abstract class RemoteClient {
 
   onDisconnected(cb: (reason: string) => void) {
     this._client
+      .on('devkit-sftp-channel-closed', () => cb('channel'))
       .on('end', () => {
         cb('end');
       })

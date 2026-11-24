@@ -78,7 +78,8 @@ class KeepAliveRemoteFs {
       clientOption: connectOption,
       remoteTimeOffsetInHours: option.remoteTimeOffsetInHours,
     });
-    this.fs.onDisconnected(this.invalid.bind(this));
+    const connectedFs=this.fs;
+    connectedFs.onDisconnected(reason=>{if(this.fs===connectedFs)this.invalid(reason);});
 
     app.sftpBarItem.showMsg('connecting...', connectOption.connectTimeout);
     this.pendingPromise = this.fs
@@ -88,12 +89,13 @@ class KeepAliveRemoteFs {
       .then(
         () => {
           app.sftpBarItem.reset();
+          if(this.fs!==connectedFs)throw new Error('SFTP connection was replaced during startup');
           this.isValid = true;
-          return this.fs;
+          return connectedFs;
         },
         err => {
-          this.fs.end();
-          this.invalid('error');
+          connectedFs.end();
+          if(this.fs===connectedFs)this.invalid('error');
           throw err;
         }
       );
