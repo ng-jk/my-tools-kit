@@ -1,3 +1,4 @@
+import {connectionDescription} from '../../../logic/sftp/connection-description';
 import {FileHandlerContext} from '../fileHandlers/createFileHandler';
 import {FileType} from '../../../logic/sftp/core';
 import {showConfirmMessage} from '../host';
@@ -11,7 +12,7 @@ export async function confirmListedDownload(ctx:FileHandlerContext,directory:boo
   if(directory===true && entry.type!==FileType.Directory)throw new Error('Download Folder requires a directory. Use Download File for files.');
   if(directory===undefined)directory=entry.type===FileType.Directory;
   check();
-  const message=`Download ${directory?'this folder recursively':'this file'} from ${fileService.name || config.host} (${config.host}:${config.port}, profile ${fileService.profile || 'base'}) ${target.remoteFsPath} to ${target.localFsPath}? Existing local files will be overwritten.${force?' Ignore rules will be bypassed.':''}`;
+  const message=`Download ${directory?'this folder recursively':'this file'} from ${fileService.name || connectionDescription(config)} (${connectionDescription(config)}, profile ${fileService.profile || 'base'}) ${target.remoteFsPath} to ${target.localFsPath}? Existing local files will be overwritten.${force?' Ignore rules will be bypassed.':''}`;
   if(!await showConfirmMessage(message,'Download','Cancel'))return false;
   check();
   return true;

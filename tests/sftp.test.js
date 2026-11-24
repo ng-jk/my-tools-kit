@@ -22,7 +22,7 @@ test('sudo paths and nested hop settings reject shell syntax before connecting',
  for(const value of ["/bad'path",'/bad\\path','/bad;command','/bad$(command)','/bad path'])assert.throws(()=>engine.createSession(workspace,{...base,sftpServerPath:value}),/sftpServerPath/);
  for(const value of ['false','true',1])assert.throws(()=>engine.createSession(workspace,{...base,hop:{host:'destination',sudo:value}}),/hop.sudo/);
  assert.throws(()=>engine.createSession(workspace,{...base,protocol:'ftp',sudo:false,hop:{host:'middle',hop:{host:'final',sudo:true}}}),/hop.sudo.*sftp/);
- assert.throws(()=>engine.createSession(workspace,{...base,hop:{host:'middle',hop:{host:'final',sudo:'false'}}}),/hop.sudo/);
+ assert.throws(()=>engine.createSession(workspace,{...base,hop:{host:'middle',hop:{host:'final',sudo:'false'}}}),/hop/);
 });
 
 test('sudo applies only to the final hop with explicit final override',async()=>{
@@ -37,6 +37,31 @@ test('sudo applies only to the final hop with explicit final override',async()=>
   finally{client.end();}
   assert.equal(elevated,enabled?1:0);assert.deepEqual(normals,enabled?['jump','middle','nested']:['jump','middle','nested','final']);
  }}finally{prototype._connectSSHClient=connect;prototype._getSftp=get;prototype._makeHopping=hop;}
+});
+
+test('terminal nested SSH destinations reject before connection and labels show actual sudo endpoint',async t=>{
+ const workspace=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-route-'));t.after(()=>fs.rmSync(workspace,{recursive:true,force:true}));
+ const config={protocol:'sftp',host:'jump',username:'fixture',remotePath:'/',sudo:true,hop:{host:'middle',hop:{host:'actual',sudo:false}}};
+ assert.throws(()=>engine.createSession(workspace,config),/flatten_destination_hops/);
+ for(const hop of ['actual',[{host:'middle'},null],{sudo:true},{host:'actual',port:0},{host:'actual',port:'22'}])assert.throws(()=>engine.createSession(workspace,{...config,hop}),/hop/);
+ const client=new engine.SFTPFileSystem(path.posix,{client:{}})._createClient({});let connections=0;client._connectSSHClient=async()=>{connections++;};
+ await assert.rejects(client._doConnect(config,{}),/flatten.*hop/);assert.equal(connections,0);client.end();
+ assert.equal(engine.connectionDescription({...config,hop:[{host:'actual',port:2222,sudo:false}]}),'actual:2222 (login account)');
+ assert.equal(engine.connectionDescription({...config,sudo:false,hop:[{host:'actual',sudo:true}]}),'actual:22 (sudo / root requested)');
+});
+
+test('disconnect before startup cache resolution rejects and immediate retry opens a new filesystem',async t=>{
+ const workspace=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-startup-cache-'));t.after(()=>fs.rmSync(workspace,{recursive:true,force:true}));
+ const proto=engine.SFTPFileSystem.prototype,connect=proto.connect,observe=proto.onDisconnected,end=proto.end;const callbacks=new Map();let attempts=0;
+ proto.onDisconnected=function(callback){callbacks.set(this,callback);};proto.end=()=>{};
+ proto.connect=async function(){attempts++;if(attempts===1)callbacks.get(this)('channel');};
+ const session=engine.createSession(workspace,{protocol:'sftp',host:'startup-cache-fixture',username:'fixture',password:'fixture',remotePath:'/'});
+ try{
+  await assert.rejects(session.service.getRemoteFileSystem(session.config),/closed.*startup/);
+  const fresh=await session.service.getRemoteFileSystem(session.config);assert.equal(attempts,2);
+  const old=[...callbacks.keys()][0];callbacks.get(old)('close');
+  assert.equal(await session.service.getRemoteFileSystem(session.config),fresh);assert.equal(attempts,2);
+ }finally{session.service.dispose();proto.connect=connect;proto.onDisconnected=observe;proto.end=end;}
 });
 
 test('profiles-only connections independently resolve protocol, port, paths and credentials',t=>{

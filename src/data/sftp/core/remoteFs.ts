@@ -22,6 +22,7 @@ function hashOption(opiton: { [x: string]: any }) {
 class KeepAliveRemoteFs {
   owners = 0;
   private isValid: boolean = false;
+  private generation = 0;
 
   private pendingPromise: Promise<RemoteFileSystem> | null;
 
@@ -78,35 +79,36 @@ class KeepAliveRemoteFs {
       clientOption: connectOption,
       remoteTimeOffsetInHours: option.remoteTimeOffsetInHours,
     });
-    const connectedFs=this.fs;
-    connectedFs.onDisconnected(reason=>{if(this.fs===connectedFs)this.invalid(reason);});
+    const connectedFs=this.fs,generation=++this.generation;
+    connectedFs.onDisconnected(reason=>{if(this.fs===connectedFs&&this.generation===generation)this.invalid(reason);});
 
     app.sftpBarItem.showMsg('connecting...', connectOption.connectTimeout);
-    this.pendingPromise = this.fs
+    const attempt = connectedFs
       .connect(connectOption, {
         askForPasswd: promptForPassword,
       })
       .then(
         () => {
           app.sftpBarItem.reset();
-          if(this.fs!==connectedFs)throw new Error('SFTP connection was replaced during startup');
+          if(this.fs!==connectedFs||this.generation!==generation)throw new Error('SFTP connection closed or was replaced during startup');
           this.isValid = true;
           return connectedFs;
         },
         err => {
           connectedFs.end();
-          if(this.fs===connectedFs)this.invalid('error');
+          if(this.fs===connectedFs&&this.generation===generation)this.invalid('error');
           throw err;
         }
-      );
-
-    return this.pendingPromise;
+      ).finally(()=>{if(this.pendingPromise===attempt)this.pendingPromise=null;});
+    this.pendingPromise=attempt;
+    return attempt;
   }
 
   invalid(reason: string) {
+    this.generation++;
+    this.isValid = false;
     this.pendingPromise = null;
     this.fs.end();
-    this.isValid = false;
   }
 
   end() {

@@ -1,3 +1,4 @@
+import {connectionDescription} from '../../../../logic/sftp/connection-description';
 // Adapted from ng-jk/vscode-sftp (MIT); see THIRD-PARTY-NOTICES.md.
 import * as vscode from 'vscode';
 import { showTextDocument } from '../../host';
@@ -115,10 +116,10 @@ export default class RemoteTreeData
       customLabel = upath.basename(item.resource.fsPath);
     }
     const context = isRoot ? (item as ExplorerRoot).explorerContext : undefined;
-    const destination = context ? `${context.config.host}:${context.config.port} ${context.config.remotePath}` : undefined;
+    const destination = context ? `${connectionDescription(context.config)} ${context.config.remotePath}` : undefined;
     return {
       label: customLabel,
-      description: context ? `${context.fileService.profile || 'base'} - ${context.config.host}` : undefined,
+      description: context ? `${context.fileService.profile || 'base'} - ${connectionDescription(context.config)}` : undefined,
       tooltip: context ? `${customLabel} | profile ${context.fileService.profile || 'base'} | ${destination} | local ${context.fileService.baseDir}` : undefined,
       resourceUri: item.resource.uri,
       collapsibleState: item.isDirectory ? vscode.TreeItemCollapsibleState.Collapsed : undefined,

@@ -1,3 +1,4 @@
+import {connectionDescription} from '../../../logic/sftp/connection-description';
 // Adapted from ng-jk/vscode-sftp (MIT); see THIRD-PARTY-NOTICES.md.
 import * as vscode from 'vscode';
 import * as path from 'path';
@@ -61,7 +62,7 @@ async function downloadOnOpen(uri: vscode.Uri) {
     const fspath=uri.fsPath;
     const attempt=async()=>{
       if(config.downloadOnOpen==='confirm') {
-        const message=`Download from ${ctx.fileService.name || config.host} (${config.host}:${config.port}, profile ${ctx.fileService.profile || 'base'}) ${ctx.target.remoteFsPath} and overwrite ${ctx.target.localFsPath}?`;
+        const message=`Download from ${ctx.fileService.name || connectionDescription(config)} (${connectionDescription(config)}, profile ${ctx.fileService.profile || 'base'}) ${ctx.target.remoteFsPath} and overwrite ${ctx.target.localFsPath}?`;
         if(!await showConfirmMessage(message,'Download','Cancel'))return false;
       }
       check();

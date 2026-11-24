@@ -1,3 +1,4 @@
+import {connectionDescription} from '../../../logic/sftp/connection-description';
 import {window} from 'vscode';
 import {FileHandlerContext} from '../fileHandlers/createFileHandler';
 import app from '../app';
@@ -7,7 +8,7 @@ import * as output from '../ui/output';
 
 export async function reportAutomaticFailure(ctx:FileHandlerContext, operation:string, error:unknown, retry:()=>Promise<boolean>) {
   const check=ctx.fileService.cancellationCheck();
-  const destination=`${ctx.config.host}:${ctx.config.port}, profile ${ctx.fileService.profile || 'base'}: ${ctx.target.localFsPath} ↔ ${ctx.target.remoteFsPath}`;
+  const destination=`${connectionDescription(ctx.config)}, profile ${ctx.fileService.profile || 'base'}: ${ctx.target.localFsPath} ↔ ${ctx.target.remoteFsPath}`;
   for (;;) {
     logger.error(error, `automatic ${operation}: ${destination}`);
     app.sftpBarItem.showMsg(`Automatic ${operation} failed: ${ctx.target.localFsPath}`,destination);

@@ -1,4 +1,5 @@
 // Adapted from ng-jk/vscode-sftp (MIT); see THIRD-PARTY-NOTICES.md.
+import {connectionDescription} from '../../../logic/sftp/connection-description';
 import {COMMAND_DELETE_REMOTE} from '../../../data/sftp/constants';
 import {assertRemoteChild} from '../../../logic/sftp/remote-operations';
 import {removeRemote} from '../fileHandlers';
@@ -16,7 +17,7 @@ export default checkCommand({
       assertRemoteChild(ctx.target.remoteFsPath,ctx.config.remotePath);
       return {ctx,check:ctx.fileService.cancellationCheck()};
     });
-    const detail=targets.map(({ctx})=>`${ctx.fileService.name} / ${ctx.fileService.profile || 'base'} (${ctx.config.host}:${ctx.config.port}) ${ctx.target.remoteFsPath}`).join('\n');
+    const detail=targets.map(({ctx})=>`${ctx.fileService.name} / ${ctx.fileService.profile || 'base'} (${connectionDescription(ctx.config)}) ${ctx.target.remoteFsPath}`).join('\n');
     if (!await showConfirmMessage(`Permanently delete these remote targets? Folders include their non-ignored descendants. This cannot be undone.\n${detail}`,'Delete permanently','Cancel')) return;
     for (const {ctx,check} of targets) {check();await removeRemote(ctx);}
   }

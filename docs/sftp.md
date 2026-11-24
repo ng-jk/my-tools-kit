@@ -257,3 +257,5 @@ VS Code and CLI use the same requested sudo session for browsing, upload, backup
 Omit `sftpServerPath` to try `/usr/lib/openssh/sftp-server`, `/usr/libexec/openssh/sftp-server` and `/usr/lib/ssh/sftp-server`. Custom paths accept letters, digits, `/`, `.`, `_` and `-` only. Set `sudo: false` for normal-account SFTP. FTP rejects sudo settings, including those inside nested hops.
 
 Profiles override sudo independently. Explicit settings on the final hop override the selected profile. All intermediate SFTP connections, including recursively nested hops, remain unprivileged. Transfer connections disable agent forwarding while retaining agent authentication. Loss of the sudo channel immediately invalidates the cached connection; a retry opens a fresh session.
+
+Nested hop configuration on the final SSH destination is rejected before connection. Flatten the final route into a single hop list. Remote Explorer and permanent-delete confirmations show the resolved destination host/port and whether sudo/root is requested.

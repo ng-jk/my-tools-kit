@@ -1,3 +1,4 @@
+import {connectionDescription} from '../../../logic/sftp/connection-description';
 // Adapted from ng-jk/vscode-sftp (MIT); see THIRD-PARTY-NOTICES.md.
 import * as path from 'path';
 import { ProgressLocation, Uri, window } from 'vscode';
@@ -16,7 +17,7 @@ export const diff = createFileHandler({
   async handle() {
     const {localFsPath, remoteFsPath} = this.target;
     const {fileService, config} = this;
-    const endpoint = config.host+':'+config.port;
+    const endpoint = connectionDescription(config);
     const profile = fileService.profile || 'base';
     const destination = [fileService.name, endpoint, profile, fileService.baseDir, remoteFsPath]
       .filter(Boolean).join(' · ');

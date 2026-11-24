@@ -1,3 +1,4 @@
+import {connectionDescription} from '../../../logic/sftp/connection-description';
 import {refreshRemoteExplorer} from '../fileHandlers/shared';
 import * as path from 'path';
 import {window} from 'vscode';
@@ -18,7 +19,7 @@ export async function createRemoteEntry(folder: boolean, item?: any, items?: any
   };
   let value = '';
   while (true) {
-    const name = await window.showInputBox({value, prompt:`New ${folder?'folder':'file'} in ${parent.config.host}: ${parent.target.remoteFsPath}`, validateInput});
+    const name = await window.showInputBox({value, prompt:`New ${folder?'folder':'file'} in ${connectionDescription(parent.config)}: ${parent.target.remoteFsPath}`, validateInput});
     if (name === undefined) return;
     value = name;
     if (validateInput(name)) continue;

@@ -8,6 +8,7 @@ import { logger } from '../../ports';
 import CustomError from '../customError';
 import { verifyHostKey } from '../../host-keys';
 import { openSudoSftp } from '../../sudo-sftp';
+import {sshDestination} from '../../ssh-destination';
 
 let MAX_OPEN_FD_NUM = 222;
 
@@ -40,6 +41,7 @@ export default class SSHClient extends RemoteClient {
     connectOption: ConnectOption,
     config: Config
   ): Promise<void> {
+    const destination=sshDestination(connectOption);
     const { hop, sudo, sftpServerPath, ...option } = connectOption;
     for(const entry of [connectOption,...(Array.isArray(hop)?hop:hop?[hop]:[])]){
       if(entry.sudo!==undefined&&typeof entry.sudo!=='boolean')throw new Error('sudo must be a boolean on every SSH hop');
@@ -99,7 +101,7 @@ export default class SSHClient extends RemoteClient {
     }
 
     await this._connectSSHClient(this._client, await this.resolveAuthentication({ ...lastOption, sock }, config), config);
-    const finalSudo=lastOption.sudo===undefined?sudo:lastOption.sudo;
+    const finalSudo=destination.sudo;
     const finalPath=lastOption.sftpServerPath===undefined?sftpServerPath:lastOption.sftpServerPath;
     this.sftp = this.allowElevation && finalSudo===true ? await openSudoSftp(this._client,{...lastOption,sftpServerPath:finalPath}) : await this._getSftp(this._client);
 

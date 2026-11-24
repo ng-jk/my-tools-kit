@@ -1,3 +1,4 @@
+import {connectionDescription} from '../../../../logic/sftp/connection-description';
 // Adapted from ng-jk/vscode-sftp (MIT); see THIRD-PARTY-NOTICES.md.
 import {showConfirmMessage} from '../../host';
 import { refreshRemoteExplorer } from '../shared';
@@ -10,7 +11,7 @@ function createTransferHandle(direction: TransferDirection, synchronize = false)
   return async function handle(this: FileHandlerContext, option: TransferOption) {
     const check = this.fileService.cancellationCheck();
     if (synchronize) {
-      const remote = `${this.fileService.name} (profile ${this.fileService.profile || 'base'}, ${this.config.host}:${this.config.port}) ${this.target.remoteFsPath}`;
+      const remote = `${this.fileService.name} (profile ${this.fileService.profile || 'base'}, ${connectionDescription(this.config)}) ${this.target.remoteFsPath}`;
       const destination = (option as SyncOption).bothDiretions ? `${remote} and local ${this.target.localFsPath}`
         : direction === TransferDirection.REMOTE_TO_LOCAL ? `local ${this.target.localFsPath}` : remote;
       const deletes = (option as SyncOption).delete;

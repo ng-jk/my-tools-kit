@@ -1,3 +1,4 @@
+import {sshDestination} from '../../data/sftp/ssh-destination';
 import * as Joi from 'joi';
 const nullable = (schema: any) => schema.optional().allow(null);
 
@@ -209,5 +210,7 @@ export function validateConfig(config: any) {
       },
     },
   });
-  return error;
+  if(error)return error;
+  if(config.protocol==='sftp')try{sshDestination(config);}catch(error){return Object.assign(new Error('Invalid SSH route'),{details:[{path:error.routePath||'hop',type:error.routeType||'invalid_route'}]});}
+  return undefined;
 }

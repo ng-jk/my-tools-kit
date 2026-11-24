@@ -1,3 +1,4 @@
+import {connectionDescription} from '../../../logic/sftp/connection-description';
 // Adapted from ng-jk/vscode-sftp (MIT); see THIRD-PARTY-NOTICES.md.
 import * as path from 'path';
 import { Uri, window } from 'vscode';
@@ -21,7 +22,7 @@ function createFileSelector(filterCreator?: (config: any) => ((file: any) => boo
       const config = fileService.getConfig();
       return {
         name: config.name || config.remotePath,
-        description: config.host,
+        description: connectionDescription(config),
         fsPath: config.remotePath,
         type: FileType.Directory,
         filter: filterCreator ? filterCreator(config) : undefined,

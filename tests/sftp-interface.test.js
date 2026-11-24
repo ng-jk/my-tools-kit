@@ -532,6 +532,16 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
     vscode.window.showInformationMessage=editConfirm;
     await commands.get('devkit.sftp.delete.remote')(previewItem);
     assert.equal(fs.readFileSync(path.join(dir,'remote-other','preview.txt'),'utf8'),'remote preview');
+    const routedService=betaRoot.explorerContext.fileService,routedGet=routedService.getConfig;
+    const routedInfo=vscode.window.showInformationMessage;
+    try{
+      routedService.getConfig=function(...args){return {...routedGet.apply(this,args),protocol:'sftp',host:'jump-host',sudo:false,hop:[{host:'final-host',port:2222,sudo:true}]};};
+      const routedRoot=Object.create(betaRoot);Object.defineProperty(routedRoot,'explorerContext',{value:{...betaRoot.explorerContext,config:routedService.getConfig()}});
+      const routedTree=provider.getTreeItem(routedRoot);assert.match(routedTree.description,/final-host:2222.*sudo/);assert.match(routedTree.tooltip,/final-host:2222.*sudo/);assert.equal(routedTree.tooltip.includes('jump-host'),false);
+      let routedConfirmations=0;vscode.window.showInformationMessage=async message=>{routedConfirmations++;assert.match(message,/final-host:2222.*sudo/);assert.equal(message.includes('jump-host'),false);return undefined;};
+      await commands.get('devkit.sftp.delete.remote')(previewItem);assert.equal(routedConfirmations,1);assert.deepEqual(errors,[]);
+    }finally{routedService.getConfig=routedGet;vscode.window.showInformationMessage=routedInfo;}
+
     vscode.window.showInformationMessage=permanentConfirm;
     const previewUri=previewItem.resource.uri.with({path:'/~ preview.txt'});
     vscode.window.activeTextEditor={document:{uri:previewUri}};

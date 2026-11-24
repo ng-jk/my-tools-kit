@@ -1,3 +1,4 @@
+export {connectionDescription} from './connection-description';
 import {inspectServerIsolation,isolationConnection} from './parent-directories';
 import {createServerDirectory,createServerFile} from './server-permissions';
 import * as path from 'path';
