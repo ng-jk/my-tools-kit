@@ -121,8 +121,8 @@ test('Sudo SFTP wire: authenticated exec supports list, upload, backup, download
     clients.add(client);client.on('close',()=>clients.delete(client));client.on('error',()=>{});
     client.on('authentication',ctx=>{authentications++;return ctx.method==='password' && ctx.username==='fixture' && ctx.password==='test-password'?ctx.accept():ctx.reject();});
     client.on('ready',()=>client.on('session',accept=>accept().on('auth-agent',accept=>{agentForwardRequests++;accept();}).on('exec',(accept,reject,info)=>{
-      assert.match(info.command,/^sudo -n -- \/bin\/sh -c 'IFS= read -r token;/);
-      assert.ok(info.command.includes('[ "$(id -u)" = 0 ]'));
+      assert.match(info.command,/^sudo -n -- \/bin\/sh -c 'PATH=\/usr\/sbin:.*IFS= read -r token;/);
+      assert.ok(info.command.includes('[ "$(/usr/bin/id -u)" = 0 ]'));
       assert.ok(info.command.endsWith("exec /usr/lib/openssh/sftp-server'"));assert.ok(!info.command.includes('DEVKIT_SUDO_'));
       const channel=accept();elevatedChannels.push(channel);
       const {SFTP}=require('ssh2/lib/protocol/SFTP');

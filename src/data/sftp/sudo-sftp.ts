@@ -8,7 +8,7 @@ export function sudoSftpCommand(option:{sftpServerPath?:string}):string {
  const launch=path?'exec '+path:'for p in /usr/lib/openssh/sftp-server /usr/libexec/openssh/sftp-server /usr/lib/ssh/sftp-server; do if [ -x "$p" ]; then exec "$p"; fi; done; exit 127';
  // No challenge appears in the command: reflected command diagnostics cannot
  // authenticate startup. The root launcher reads it from stdin after sudo.
- return 'sudo -n -- /bin/sh -c \'IFS= read -r token; [ "$(id -u)" = 0 ] || exit 126; printf "%s\\n" "$token" >&2; '+launch+"'";
+ return 'sudo -n -- /bin/sh -c \'PATH=/usr/sbin:/usr/bin:/sbin:/bin; export PATH; IFS= read -r token; [ "$(/usr/bin/id -u)" = 0 ] || exit 126; printf "%s\\n" "$token" >&2; '+launch+"'";
 }
 
 export function openSudoSftp(client:any,option:{sftpServerPath?:string;connectTimeout?:number}):Promise<any>{

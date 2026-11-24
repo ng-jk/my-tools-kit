@@ -1,3 +1,4 @@
+import {sshDestination} from '../../data/sftp/ssh-destination';
 import {FileType, FileStats} from '../../data/sftp/core/fs/fileSystem';
 export const remoteParentDirectoryCache = Symbol('remoteParentDirectoryCache');
 export interface ParentDirectories {pathResolver:{dirname(path:string):string};lstat(path:string):Promise<FileStats>;createMutationMetadataReader?(): (path:string)=>Promise<FileStats>;}
@@ -52,8 +53,9 @@ export async function assertProtectedRemoteParents(fs:ParentDirectories,target:s
   }
 }
 
-export function isolationConnection(service:{workspace:string;baseDir:string;profile?:string|null},config:{host:string;port:number}) {
-  return {host:config.host,port:config.port,workspace:service.workspace,context:service.baseDir,profile:service.profile??null};
+export function isolationConnection(service:{workspace:string;baseDir:string;profile?:string|null},config:{host:string;port:number;protocol?:string;[key:string]:any}) {
+  const target=config.protocol==='sftp'?sshDestination(config):config;
+  return {host:target.host,port:target.port,...(config.protocol==='sftp'?{sudo:target.sudo}:{}),workspace:service.workspace,context:service.baseDir,profile:service.profile??null};
 }
 
 export async function inspectServerIsolation(fs:ParentDirectories,root:string,connection?:ReturnType<typeof isolationConnection>) {

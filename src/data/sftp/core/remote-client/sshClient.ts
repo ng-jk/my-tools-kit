@@ -329,6 +329,7 @@ export default class SSHClient extends RemoteClient {
             // ? Math.max(10800 * 1000, connectTimeout || 0) // 180 mins
             : connectTimeout,
           ...option,
+          hostname: option.host,
           agentForward: false,
           hostHash: undefined,
           hostVerifier: (key: Buffer) => verifyHostKey(option, key),

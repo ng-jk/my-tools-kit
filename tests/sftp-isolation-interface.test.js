@@ -30,3 +30,11 @@ test('isolation empty state and cancelled picker never connect',async()=>{
  const f=fixture();await runIsolationCheck(f.vscode,[],inspect);assert.deepEqual(f.notices,['Configure an FTP/SFTP connection first.']);
  const a=record('/a'),b=record('/b');a.service.getRemoteFileSystem=b.service.getRemoteFileSystem=async()=>{throw new Error('must not connect');};f.vscode.window.showQuickPick=async()=>undefined;await runIsolationCheck(f.vscode,[a,b],inspect);assert.equal(f.starts,0);assert.equal(f.shown,0);
 });
+
+test('isolation picker progress and report name the final sudo destination',async()=>{
+ const f=fixture(),a=record('/workspace/a'),b=record('/workspace/b');
+ b.config={...b.config,protocol:'sftp',host:'jump-host',sudo:false,hop:[{host:'final-host',port:2222,sudo:true}]};b.connection=isolationConnection(b.service,b.config);
+ f.vscode.window.showQuickPick=async choices=>{assert.match(choices[1].description,/final-host:2222.*sudo/);assert.equal(choices[1].description.includes('jump-host'),false);return choices[1];};
+ f.vscode.window.withProgress=async(options,run)=>{assert.match(options.title,/final-host:2222.*sudo/);return run();};
+ await runIsolationCheck(f.vscode,[a,b],inspect);assert.match(f.content,/Server: final-host:2222.*sudo/);assert.equal(f.content.includes('jump-host'),false);
+});

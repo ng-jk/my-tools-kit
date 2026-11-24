@@ -64,6 +64,31 @@ test('disconnect before startup cache resolution rejects and immediate retry ope
  }finally{session.service.dispose();proto.connect=connect;proto.onDisconnected=observe;proto.end=end;}
 });
 
+test('SSH hostname cannot override the verified and displayed host',async t=>{
+ const workspace=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-host-alias-'));t.after(()=>fs.rmSync(workspace,{recursive:true,force:true}));
+ const config={protocol:'sftp',host:'shown-host',hostname:'other-host',username:'fixture',password:'fixture',remotePath:'/',sudo:true};
+ assert.throws(()=>engine.createSession(workspace,config),/hostname.*use_host_only/);
+ assert.throws(()=>engine.createSession(workspace,{...config,hostname:undefined,hop:{host:'final',hostname:'other'}}),/hop.hostname/);
+ const client=new engine.SFTPFileSystem(path.posix,{client:{}})._createClient({});
+ const peer=new(require('node:events').EventEmitter)();let connected;
+ peer.connect=options=>{connected=options;queueMicrotask(()=>peer.emit('ready'));return peer;};
+ const key=Buffer.from('fixture-host-key');
+ await client._connectSSHClient(peer,{...config,hostFingerprint:engine.fingerprint(key)},{});
+ assert.equal(connected.host,'shown-host');assert.equal(connected.hostname,'shown-host');assert.equal(connected.hostVerifier(key),true);assert.equal(connected.hostVerifier(Buffer.from('wrong')),false);client.end();
+});
+
+test('sudo UID guard never executes an id from inherited PATH',t=>{
+ const shell=process.platform==='win32'?'C:/Program Files/Git/bin/bash.exe':'/bin/sh';
+ if(!fs.existsSync(shell)){t.skip('POSIX shell unavailable; protocol fixture still verifies fixed launcher');return;}
+ const directory=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-path-'));t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
+ fs.writeFileSync(path.join(directory,'id'),'#!/bin/sh\nprintf ATTACKER_PATH_RAN >&2\nprintf 0\n',{mode:0o755});
+ const command=engine.sudoSftpCommand({sftpServerPath:'/bin/true'}),script=command.slice(command.indexOf("'")+1,-1);
+ const environment={...process.env};for(const key of Object.keys(environment))if(key.toLowerCase()==='path')delete environment[key];
+ environment.PATH=process.platform==='win32'?directory.replaceAll('\\','/').replace(/^([A-Za-z]):/,(_,drive)=>'/'+drive.toLowerCase()):directory;
+ const result=spawnSync(shell,['-c',script],{env:environment,input:'fixture-challenge\n',encoding:'utf8',timeout:5000});
+ assert.ok([0,126].includes(result.status),result.stderr);assert.equal(result.stderr.includes('ATTACKER_PATH_RAN'),false);
+});
+
 test('profiles-only connections independently resolve protocol, port, paths and credentials',t=>{
   const workspace=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-profile-settings-'));t.after(()=>fs.rmSync(workspace,{recursive:true,force:true}));
   const raw={name:'Profile fixture',protocol:'ftp',port:21,ignore:['vendor/**'],profiles:{

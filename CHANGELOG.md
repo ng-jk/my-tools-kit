@@ -1,5 +1,7 @@
 ## 0.7.23
 
+- Use a trusted launcher PATH and absolute UID check, prevent hostname alias dial/verification mismatches, and identify the final sudo destination in isolation advisories.
+
 - Isolate SSH/FTP/UI integration fixtures from each other and retain a bounded 90-second functional SFTP timeout for Windows ACL/backup workloads; performance measurements remain separate.
 
 - Reject silently skipped nested final SSH hops, display the actual endpoint and requested sudo mode in Explorer/delete confirmation, and prevent disconnected startup attempts from becoming cached connections.

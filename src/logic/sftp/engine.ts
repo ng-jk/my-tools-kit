@@ -1,3 +1,4 @@
+export {sudoSftpCommand} from '../../data/sftp/sudo-sftp';
 export {connectionDescription} from './connection-description';
 import {inspectServerIsolation,isolationConnection} from './parent-directories';
 import {createServerDirectory,createServerFile} from './server-permissions';
