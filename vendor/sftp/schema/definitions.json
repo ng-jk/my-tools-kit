@@ -372,7 +372,7 @@
       },
       "sftpServerPath": {
         "type": "string",
-        "pattern": "^/[^\\r\\n\\u0000]+$",
+        "pattern": "^/[A-Za-z0-9_./-]+$",
         "description": "Absolute remote sftp-server executable path. With sudo true, omitted paths probe common OpenSSH locations."
       }
     }

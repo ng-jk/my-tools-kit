@@ -26,7 +26,7 @@ const configScheme = {
   sshConfigPath: Joi.string(),
   sshCustomParams: Joi.string(),
   sudo: Joi.boolean(),
-  sftpServerPath: Joi.string().regex(/^\/[^\r\n\0]+$/).max(4096),
+  sftpServerPath: Joi.string().regex(/^\/[A-Za-z0-9_./-]+$/).max(4096),
 
   secure: Joi.any().valid(true, false, 'control', 'implicit'),
   secureOptions: nullable(Joi.object()),
@@ -190,6 +190,10 @@ export function normalizeConfigurations(value: any, environment: {[key:string]:s
 
 export function validateConfig(config: any) {
   if(config.sudo && config.protocol!=='sftp')return Object.assign(new Error('sudo is supported only for protocol sftp'),{details:[{path:'sudo',type:'requires_protocol_sftp'}]});
+  for(const hop of (Array.isArray(config.hop)?config.hop:config.hop?[config.hop]:[])){
+    if(hop.sudo!==undefined&&typeof hop.sudo!=='boolean')return Object.assign(new Error('Invalid hop sudo'),{details:[{path:'hop.sudo',type:'boolean_required'}]});
+    if(hop.sftpServerPath!==undefined&&(typeof hop.sftpServerPath!=='string'||!/^\/[A-Za-z0-9_./-]+$/.test(hop.sftpServerPath)))return Object.assign(new Error('Invalid hop SFTP path'),{details:[{path:'hop.sftpServerPath',type:'absolute_safe_path_required'}]});
+  }
   const { error } = Joi.validate(config, configScheme, {
     abortEarly: false,
     allowUnknown: true,

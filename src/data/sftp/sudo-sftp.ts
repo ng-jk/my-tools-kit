@@ -1,39 +1,47 @@
-// ssh2's SFTP codec is attached to an authenticated exec channel instead of a subsystem.
-// Keep this compatibility adapter in the data layer; wire tests exercise its lifecycle.
+// Compatibility adapter for ssh2's SFTP codec over an authenticated exec channel.
 const {SFTP} = require('ssh2/lib/protocol/SFTP');
+import {randomBytes} from 'crypto';
 
-export function sudoSftpCommand(option: {sftpServerPath?:string}): string {
-  const path=option.sftpServerPath;
-  if(path!==undefined && (typeof path!=='string'||!path.startsWith('/')||/[\r\n\0]/.test(path)||path.length>4096))throw new Error('sftpServerPath must be an absolute remote executable path');
-  const quote=(value:string)=>"'"+value.replace(/'/g,"'\"'\"'")+"'";
-  if(path)return 'exec sudo -n -- '+quote(path);
-  return 'for p in /usr/lib/openssh/sftp-server /usr/libexec/openssh/sftp-server /usr/lib/ssh/sftp-server; do if [ -x "$p" ]; then exec sudo -n -- "$p"; fi; done; exit 127';
+export function sudoSftpCommand(option:{sftpServerPath?:string},marker:string):string {
+ const path=option.sftpServerPath;
+ if(path!==undefined && (typeof path!=='string'||!/^\/[A-Za-z0-9_./-]+$/.test(path)||path.length>4096))throw new Error('sftpServerPath must be an absolute remote executable path using letters, digits, slash, dot, underscore or hyphen');
+ // Run a fixed POSIX launcher even if the login shell is fish/csh. Inputs cannot
+ // introduce quotes, backslashes, whitespace or shell substitutions.
+ const launch=path?'exec sudo -n -- '+path:'for p in /usr/lib/openssh/sftp-server /usr/libexec/openssh/sftp-server /usr/lib/ssh/sftp-server; do if [ -x "$p" ]; then exec sudo -n -- "$p"; fi; done; exit 127';
+ return "/bin/sh -c 'printf "+marker+" >&2; "+launch+"'";
 }
 
 export function openSudoSftp(client:any,option:{sftpServerPath?:string;connectTimeout?:number}):Promise<any>{
-  const command=sudoSftpCommand(option);
-  return new Promise((resolve,reject)=>{
-    let codec:any,channel:any,settled=false;
-    const failure=()=>Object.assign(new Error('Sudo SFTP could not start. The SSH login must be allowed to run the SFTP server with non-interactive sudo (sudo -n), without a password prompt or TTY. Check sudo policy and sftpServerPath on the server. Normal-user SFTP was not used as a fallback.'),{code:'SUDO_SFTP_START_FAILED'});
-    const timer=setTimeout(()=>finish(failure()),option.connectTimeout||30000);
-    const finish=(error?:Error)=>{
-      if(settled)return;settled=true;clearTimeout(timer);
-      if(error){if(codec)codec.destroy();else channel?.close();reject(error);}else resolve(codec);
-    };
-    try { client.exec(command,{pty:false},(error:any,stream:any)=>{
-      if(error){finish(failure());return;}
-      channel=stream;
-      if(settled){stream.close();return;}
-      stream.stderr.on('data',()=>{}); // Never expose arbitrary remote stderr or credentials.
-      codec=new SFTP(client,{type:stream.type,incoming:stream.incoming,outgoing:stream.outgoing},{});
-      codec.stderr=stream.stderr;
-      codec.on('error',()=>{if(!settled)finish(failure());});
-      codec.once('ready',()=>finish());
-      codec.once('close',()=>{if(!settled)finish(failure());});
-      codec.once('exit',()=>{if(!settled)finish(failure());});
-      // Preserve the real channel IDs, windows and ssh2 dispatcher/backpressure.
-      client._chanMgr.update(stream.incoming.id,codec);
-      codec._init();
-    }); } catch { finish(failure()); }
-  });
+ const marker='DEVKIT_SUDO_'+randomBytes(24).toString('hex');
+ const command=sudoSftpCommand(option,marker);
+ return new Promise((resolve,reject)=>{
+  let codec:any,channel:any,settled=false,confirmed=false,ready=false,terminated=false,tail='';
+  const failure=()=>Object.assign(new Error('Sudo SFTP could not start or confirm its launcher. The SSH login must be allowed to run the SFTP server with non-interactive sudo (sudo -n), without a password prompt or TTY. Check sudo policy, forced SSH commands and sftpServerPath on the server. Normal-user SFTP was not used as a fallback.'),{code:'SUDO_SFTP_START_FAILED'});
+  const timer=setTimeout(()=>finish(failure()),option.connectTimeout||30000);
+  const finish=(error?:Error)=>{
+   if(settled)return;settled=true;clearTimeout(timer);
+   if(error){codec?.destroy();channel?.close();client.destroy();reject(error);}else resolve(codec);
+  };
+  const lost=()=>{if(terminated)return;terminated=true;if(!settled)finish(failure());else client.destroy();};
+  const expose=()=>{if(ready&&confirmed){if(terminated||!codec.readable||codec.outgoing.state!=='open')finish(failure());else finish();}};
+  try{client.exec(command,{pty:false},(error:any,stream:any)=>{
+   if(error){finish(failure());return;}
+   channel=stream;if(settled){stream.close();return;}
+   stream.stderr.on('data',(data:Buffer)=>{
+    if(confirmed)return;
+    tail=(tail+data.toString('ascii')).slice(-4096);
+    if(tail.includes(marker)){confirmed=true;tail='';expose();}
+   });
+   codec=new SFTP(client,{type:stream.type,incoming:stream.incoming,outgoing:stream.outgoing},{});
+   codec.stderr=stream.stderr;
+   // ssh2 flushes outstanding limits callbacks before emitting end on EOF;
+   // mark the channel dead first so those callbacks cannot expose it as ready.
+   const push=codec.push.bind(codec);
+   codec.push=(data:any)=>{if(data===null)lost();return push(data);};
+   codec.on('error',lost);codec.once('end',lost);codec.once('close',lost);codec.once('exit',lost);
+   codec.once('ready',()=>{ready=true;expose();});
+   client._chanMgr.update(stream.incoming.id,codec);
+   codec._init();
+  });}catch{finish(failure());}
+ });
 }

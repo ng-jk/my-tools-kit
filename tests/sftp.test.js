@@ -16,6 +16,27 @@ test('sudo is independently resolved per SFTP profile and rejects FTP misuse',t=
  assert.throws(()=>engine.createSession(workspace,{protocol:'sftp',host:'fixture',username:'fixture',sudo:'true',remotePath:'/'}),/sudo/);
 });
 
+test('sudo paths and nested hop settings reject shell syntax before connecting',t=>{
+ const workspace=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-sudo-options-'));t.after(()=>fs.rmSync(workspace,{recursive:true,force:true}));
+ const base={protocol:'sftp',host:'fixture',username:'fixture',remotePath:'/',sudo:true};
+ for(const value of ["/bad'path",'/bad\\path','/bad;command','/bad$(command)','/bad path'])assert.throws(()=>engine.createSession(workspace,{...base,sftpServerPath:value}),/sftpServerPath/);
+ for(const value of ['false','true',1])assert.throws(()=>engine.createSession(workspace,{...base,hop:{host:'destination',sudo:value}}),/hop.sudo/);
+});
+
+test('sudo applies only to the final hop with explicit final override',async()=>{
+ const prototype=Object.getPrototypeOf(new engine.SFTPFileSystem(path.posix,{client:{}})._createClient({}));
+ const connect=prototype._connectSSHClient,get=prototype._getSftp,hop=prototype._makeHopping;
+ const normals=[],connected=new WeakMap();prototype._connectSSHClient=async function(_,option){connected.set(this,option.host);};prototype._getSftp=async function(){normals.push(connected.get(this));return {};};prototype._makeHopping=async()=>({});
+ try{for(const enabled of [true,false]){
+  normals.length=0;const client=new engine.SFTPFileSystem(path.posix,{client:{}})._createClient({});let elevated=0;
+  client._client.exec=(_command,_options,callback)=>{elevated++;callback(new Error('fixture rejection'));};
+  const options={host:'jump',password:'fixture',sudo:!enabled,hop:[{host:'middle',password:'fixture',sudo:true},{host:'final',password:'fixture',sudo:enabled}]};
+  try{if(enabled)await assert.rejects(client.connect(options,{}),error=>error.code==='SUDO_SFTP_START_FAILED');else await client.connect(options,{});}
+  finally{client.end();}
+  assert.equal(elevated,enabled?1:0);assert.deepEqual(normals,enabled?['jump','middle']:['jump','middle','final']);
+ }}finally{prototype._connectSSHClient=connect;prototype._getSftp=get;prototype._makeHopping=hop;}
+});
+
 test('profiles-only connections independently resolve protocol, port, paths and credentials',t=>{
   const workspace=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-profile-settings-'));t.after(()=>fs.rmSync(workspace,{recursive:true,force:true}));
   const raw={name:'Profile fixture',protocol:'ftp',port:21,ignore:['vendor/**'],profiles:{
