@@ -239,25 +239,21 @@ The product trusts the authenticated server namespace and other parties able to 
 
 ## SFTP with sudo
 
-Version 0.7.23 implements `"sudo": true`. Earlier versions accepted this unknown setting but still used normal-account SFTP, which could produce Permission denied.
+Version 0.7.23 implements `"sudo": true`; version 0.7.22 ignored this unknown setting and used the normal login account.
 
-Set these fields in the selected SFTP profile/context:
+Add these fields to the selected SFTP profile/context while retaining your existing connection, authentication and host-key settings:
 
 ```json
 {
-  "protocol": "sftp",
-  "host": "server.example",
-  "username": "deploy",
-  "remotePath": "/var/www/project",
   "sudo": true,
   "sftpServerPath": "/usr/lib/openssh/sftp-server"
 }
 ```
 
-Keep your existing authentication and host-key settings. The toolkit connects using `username`, then starts the SFTP server with `sudo -n`. VS Code and `devkit sftp` use that elevated session for browsing, uploads, backups and downloads. Omit `sftpServerPath` to try `/usr/lib/openssh/sftp-server`, `/usr/libexec/openssh/sftp-server` and `/usr/lib/ssh/sftp-server`. Profiles can override `sudo` independently. Set `sudo: false` for ordinary SFTP. FTP does not support sudo. With SSH hops, set sudo on the selected destination profile; it is not implicitly applied to jump hosts.
+The SSH account must be allowed to run the elevated `/bin/sh` launcher through `sudo -n`, without a password prompt or TTY. Permission only for the `sftp-server` executable is insufficient for this launcher. The launcher checks effective UID 0, acknowledges a challenge read from SSH stdin and starts the selected SFTP executable. The toolkit does not edit sudoers or send the SSH password to sudo. Startup failures report the prerequisite and never fall back to ordinary-account SFTP.
 
-The server must allow this account to run the fixed elevated `/bin/sh` launcher through non-interactive sudo without a password prompt or TTY. Permission only for the `sftp-server` executable is insufficient for this launcher. An interactive sudo login does not grant this permission to a separate SFTP connection. The toolkit does not edit sudoers, send your SSH password to sudo or fall back to normal-account SFTP. If startup fails, check the executable path and sudo policy with your administrator. Elevated privileges apply to the entire SFTP session; new entries follow the elevated process ownership. Existing mode settings and automatic local backups still apply.
+VS Code and CLI use the same requested sudo session for browsing, upload, backup and download. New entries follow the elevated process ownership; existing mode settings and private local backups remain active. The authenticated server controls execution and responses: a challenge acknowledgment is not independent root attestation against a server or forced-command wrapper that reads stdin and fabricates it. No cryptographic root-identity guarantee is provided by this implementation.
 
-Sudo launch confirmation rejects replacement forced SSH commands; a completed SFTP handshake alone is not treated as confirmation. The fixed `/bin/sh` launcher accepts `sftpServerPath` containing only letters, digits, `/`, `.`, `_` and `-`. For hop chains, explicit settings on the final hop override the selected profile; intermediate SFTP connections remain unprivileged. Closing a sudo SFTP channel invalidates its connection so the next operation reconnects.
+Omit `sftpServerPath` to try `/usr/lib/openssh/sftp-server`, `/usr/libexec/openssh/sftp-server` and `/usr/lib/ssh/sftp-server`. Custom paths accept letters, digits, `/`, `.`, `_` and `-` only. Set `sudo: false` for normal-account SFTP. FTP rejects sudo settings, including those inside nested hops.
 
-The elevated launcher verifies effective UID 0 before acknowledging a fresh challenge received through SSH stdin. The challenge is absent from the command text, so reflected command diagnostics do not confirm startup. SSH agent forwarding is disabled for transfer connections while agent authentication remains available. Channel loss immediately invalidates the cached session; immediate retry uses a new connection.
+Profiles override sudo independently. Explicit settings on the final hop override the selected profile. All intermediate SFTP connections, including recursively nested hops, remain unprivileged. Transfer connections disable agent forwarding while retaining agent authentication. Loss of the sudo channel immediately invalidates the cached connection; a retry opens a fresh session.

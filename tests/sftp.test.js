@@ -21,6 +21,8 @@ test('sudo paths and nested hop settings reject shell syntax before connecting',
  const base={protocol:'sftp',host:'fixture',username:'fixture',remotePath:'/',sudo:true};
  for(const value of ["/bad'path",'/bad\\path','/bad;command','/bad$(command)','/bad path'])assert.throws(()=>engine.createSession(workspace,{...base,sftpServerPath:value}),/sftpServerPath/);
  for(const value of ['false','true',1])assert.throws(()=>engine.createSession(workspace,{...base,hop:{host:'destination',sudo:value}}),/hop.sudo/);
+ assert.throws(()=>engine.createSession(workspace,{...base,protocol:'ftp',sudo:false,hop:{host:'middle',hop:{host:'final',sudo:true}}}),/hop.sudo.*sftp/);
+ assert.throws(()=>engine.createSession(workspace,{...base,hop:{host:'middle',hop:{host:'final',sudo:'false'}}}),/hop.sudo/);
 });
 
 test('sudo applies only to the final hop with explicit final override',async()=>{
@@ -30,10 +32,10 @@ test('sudo applies only to the final hop with explicit final override',async()=>
  try{for(const enabled of [true,false]){
   normals.length=0;const client=new engine.SFTPFileSystem(path.posix,{client:{}})._createClient({});let elevated=0;
   client._client.exec=(_command,_options,callback)=>{elevated++;callback(new Error('fixture rejection'));};
-  const options={host:'jump',password:'fixture',sudo:!enabled,hop:[{host:'middle',password:'fixture',sudo:true},{host:'final',password:'fixture',sudo:enabled}]};
+  const options={host:'jump',password:'fixture',sudo:!enabled,hop:[{host:'middle',password:'fixture',sudo:true,hop:{host:'nested',password:'fixture',sudo:true}},{host:'final',password:'fixture',sudo:enabled}]};
   try{if(enabled)await assert.rejects(client.connect(options,{}),error=>error.code==='SUDO_SFTP_START_FAILED');else await client.connect(options,{});}
   finally{client.end();}
-  assert.equal(elevated,enabled?1:0);assert.deepEqual(normals,enabled?['jump','middle']:['jump','middle','final']);
+  assert.equal(elevated,enabled?1:0);assert.deepEqual(normals,enabled?['jump','middle','nested']:['jump','middle','nested','final']);
  }}finally{prototype._connectSSHClient=connect;prototype._getSftp=get;prototype._makeHopping=hop;}
 });
 

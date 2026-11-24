@@ -13,6 +13,7 @@ let MAX_OPEN_FD_NUM = 222;
 
 export default class SSHClient extends RemoteClient {
   private sftp: any;
+  private allowElevation = true;
   private hoppingClients: SSHClient[];
   private _opendFdNum: number = 0;
   private _queuedFdRequireCall: Array<(...args: any[]) => any> = [];
@@ -76,6 +77,7 @@ export default class SSHClient extends RemoteClient {
         }
 
         const client = new SSHClient({...curOpt,sudo:false});
+        client.allowElevation = false;
         this.hoppingClients.push(client);
         await client.connect({ ...curOpt, sudo:false, sock }, config);
       }
@@ -99,7 +101,7 @@ export default class SSHClient extends RemoteClient {
     await this._connectSSHClient(this._client, await this.resolveAuthentication({ ...lastOption, sock }, config), config);
     const finalSudo=lastOption.sudo===undefined?sudo:lastOption.sudo;
     const finalPath=lastOption.sftpServerPath===undefined?sftpServerPath:lastOption.sftpServerPath;
-    this.sftp = finalSudo===true ? await openSudoSftp(this._client,{...lastOption,sftpServerPath:finalPath}) : await this._getSftp(this._client);
+    this.sftp = this.allowElevation && finalSudo===true ? await openSudoSftp(this._client,{...lastOption,sftpServerPath:finalPath}) : await this._getSftp(this._client);
 
     if (lastOption.limitOpenFilesOnRemote) {
       if (typeof lastOption.limitOpenFilesOnRemote !== 'boolean') {

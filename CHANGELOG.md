@@ -3,6 +3,8 @@
 - Implement `sudo: true` using an authenticated non-interactive elevated SFTP server session shared by VS Code and CLI.
 - Add optional `sftpServerPath`, common OpenSSH path discovery, per-profile overrides and actionable sudo startup errors without normal-account fallback.
 - Preserve host-key checks and automatic backups. Do not edit server sudo policy or send SSH passwords to sudo.
+- Disable agent forwarding on transfer connections, isolate sudo from recursively nested intermediate hops and invalidate failed sudo channels before immediate retry.
+- Document that startup acknowledgment follows authenticated-server trust and is not independent root attestation.
 - Add real SSH exec-channel transfer and sudo denial/termination/timeout regression tests.
 
 ## 0.7.22

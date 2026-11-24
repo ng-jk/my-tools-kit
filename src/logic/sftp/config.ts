@@ -190,9 +190,14 @@ export function normalizeConfigurations(value: any, environment: {[key:string]:s
 
 export function validateConfig(config: any) {
   if(config.sudo && config.protocol!=='sftp')return Object.assign(new Error('sudo is supported only for protocol sftp'),{details:[{path:'sudo',type:'requires_protocol_sftp'}]});
-  for(const hop of (Array.isArray(config.hop)?config.hop:config.hop?[config.hop]:[])){
-    if(hop.sudo!==undefined&&typeof hop.sudo!=='boolean')return Object.assign(new Error('Invalid hop sudo'),{details:[{path:'hop.sudo',type:'boolean_required'}]});
-    if(hop.sftpServerPath!==undefined&&(typeof hop.sftpServerPath!=='string'||!/^\/[A-Za-z0-9_./-]+$/.test(hop.sftpServerPath)))return Object.assign(new Error('Invalid hop SFTP path'),{details:[{path:'hop.sftpServerPath',type:'absolute_safe_path_required'}]});
+  const pending=[config],seen=new Set();
+  while(pending.length){
+    const entry=pending.pop();if(!entry||typeof entry!=='object'||seen.has(entry))continue;seen.add(entry);
+    const prefix=entry===config?'':'hop.';
+    if(entry.sudo!==undefined&&typeof entry.sudo!=='boolean')return Object.assign(new Error('Invalid sudo'),{details:[{path:prefix+'sudo',type:'boolean_required'}]});
+    if(entry.sudo===true&&config.protocol!=='sftp')return Object.assign(new Error('Sudo requires SFTP'),{details:[{path:prefix+'sudo',type:'requires_protocol_sftp'}]});
+    if(entry.sftpServerPath!==undefined&&(typeof entry.sftpServerPath!=='string'||!/^\/[A-Za-z0-9_./-]+$/.test(entry.sftpServerPath)||entry.sftpServerPath.length>4096))return Object.assign(new Error('Invalid SFTP path'),{details:[{path:prefix+'sftpServerPath',type:'absolute_safe_path_required'}]});
+    pending.push(...(Array.isArray(entry.hop)?entry.hop:entry.hop?[entry.hop]:[]));
   }
   const { error } = Joi.validate(config, configScheme, {
     abortEarly: false,
