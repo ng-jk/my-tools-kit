@@ -3,8 +3,7 @@ import { TransferTask, TransferDirection, FileType, FileSystem } from './core';
 import { getMirrorService, MirrorTarget } from './mirror';
 import { logger } from '../../data/sftp/ports';
 import {serverCreationMode} from './server-permissions';
-import * as fs from 'fs';
-import {defaultBackupPath,legacyBackupPath} from '../../data/sftp/backup-location';
+import {defaultBackupPath,existingLegacyBackupPath} from '../../data/sftp/backup-location';
 // True when `child` is the same as or nested under `parent`.
 function isInside(child: string, parent: string): boolean {
   const rel = path.relative(parent, child);
@@ -48,7 +47,7 @@ export async function backupBeforeUpload(
   });
   logger.info('Upload backup saved in '+repoRoot);
   if(!mirror?.enabled){
-    const previous=legacyBackupPath(ctx.fileService.workspace,ctx.fileService.baseDir,ctx.config,ctx.fileService.profile);
-    if(previous!==repoRoot&&fs.existsSync(previous))logger.info('Previous backup history retained separately at '+previous+'; it is not merged into this destination history.');
+    const previous=existingLegacyBackupPath(ctx.fileService.workspace,ctx.fileService.baseDir,ctx.config,ctx.fileService.profile);
+    if(previous&&previous!==repoRoot)logger.info('Previous backup history retained separately at '+previous+'; it is not merged into this destination history.');
   }
 }
