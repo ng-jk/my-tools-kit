@@ -1,7 +1,13 @@
+import * as path from 'path';
 import {execFile,spawn,ChildProcessWithoutNullStreams} from 'child_process';
 import {createInterface} from 'readline';
 import {promisify} from 'util';
 const run = promisify(execFile);
+export function windowsPowerShellPath():string {
+  const systemRoot=process.env.SystemRoot||process.env.WINDIR||'C:\\Windows';
+  if(!path.win32.isAbsolute(systemRoot))throw new Error('Windows system directory must be absolute');
+  return path.win32.join(systemRoot,'System32','WindowsPowerShell','v1.0','powershell.exe');
+}
 // Constant script; the filesystem path is passed as data, never interpolated into code.
 const script = `
 $ErrorActionPreference = 'Stop'
@@ -27,7 +33,7 @@ foreach ($rule in $rules) {
 if (-not $ownerAllowed) { throw 'Directory owner lacks access' }
 `;
 export async function protectWindowsDirectory(directory: string) {
-  await run('powershell.exe', ['-NoProfile','-NonInteractive','-WindowStyle','Hidden','-EncodedCommand',Buffer.from(script,'utf16le').toString('base64')],
+  await run(windowsPowerShellPath(), ['-NoProfile','-NonInteractive','-WindowStyle','Hidden','-EncodedCommand',Buffer.from(script,'utf16le').toString('base64')],
     {windowsHide:true,timeout:30000,env:{...process.env,DEVKIT_ACL_DIRECTORY:directory}});
 }
 
@@ -59,7 +65,7 @@ $observed = $actual.GetSecurityDescriptorSddlForm([System.Security.AccessControl
 if ($actual.AreAccessRulesProtected -ne $acl.AreAccessRulesProtected -or ($observed -replace '^D:[A-Z]*','') -ne ($expected -replace '^D:[A-Z]*','')) { throw 'Staging file ACL verification failed' }
 `;
 export async function protectWindowsStagingFile(file: string, destination: string) {
-  await run('powershell.exe', ['-NoProfile','-NonInteractive','-WindowStyle','Hidden','-EncodedCommand',Buffer.from(fileScript,'utf16le').toString('base64')],
+  await run(windowsPowerShellPath(), ['-NoProfile','-NonInteractive','-WindowStyle','Hidden','-EncodedCommand',Buffer.from(fileScript,'utf16le').toString('base64')],
     {windowsHide:true,timeout:30000,env:{...process.env,DEVKIT_ACL_FILE:file,DEVKIT_ACL_DESTINATION:destination}});
 }
 
@@ -95,7 +101,7 @@ while ($queue.Count -gt 0) {
 }
 `;
 export async function protectWindowsTree(directory: string) {
-  await run('powershell.exe', ['-NoProfile','-NonInteractive','-WindowStyle','Hidden','-EncodedCommand',Buffer.from(treeScript,'utf16le').toString('base64')],
+  await run(windowsPowerShellPath(), ['-NoProfile','-NonInteractive','-WindowStyle','Hidden','-EncodedCommand',Buffer.from(treeScript,'utf16le').toString('base64')],
     {windowsHide:true,timeout:30000,env:{...process.env,DEVKIT_ACL_DIRECTORY:directory}});
 }
 
@@ -130,7 +136,7 @@ while ($null -ne ($line = [Console]::ReadLine())) {
     [Console]::WriteLine((@{id=$request.id;ok=$false;code=$code} | ConvertTo-Json -Compress))
   }
 }`;
-    child=spawn('powershell.exe',['-NoLogo','-NoProfile','-NonInteractive','-WindowStyle','Hidden','-EncodedCommand',Buffer.from(worker,'utf16le').toString('base64')],{windowsHide:true,stdio:'pipe'});
+    child=spawn(windowsPowerShellPath(),['-NoLogo','-NoProfile','-NonInteractive','-WindowStyle','Hidden','-EncodedCommand',Buffer.from(worker,'utf16le').toString('base64')],{windowsHide:true,stdio:'pipe'});
     const lines=createInterface({input:child.stdout});
     lines.on('error',()=>fail(new Error('Staging ACL worker output failed')));
     child.stdout.on('error',()=>fail(new Error('Staging ACL worker output failed')));

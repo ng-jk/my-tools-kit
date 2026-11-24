@@ -1,3 +1,4 @@
+export {acquireUploadLock} from './upload-lock';
 export {sudoSftpCommand} from '../../data/sftp/sudo-sftp';
 export {connectionDescription} from './connection-description';
 import {inspectServerIsolation,isolationConnection} from './parent-directories';
@@ -100,7 +101,7 @@ export {directoryIgnoresCase} from '../../data/sftp/local-path-identity';
 
 export {removeRemotePath,renameRemotePath} from './remote-operations';
 
-export {defaultBackupPath} from '../../data/sftp/backup-location';
+export {defaultBackupPath,legacyBackupPath} from '../../data/sftp/backup-location';
 
 export {ensureTransferDirectory,DirectoryPermissionScope} from './directory-permissions';
 export {default as MirrorService} from './mirror';
@@ -115,4 +116,4 @@ export {prepareFtpStaging} from './ftp-staging';
 
 export {inspectServerIsolation,assertProtectedRemoteParents,isolationConnection} from './parent-directories';
 
-export {createWindowsStagingBatch} from '../../data/sftp/windows-directory-permissions';
+export {createWindowsStagingBatch,windowsPowerShellPath,protectWindowsDirectory,protectWindowsStagingFile,protectWindowsTree} from '../../data/sftp/windows-directory-permissions';

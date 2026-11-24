@@ -43,7 +43,7 @@ test('terminal nested SSH destinations reject before connection and labels show 
  const workspace=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-route-'));t.after(()=>fs.rmSync(workspace,{recursive:true,force:true}));
  const config={protocol:'sftp',host:'jump',username:'fixture',remotePath:'/',sudo:true,hop:{host:'middle',hop:{host:'actual',sudo:false}}};
  assert.throws(()=>engine.createSession(workspace,config),/flatten_destination_hops/);
- for(const hop of ['actual',[{host:'middle'},null],{sudo:true},{host:'actual',port:0},{host:'actual',port:'22'}])assert.throws(()=>engine.createSession(workspace,{...config,hop}),/hop/);
+ for(const hop of ['actual',[{host:'middle'},null],{sudo:true},{host:'actual',port:0},{host:'actual',port:'22'},{host:'actual',username:false},{host:'actual',username:''}])assert.throws(()=>engine.createSession(workspace,{...config,hop}),/hop/);
  const client=new engine.SFTPFileSystem(path.posix,{client:{}})._createClient({});let connections=0;client._connectSSHClient=async()=>{connections++;};
  await assert.rejects(client._doConnect(config,{}),/flatten.*hop/);assert.equal(connections,0);client.end();
  assert.equal(engine.connectionDescription({...config,hop:[{host:'actual',port:2222,sudo:false}]}),'actual:2222 (login account)');
@@ -82,11 +82,13 @@ test('sudo UID guard never executes an id from inherited PATH',t=>{
  if(!fs.existsSync(shell)){t.skip('POSIX shell unavailable; protocol fixture still verifies fixed launcher');return;}
  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-path-'));t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
  fs.writeFileSync(path.join(directory,'id'),'#!/bin/sh\nprintf ATTACKER_PATH_RAN >&2\nprintf 0\n',{mode:0o755});
+ fs.writeFileSync(path.join(directory,'sudo'),'#!/bin/sh\nprintf ATTACKER_SUDO_RAN >&2\n',{mode:0o755});
  const command=engine.sudoSftpCommand({sftpServerPath:'/bin/true'}),script=command.slice(command.indexOf("'")+1,-1);
  const environment={...process.env};for(const key of Object.keys(environment))if(key.toLowerCase()==='path')delete environment[key];
  environment.PATH=process.platform==='win32'?directory.replaceAll('\\','/').replace(/^([A-Za-z]):/,(_,drive)=>'/'+drive.toLowerCase()):directory;
  const result=spawnSync(shell,['-c',script],{env:environment,input:'fixture-challenge\n',encoding:'utf8',timeout:5000});
  assert.ok([0,126].includes(result.status),result.stderr);assert.equal(result.stderr.includes('ATTACKER_PATH_RAN'),false);
+ if(process.platform==='win32'){const outer=spawnSync(shell,['-c',command],{env:environment,input:'fixture-challenge\n',encoding:'utf8',timeout:5000});assert.equal(outer.stderr.includes('ATTACKER_SUDO_RAN'),false);assert.ok(!outer.error,outer.error?.message);}
 });
 
 test('explicit empty and primitive hop values never authenticate or request sudo',async t=>{
@@ -98,6 +100,44 @@ test('explicit empty and primitive hop values never authenticate or request sudo
   client._connectSSHClient=async()=>{connections++;};client._client.exec=()=>{executions++;};
   try{await assert.rejects(client._doConnect(config,{}),/hop/);assert.equal(connections,0);assert.equal(executions,0);}finally{client.end();}
  }
+});
+
+test('downloaded symlink validation keeps raw component order before parent traversal',async t=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-link-target-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ const local=path.join(root,'local'),outside=path.join(root,'outside'),child=path.join(outside,'child');fs.mkdirSync(local);fs.mkdirSync(child,{recursive:true});
+ fs.writeFileSync(path.join(local,'secret'),'inside');fs.writeFileSync(path.join(outside,'secret'),'outside');fs.symlinkSync(child,path.join(local,'pivot'),'junction');
+ const adapter=new engine.LocalFileSystem(path,local);
+ await assert.rejects(async()=>adapter.symlink('pivot/../secret',path.join(local,'downloaded')),error=>error.code==='LOCAL_SYMLINK_TARGET_COMPONENT');
+ assert.equal(fs.existsSync(path.join(local,'downloaded')),false);assert.equal(fs.readFileSync(path.join(outside,'secret'),'utf8'),'outside');
+ const original=fs.symlink;let installed;
+ fs.symlink=(target,_path,_type,callback)=>{installed=target;callback(null);};
+ try{await adapter.symlink('secret',path.join(local,'safe'));assert.equal(installed,'secret');}finally{fs.symlink=original;}
+});
+
+test('uploads through different SSH routes and privilege modes preserve the intervening original',async()=>{
+ const first={protocol:'sftp',host:'jump-a',sudo:false,hop:{host:'destination',username:'deploy',sudo:false}},second={protocol:'sftp',host:'jump-b',sudo:true,hop:{host:'destination',username:'admin',sudo:true}};
+ let remote='before',entered=false;const originals=[];
+ const release=await engine.acquireUploadLock(first,'/project/file',()=>{});
+ const pending=engine.acquireUploadLock(second,'/project/file',()=>{}).then(unlock=>{entered=true;originals.push(remote);remote='second upload';unlock();});
+ try{await new Promise(resolve=>setImmediate(resolve));assert.equal(entered,false);originals.push(remote);remote='first upload';}finally{release();}
+ await pending;assert.deepEqual(originals,['before','first upload']);assert.equal(remote,'second upload');
+});
+
+test('new backup identities separate final accounts servers and sudo while retaining legacy paths',()=>{
+ const base={protocol:'sftp',host:'bridge',port:22,username:'bridge-user',remotePath:'/project',hop:{host:'final-a',port:2222,username:'deploy'}};
+ const old=engine.legacyBackupPath('/workspace','/workspace/context',base,'live'),current=engine.defaultBackupPath('/workspace','/workspace/context',base,'live');assert.notEqual(old,current);
+ for(const update of [{host:'final-b',port:2222,username:'deploy'},{host:'final-a',port:2222,username:'other'},{host:'final-a',port:2222,username:'deploy',sudo:true}]){
+  const config={...base,hop:update};assert.notEqual(engine.defaultBackupPath('/workspace','/workspace/context',config,'live'),current);assert.equal(engine.legacyBackupPath('/workspace','/workspace/context',config,'live'),old);
+ }
+ assert.equal(engine.defaultBackupPath('/workspace','/workspace/context',{...base,host:'another-bridge'},'live'),current);
+});
+
+test('Windows ACL helpers never search a downloaded executable in current directory',{skip:process.platform!=='win32'},async t=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-ps-shadow-')),previous=process.cwd(),directory=path.join(root,'protected');fs.mkdirSync(directory);fs.writeFileSync(path.join(root,'powershell.exe'),'untrusted downloaded payload');
+ const cp=require('node:child_process'),spawn=cp.spawn,executables=[];
+ cp.spawn=(file,...args)=>{executables.push(file);return spawn(file,...args);};const worker=engine.createWindowsStagingBatch();
+ try{process.chdir(root);await engine.protectWindowsDirectory(directory);const file=path.join(directory,'saved');fs.writeFileSync(file,'private');await engine.protectWindowsStagingFile(file,'');await engine.protectWindowsTree(directory);await worker.protectTree(directory);await worker.protect(file,'');assert.ok(executables.length);for(const executable of executables){assert.equal(path.win32.isAbsolute(executable),true);assert.equal(executable,engine.windowsPowerShellPath());}}
+ finally{await worker.close();cp.spawn=spawn;process.chdir(previous);fs.rmSync(root,{recursive:true,force:true});}
 });
 
 test('profiles-only connections independently resolve protocol, port, paths and credentials',t=>{

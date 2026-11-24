@@ -121,7 +121,7 @@ test('Sudo SFTP wire: authenticated exec supports list, upload, backup, download
     clients.add(client);client.on('close',()=>clients.delete(client));client.on('error',()=>{});
     client.on('authentication',ctx=>{authentications++;return ctx.method==='password' && ctx.username==='fixture' && ctx.password==='test-password'?ctx.accept():ctx.reject();});
     client.on('ready',()=>client.on('session',accept=>accept().on('auth-agent',accept=>{agentForwardRequests++;accept();}).on('exec',(accept,reject,info)=>{
-      assert.match(info.command,/^sudo -n -- \/bin\/sh -c 'PATH=\/usr\/sbin:.*IFS= read -r token;/);
+      assert.match(info.command,/^\/usr\/bin\/sudo -n -- \/bin\/sh -c 'PATH=\/usr\/sbin:.*IFS= read -r token;/);
       assert.ok(info.command.includes('[ "$(/usr/bin/id -u)" = 0 ]'));
       assert.ok(info.command.endsWith("exec /usr/lib/openssh/sftp-server'"));assert.ok(!info.command.includes('DEVKIT_SUDO_'));
       const channel=accept();elevatedChannels.push(channel);
@@ -229,7 +229,7 @@ for(const failure of ['denied','closed','timeout','forced','eof','limits-eof'])t
  const server=new Server({hostKeys:[key]},client=>{
   clients.add(client);client.on('error',()=>{});client.on('close',()=>clients.delete(client));client.on('authentication',ctx=>ctx.method==='password'?ctx.accept():ctx.reject());
   client.on('ready',()=>client.on('session',accept=>accept().on('sftp',(_accept,reject)=>{normal++;reject();}).on('exec',(accept,reject,info)=>{
-   executions++;assert.match(info.command,/^sudo -n/);
+   executions++;assert.match(info.command,/^\/usr\/bin\/sudo -n/);
    if(failure==='denied'){reject();return;}
    const channel=accept();
    if(failure==='limits-eof'){

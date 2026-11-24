@@ -1,10 +1,11 @@
+import {sshDestination} from '../../data/sftp/ssh-destination';
 import * as path from 'path';
 interface Entry {root:string;done:Promise<void>;}
 const pending=new Map<string,Entry[]>();
 // Serialize overlapping destination trees, including separate command invocations.
 // Disjoint destinations retain transfer concurrency.
 export async function acquireUploadLock(config:any,remote:string,check:()=>void) {
- const identity=JSON.stringify([String(config.host||'').toLowerCase()]);
+ const identity=JSON.stringify([String(config.protocol==='sftp'?sshDestination(config).host:config.host||'').toLowerCase()]);
  const root=path.posix.resolve('/',remote.replace(/\\/g,'/')).toLowerCase();
  const entries=pending.get(identity)||[];pending.set(identity,entries);
  const overlap=(a:string,b:string)=>a===b||a.startsWith(b.endsWith('/')?b:b+'/')||b.startsWith(a.endsWith('/')?a:a+'/');

@@ -1,5 +1,8 @@
 ## 0.7.23
 
+- Bind backup identities and overlapping upload locks to final SSH destinations and sudo intent; retain legacy backup histories separately.
+- Use absolute system PowerShell and sudo executables, validate raw downloaded symlink target components, and show final endpoint/mode in the project picker.
+
 - Reject explicitly empty or malformed SSH hop routes before authentication or sudo execution, preventing unintended direct elevation on a jump host.
 
 - Use a trusted launcher PATH and absolute UID check, prevent hostname alias dial/verification mismatches, and identify the final sudo destination in isolation advisories.

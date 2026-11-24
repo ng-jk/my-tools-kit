@@ -52,8 +52,9 @@ export function selectContext(): Promise<Uri | undefined> {
     const projectsList = sercives
       .map(service => ({
         value: service.baseDir,
+        service,
         label: service.name || simplifyPath(service.baseDir),
-        description: `${service.profile || 'base'} - ${service.getConfig().host}:${service.getConfig().port}`,
+        description: `${service.profile || 'base'} - ${connectionDescription(service.getConfig())}`,
         detail: `${service.baseDir} <-> ${service.getConfig().remotePath}`,
       }))
       .sort((l, r) => l.label.localeCompare(r.label));
@@ -68,7 +69,8 @@ export function selectContext(): Promise<Uri | undefined> {
       })
       .then(selection => {
         if (selection) {
-          return resolve(Uri.file(selection.value));
+          const service=selection.service,config=service.getConfig();
+          return resolve(UResource.makeResource({fsPath:config.remotePath,remoteId:service.id,remote:{host:config.host,port:config.port}}).uri);
         }
 
         // cancel selection

@@ -17,6 +17,7 @@ export function sshDestination(option:any):{host:string;port:number;username?:st
   const node=pending.pop();if(!node||typeof node!=='object'||Array.isArray(node))throw Object.assign(new Error('Each SSH hop must be a connection object'),{routeType:'connection_object_required',routePath:'hop'});
   if(seen.has(node))throw Object.assign(new Error('Cyclic SSH hops are unsupported'),{routeType:'cyclic_hops',routePath:'hop'});seen.add(node);
   if(typeof node.host!=='string'||!node.host.trim()||/[\r\n\0]/.test(node.host))throw Object.assign(new Error('Every SSH route endpoint requires an explicit host'),{routeType:'host_required',routePath:node===option?'host':'hop.host'});
+  if(node.username!==undefined&&(typeof node.username!=='string'||!node.username.trim()))throw Object.assign(new Error('Configured SSH usernames must be nonempty strings'),{routeType:'nonempty_username_required',routePath:node===option?'username':'hop.username'});
   if(node.hostname!==undefined&&node.hostname!==node.host)throw Object.assign(new Error('Conflicting SSH hostname alias; use host only'),{routeType:'use_host_only',routePath:node===option?'hostname':'hop.hostname'});
   if(node.port!==undefined&&(!Number.isInteger(node.port)||node.port<1||node.port>65535))throw Object.assign(new Error('SSH route ports must be integers from 1 to 65535'),{routeType:'port_1_to_65535_required',routePath:node===option?'port':'hop.port'});
   const chain=hops(node.hop);

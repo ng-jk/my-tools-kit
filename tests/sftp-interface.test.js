@@ -540,6 +540,9 @@ test('bundled SFTP registers upstream commands and toolkit sidebar in a host ada
       const routedTree=provider.getTreeItem(routedRoot);assert.match(routedTree.description,/final-host:2222.*sudo/);assert.match(routedTree.tooltip,/final-host:2222.*sudo/);assert.equal(routedTree.tooltip.includes('jump-host'),false);
       let routedConfirmations=0;vscode.window.showInformationMessage=async message=>{routedConfirmations++;assert.match(message,/final-host:2222.*sudo/);assert.equal(message.includes('jump-host'),false);return undefined;};
       await commands.get('devkit.sftp.delete.remote')(previewItem);assert.equal(routedConfirmations,1);assert.deepEqual(errors,[]);
+      const previousPicker=vscode.window.showQuickPick;let projectPickerChecked=false;
+      try{vscode.window.showQuickPick=async choices=>{const choice=choices.find(item=>item.value===routedService.baseDir);assert.ok(choice);assert.match(choice.description,/final-host:2222.*sudo/);assert.equal(choice.description.includes('jump-host'),false);projectPickerChecked=true;return undefined;};await commands.get('devkit.sftp.upload.project')();assert.equal(projectPickerChecked,true);assert.deepEqual(errors,[]);}finally{vscode.window.showQuickPick=previousPicker;}
+
     }finally{routedService.getConfig=routedGet;vscode.window.showInformationMessage=routedInfo;}
 
     vscode.window.showInformationMessage=permanentConfirm;

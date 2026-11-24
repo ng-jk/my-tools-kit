@@ -261,3 +261,12 @@ Profiles override sudo independently. Explicit settings on the final hop overrid
 Nested hop configuration on the final SSH destination is rejected before connection. Flatten the final route into a single hop list. Remote Explorer and permanent-delete confirmations show the resolved destination host/port and whether sudo/root is requested.
 
 For direct SSH, omit `hop`. If present, `hop` must be a nonempty connection object or nonempty list. Empty strings, false, zero, null, empty objects and empty lists are configuration errors; none can silently downgrade a jump route into a direct sudo connection.
+
+
+### Backup history after destination-aware identity updates
+
+New automatic backup repositories include the final SSH host, port, configured account and requested sudo mode, plus workspace/context/profile. Different jump routes to the same final account and mode share that destination identity. The upload lock serializes overlapping destination paths across routes and privilege modes so an intervening toolkit upload is backed up before replacement.
+
+Previous backup folders are retained unchanged. When present, **SFTP: Show Output** lists their legacy path separately; they are not automatically merged into the new history. Legacy history did not distinguish final hop or sudo, so verify its provenance before restoring. A manually configured `mirror.path` overrides automatic location selection: use a distinct path per destination/access mode if separate histories are required.
+
+The sudo launcher uses `/usr/bin/sudo`, a fixed system PATH and `/usr/bin/id`; these binaries must exist on the server. Local Windows ACL helpers use the absolute system PowerShell path, and downloaded symlinks cannot traverse existing local symlink components hidden by `..` normalization.

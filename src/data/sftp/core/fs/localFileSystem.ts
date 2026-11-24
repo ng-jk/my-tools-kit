@@ -200,6 +200,18 @@ export default class LocalFileSystem extends FileSystem {
   symlink(targetPath: string, path: string): Promise<void> {
     this.assertWritable(path, false);
     this.assertWritable(paths.resolve(paths.dirname(path), targetPath));
+    // Inspect the original component order: POSIX follows a link before a
+    // subsequent '..'. Normalizing first can erase that dangerous component.
+    const anchor=paths.isAbsolute(targetPath)?paths.parse(targetPath).root:paths.dirname(paths.resolve(path));
+    const rest=paths.isAbsolute(targetPath)?targetPath.slice(paths.parse(targetPath).root.length):targetPath;
+    let current=anchor;
+    for(const component of rest.split(process.platform==='win32'?/[\\/]/:/\//)){
+      if(!component||component==='.')continue;
+      current+=(current.endsWith(paths.sep)?'':paths.sep)+component;
+      try{if(fs.lstatSync(current).isSymbolicLink())throw Object.assign(new Error('Refusing a downloaded symlink target through an existing symlink component'),{code:'LOCAL_SYMLINK_TARGET_COMPONENT'});}
+      catch(error){if(error.code!=='ENOENT')throw error;}
+    }
+
     return new Promise<void>((resolve, reject) => {
       fs.symlink(targetPath, path, null, err => {
         if (err) {
