@@ -259,3 +259,5 @@ Omit `sftpServerPath` to try `/usr/lib/openssh/sftp-server`, `/usr/libexec/opens
 Profiles override sudo independently. Explicit settings on the final hop override the selected profile. All intermediate SFTP connections, including recursively nested hops, remain unprivileged. Transfer connections disable agent forwarding while retaining agent authentication. Loss of the sudo channel immediately invalidates the cached connection; a retry opens a fresh session.
 
 Nested hop configuration on the final SSH destination is rejected before connection. Flatten the final route into a single hop list. Remote Explorer and permanent-delete confirmations show the resolved destination host/port and whether sudo/root is requested.
+
+For direct SSH, omit `hop`. If present, `hop` must be a nonempty connection object or nonempty list. Empty strings, false, zero, null, empty objects and empty lists are configuration errors; none can silently downgrade a jump route into a direct sudo connection.

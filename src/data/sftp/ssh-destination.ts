@@ -1,7 +1,12 @@
 function hops(value:any):any[]{
- if(!value)return [];
- if(typeof value!=='object')throw Object.assign(new Error('Each SSH hop must be a connection object'),{routeType:'connection_object_required',routePath:'hop'});
- return Array.isArray(value)?value:Object.keys(value).length?[value]:[];
+ if(value===undefined)return [];
+ if(!value||typeof value!=='object')throw Object.assign(new Error('An explicit SSH hop must be a nonempty connection object or array'),{routeType:'nonempty_connection_route_required',routePath:'hop'});
+ if(Array.isArray(value)){
+  if(!value.length)throw Object.assign(new Error('An explicit SSH hop list cannot be empty; omit hop for a direct connection'),{routeType:'nonempty_connection_route_required',routePath:'hop'});
+  return value;
+ }
+ if(!Object.keys(value).length)throw Object.assign(new Error('An explicit SSH hop object requires a host'),{routeType:'host_required',routePath:'hop.host'});
+ return [value];
 }
 
 // Terminal nesting was never resolved by the transport. Reject it before any

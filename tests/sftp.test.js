@@ -89,6 +89,17 @@ test('sudo UID guard never executes an id from inherited PATH',t=>{
  assert.ok([0,126].includes(result.status),result.stderr);assert.equal(result.stderr.includes('ATTACKER_PATH_RAN'),false);
 });
 
+test('explicit empty and primitive hop values never authenticate or request sudo',async t=>{
+ const workspace=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-empty-route-'));t.after(()=>fs.rmSync(workspace,{recursive:true,force:true}));
+ for(const hop of ['',false,0,null,[],{}]){
+  const config={protocol:'sftp',host:'jump-server',username:'fixture',password:'fixture',remotePath:'/',sudo:true,hop};
+  assert.throws(()=>engine.createSession(workspace,config),/hop/);
+  const client=new engine.SFTPFileSystem(path.posix,{client:{}})._createClient({});let connections=0,executions=0;
+  client._connectSSHClient=async()=>{connections++;};client._client.exec=()=>{executions++;};
+  try{await assert.rejects(client._doConnect(config,{}),/hop/);assert.equal(connections,0);assert.equal(executions,0);}finally{client.end();}
+ }
+});
+
 test('profiles-only connections independently resolve protocol, port, paths and credentials',t=>{
   const workspace=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-profile-settings-'));t.after(()=>fs.rmSync(workspace,{recursive:true,force:true}));
   const raw={name:'Profile fixture',protocol:'ftp',port:21,ignore:['vendor/**'],profiles:{
