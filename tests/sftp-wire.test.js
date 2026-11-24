@@ -17,7 +17,8 @@ function readSudoChallenge(sftp,channel,confirm=true){
  };
 }
 
-test('SFTP wire: password authentication, list, upload, temp rename, download and delete', {timeout:process.env.DEVKIT_SFTP_BENCHMARK_OUTPUT?180000:30000}, async t=>{
+// Functional fixtures include Windows ACL/Git backup work; timing is benchmarked separately.
+test('SFTP wire: password authentication, list, upload, temp rename, download and delete', {timeout:process.env.DEVKIT_SFTP_BENCHMARK_OUTPUT?180000:90000}, async t=>{
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'devkit-ssh-'));
   const local=path.join(root,'local'),remote=path.join(root,'remote');fs.mkdirSync(local);fs.mkdirSync(remote);
   const hostKey=crypto.generateKeyPairSync('rsa',{modulusLength:2048}).privateKey.export({type:'pkcs1',format:'pem'});
